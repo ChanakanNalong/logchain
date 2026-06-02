@@ -1,0 +1,17 @@
+import { Module } from '@nestjs/common';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { LogsModule } from './logs/logs.module';
+import { AlertsModule } from './alerts/alerts.module';
+import { AuthModule } from './auth/auth.module';
+import { KafkaModule } from './kafka/kafka.module';
+import { VaultModule } from './vault/vault.module';
+import { MetricsModule } from './metrics/metrics.module';
+import { AuditModule } from './audit/audit.module';
+
+@Module({
+  imports: [LogsModule, AlertsModule, AuthModule, KafkaModule, VaultModule, MetricsModule, AuditModule],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}
