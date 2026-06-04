@@ -2,22 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Alert } from './entities/alert.entity';
-import * as crypto from 'crypto';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class AlertsService {
   constructor(
     @InjectRepository(Alert)
     private alertRepo: Repository<Alert>,
+    private notificationService: NotificationService,
   ) {}
 
-  private fingerprint(alert: Partial<Alert>): string {
-    const str = `${alert.alertType}-${alert.source}-${alert.severity}`;
-    return crypto.createHash('sha256').update(str).digest('hex');
-  }
-
   async createOrDedup(dto: Partial<Alert>): Promise<Alert> {
-    const fp = this.fingerprint(dto);
     const existing = await this.alertRepo.findOne({
       where: { status: 'OPEN', alertType: dto.alertType, source: dto.source },
     });
@@ -25,7 +20,17 @@ export class AlertsService {
       return existing;
     }
     const newAlert = this.alertRepo.create({ ...dto, status: 'OPEN' });
-    return this.alertRepo.save(newAlert);
+    const saved = await this.alertRepo.save(newAlert);
+
+    if (['HIGH', 'CRITICAL'].includes(dto.severity)) {
+      await this.notificationService.sendAlertEmail(
+        dto.severity,
+        dto.title,
+        JSON.stringify(dto.detail ?? {}),
+      );
+    }
+
+    return saved;
   }
 
   async findAll(): Promise<Alert[]> {
