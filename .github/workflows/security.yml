@@ -1,0 +1,69 @@
+name: Security Scan
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies (backend)
+        run: npm ci
+
+      - name: npm audit (backend)
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Install dependencies (frontend)
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: pip audit (ml-detection)
+        run: |
+          pip install pip-audit
+          if [ -f ml-detection/requirements.txt ]; then
+            pip-audit -r ml-detection/requirements.txt
+          else
+            echo 'No requirements.txt found, skipping pip audit'
+          fi
+        continue-on-error: true
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          format: table
+
+      - name: Check non-root containers
+        run: |
+          find . -name Dockerfile | while read f; do
+            if grep -q 'USER root' $f || ! grep -q '^USER ' $f; then
+              echo "WARNING: $f may run as root"
+            else
+              echo "OK: $f"
+            fi
+          done
