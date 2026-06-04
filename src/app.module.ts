@@ -9,6 +9,7 @@ import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { AuditModule } from './audit/audit.module';
 import { RetentionModule } from './retention/retention.module';
+import { ErasureModule } from './erasure/erasure.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RetentionModule } from './retention/retention.module';
     MetricsModule,
     AuditModule,
     RetentionModule,
+    ErasureModule,
   ],
   controllers: [AppController],
   providers: [AppService],
