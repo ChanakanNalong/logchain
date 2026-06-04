@@ -8,9 +8,19 @@ import { KafkaModule } from './kafka/kafka.module';
 import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { AuditModule } from './audit/audit.module';
+import { RetentionModule } from './retention/retention.module';
 
 @Module({
-  imports: [LogsModule, AlertsModule, AuthModule, KafkaModule, VaultModule, MetricsModule, AuditModule],
+  imports: [
+    LogsModule,
+    AlertsModule,
+    AuthModule,
+    KafkaModule,
+    VaultModule,
+    MetricsModule,
+    AuditModule,
+    RetentionModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
