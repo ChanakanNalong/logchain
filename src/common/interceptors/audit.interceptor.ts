@@ -4,8 +4,6 @@ import {
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { AuditService } from '../../audit/audit.service';
-import { write } from 'fs';
-import { ExceptionsHandler } from '@nestjs/core/exceptions/exceptions-handler';
 
 /**
  * AuditInterceptor — registered globally ใน AppModule

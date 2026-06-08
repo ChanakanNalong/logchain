@@ -1,0 +1,42 @@
+import { Controller, Get, Param,UseGuards, NotFoundException } from "@nestjs/common";
+import { AuthGuard } from "@nestjs/passport";
+import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { IntegrityService } from "./integrity.service";
+import { RolesGuard,Roles } from "src/auth/guards/roles.guard";
+import { verify } from "crypto";
+
+@ApiTags('integrity')
+@ApiBearerAuth()
+//@UseGuards(AuthGuard('jwt'), RolesGuard)
+@Controller('api/v1/logs')
+export class IntegrityController {
+    constructor(private readonly integrity: IntegrityService) {}
+
+    /**
+     * GET /api/v1/logs/:id/proof
+     * คืน Merkle proof ของ log ตัวเดียว - พิสูจน์ว่า log อยู่ใน chain จริง
+     */
+    @Get(':id/proof')
+    //@Roles('analyst', 'operator', 'admin')
+    @ApiOperation({ summary: 'Get Merkle proof for a single log' })
+    async getProof(@Param('id') id: string) {
+        const result = await this.integrity.getProotForLog(id);
+        if (!result) {
+            throw new NotFoundException('Log not found or not yet sealed in abatch');
+        }
+        
+        return {
+            logId: result.log.id,
+            rawHash: result.log.rawHash,
+            batch: {
+                id: result.batch.id,
+                merkleRoot: result.batch.merkleRoot,
+                txHash: result.batch.txHash,
+                blockNumber: result.batch.blockNumber,
+                status: result.batch.status,
+            },
+            proof: result.proof,
+            verify: result.verified, // true = proof ถูกต้อง log อยู่ใน tree จริง
+        };
+    }
+}

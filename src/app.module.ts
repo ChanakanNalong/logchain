@@ -1,17 +1,69 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { TerminusModule } from '@nestjs/terminus';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+
+import { AuthModule } from './auth/auth.module';
 import { LogsModule } from './logs/logs.module';
 import { AlertsModule } from './alerts/alerts.module';
-import { AuthModule } from './auth/auth.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { AuditModule } from './audit/audit.module';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { HealthController } from './health/health.controller';
+import { BlockchainModule } from './blockchain/blockchain.module';
+
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { Log } from './logs/entities/log.entity';
+import { Batch } from './logs/entities/batch.entity';
+import { Alert } from './alerts/entities/alert.entity';
+import { AuditAccess } from './audit/entities/audit-access.entity';
+import { ScheduleModule } from '@nestjs/schedule';
+import { IntegrityModule } from './integrity/integrity.module';
+import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
+
 
 @Module({
-  imports: [LogsModule, AlertsModule, AuthModule, KafkaModule, VaultModule, MetricsModule, AuditModule],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    // ConfigModule.forRoot({ isGlobal: true }) -> โหลด .env และ inject ได้ทุก module
+    ConfigModule.forRoot({ isGlobal: true }),
+
+    // Rate limiting global - 200 req/นาที ต่อ IP
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
+
+    // TypeORM - เชื่อ PostgreSQL, synchronize: false ใช้ migration แทน
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        type: 'postgres',
+        url: cfg.get<string>('DATABASE_URL'),
+        entities: [Log, Batch, Alert, AuditAccess, LogBatchMapping],
+        synchronize: false,
+      }),
+    }),
+
+    TerminusModule,
+    VaultModule,
+    AuthModule,
+    KafkaModule,
+    AuditModule,
+    LogsModule,
+    AlertsModule,
+    MetricsModule,
+    BlockchainModule,
+    ScheduleModule.forRoot(),
+    IntegrityModule,
+  ],
+  controllers: [HealthController],
+  providers: [
+    // APP_INTERCEPTOR -> register AuditInterceptor แบบ global
+    // ทุก request จะถูก intercept โดยอัตโนมัติ ไม่ต้อง @UseInterceptors ทุก controller
+    {provide: APP_INTERCEPTOR, useClass: AuditInterceptor},
+  ],
 })
 export class AppModule {}
