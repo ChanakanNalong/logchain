@@ -22,10 +22,10 @@ export class AlertsService {
     const newAlert = this.alertRepo.create({ ...dto, status: 'OPEN' });
     const saved = await this.alertRepo.save(newAlert);
 
-    if (['HIGH', 'CRITICAL'].includes(dto.severity)) {
+    if (dto.severity && ['HIGH', 'CRITICAL'].includes(dto.severity)) {
       await this.notificationService.sendAlertEmail(
         dto.severity,
-        dto.title,
+        dto.title ?? 'Alert',
         JSON.stringify(dto.detail ?? {}),
       );
     }
