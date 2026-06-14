@@ -7,7 +7,7 @@ import { verify } from "crypto";
 
 @ApiTags('integrity')
 @ApiBearerAuth()
-//@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller('api/v1/logs')
 export class IntegrityController {
     constructor(private readonly integrity: IntegrityService) {}
@@ -17,7 +17,7 @@ export class IntegrityController {
      * คืน Merkle proof ของ log ตัวเดียว - พิสูจน์ว่า log อยู่ใน chain จริง
      */
     @Get(':id/proof')
-    //@Roles('analyst', 'operator', 'admin')
+    @Roles('analyst', 'operator', 'admin')
     @ApiOperation({ summary: 'Get Merkle proof for a single log' })
     async getProof(@Param('id') id: string) {
         const result = await this.integrity.getProotForLog(id);

@@ -9,11 +9,12 @@ import { IntegrityService } from "./integrity.service";
 import { IntegritySchedule } from "./integrity.scheduler";
 import { IntegrityController } from "./intrgrity.controller";
 import { BlockchainModule } from "src/blockchain/blockchain.module";
+import { AuthModule } from "src/auth/auth.module";
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([Log, Batch, Alert, LogBatchMapping]),
-        BlockchainModule,
+        BlockchainModule, AuthModule,
     ],
     providers: [MerkleService, IntegrityService, IntegritySchedule],
     controllers: [IntegrityController],

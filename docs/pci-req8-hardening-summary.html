@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LogChain — สรุปการ Hardening PCI DSS Req 8</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#172033; --line:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --green:#22c55e;
+    --red:#f87171; --amber:#fbbf24; --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Sarabun",Roboto,sans-serif;line-height:1.6}
+  .wrap{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  header{border-bottom:2px solid var(--line);padding-bottom:20px;margin-bottom:32px}
+  h1{font-size:28px;margin:0 0 6px}
+  h2{font-size:21px;margin:40px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--line);color:#fff}
+  h3{font-size:16px;margin:24px 0 10px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:14px}
+  .tag{display:inline-block;background:#0c4a6e;color:#bae6fd;border:1px solid #0369a1;
+    border-radius:999px;padding:2px 12px;font-size:12px;margin:2px 4px 2px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:18px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card .n{font-size:12px;color:var(--accent);letter-spacing:.05em;text-transform:uppercase}
+  .card h4{margin:6px 0 8px;font-size:15px}
+  .card p{margin:0;color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);color:#cbd5e1;font-weight:600}
+  tr:hover td{background:rgba(56,189,248,.04)}
+  code{font-family:var(--mono);background:#0b1220;border:1px solid var(--line);
+    border-radius:4px;padding:1px 6px;font-size:12.5px;color:#e2e8f0}
+  pre{background:#0b1220;border:1px solid var(--line);border-radius:8px;padding:14px 16px;
+    overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+  .pass{color:var(--green);font-weight:600}
+  .fail{color:var(--red);font-weight:600}
+  .ok::before{content:"✓ ";color:var(--green);font-weight:700}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .note{background:#1c2333;border-left:3px solid var(--amber);border-radius:0 8px 8px 0;
+    padding:12px 16px;margin:16px 0;font-size:13.5px}
+  .file{font-family:var(--mono);font-size:13px;color:#7dd3fc}
+  .added{color:var(--green)} .removed{color:var(--red)}
+  footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:12.5px}
+  .legend{font-size:12px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>LogChain — สรุปการ Hardening ตาม PCI DSS Requirement 8</h1>
+  <p class="sub">Identify Users &amp; Authenticate Access · Keycloak (OIDC/JWT) + NestJS API gateway</p>
+  <div style="margin-top:10px">
+    <span class="tag">Req 8.2 — Unique IDs</span>
+    <span class="tag">Req 8.3 — Strong auth / policy</span>
+    <span class="tag">Req 8.4 / 8.5 — MFA</span>
+    <span class="tag">Req 8.6 — Service accounts</span>
+    <span class="tag">Req 2.2.2 — No vendor defaults</span>
+  </div>
+  <p class="sub" style="margin-top:10px">วันที่: 2026-06-14 · ทุก test ด้านล่างรันจริงบน stack ที่ทำงานอยู่ (Keycloak 24.0.5)</p>
+</header>
+
+<p>เอกสารนี้สรุปการเปลี่ยนแปลงทั้งหมดที่ทำกับระบบ authentication ของ LogChain เพื่อปิดช่องโหว่ตาม PCI DSS Req 8
+แบ่งเป็น 2 ส่วน: (A) การ hardening ของ <b>logchain realm</b> และ (B) การ hardening ของ <b>master realm</b>
+ซึ่งเป็น privilege root ที่ควบคุมทุก realm. โค้ด M1 auth (RolesGuard/JwtStrategy) และ M2 (Merkle integrity) <b>ไม่ถูกแตะต้อง</b>.</p>
+
+<!-- ============================ PART A ============================ -->
+<h2>ส่วน A — Hardening ของ <code>logchain</code> realm</h2>
+
+<div class="grid">
+  <div class="card">
+    <div class="n">Item 3 · Req 8.6</div>
+    <h4>Service account สำหรับ ingestion</h4>
+    <p>สร้าง client <code>log-ingestor</code> (confidential, client_credentials) แทน user ที่ใช้ password — ปิด ROPC ของ <code>api-gateway</code> และลบ user <code>ingestor-service</code></p>
+  </div>
+  <div class="card">
+    <div class="n">Item 1 · Req 8.3.6</div>
+    <h4>Password policy</h4>
+    <p><code>length(12)</code> + digit + upper + lower + notUsername + <code>passwordHistory(4)</code></p>
+  </div>
+  <div class="card">
+    <div class="n">Item 2 · Req 8.4</div>
+    <h4>MFA (conditional OTP)</h4>
+    <p>Browser flow บังคับ TOTP เฉพาะ role <code>admin</code> ผ่าน <code>conditional-user-role</code> + <code>auth-otp-form</code></p>
+  </div>
+  <div class="card">
+    <div class="n">Item 4 · Req 2.2.2</div>
+    <h4>Externalize secrets</h4>
+    <p>ย้าย secret ทั้งหมดไป <code>.env</code> (gitignored); realm render จาก template ตอน startup; compose ใช้ <code>${VAR}</code></p>
+  </div>
+</div>
+
+<h3>รายละเอียดสำคัญ</h3>
+<ul>
+  <li><b>log-ingestor:</b> <code>serviceAccountsEnabled:true</code>, <code>standardFlowEnabled:false</code>, <code>directAccessGrantsEnabled:false</code>; service account ถือ realm role <code>ingestor</code> + มี realm-roles mapper ให้ <code>roles</code> claim เข้า token</li>
+  <li><b>api-gateway:</b> <code>directAccessGrantsEnabled:false</code> (ปิด ROPC), <code>serviceAccountsEnabled:false</code></li>
+  <li><b>การ render realm:</b> Keycloak native <code>--import-realm</code> ทำ env substitution ไม่เสถียร (keycloak#12069/#20199) จึงใช้ init container (<code>keycloak-config</code>, alpine + <code>envsubst</code>) render <code>realm-logchain.json.template</code> → shared volume ก่อน Keycloak start</li>
+  <li><b>postgres init:</b> เปลี่ยน <code>00-keycloak-db.sql</code> → <code>00-keycloak-db.sh</code> ที่อ่าน password จาก env</li>
+</ul>
+
+<h3>ผล Acceptance Test (รันจริง)</h3>
+<table>
+  <tr><th>Test</th><th>ผลลัพธ์</th></tr>
+  <tr><td><code>log-ingestor</code> client_credentials → POST log</td><td class="pass ok">token มี <code>roles:[ingestor]</code>; ingest สำเร็จ (PII masked → <code>card [PAN]</code>)</td></tr>
+  <tr><td>admin ROPC (password grant)</td><td class="fail">ถูกปฏิเสธ: <code>unauthorized_client – Client not allowed for direct access grants</code></td></tr>
+  <tr><td>weak password ผ่าน admin API</td><td class="fail">ถูกปฏิเสธ: <code>HTTP 400 – must contain at least 1 upper case</code></td></tr>
+  <tr><td>compliant password</td><td class="pass ok">รับ: <code>HTTP 204</code></td></tr>
+  <tr><td>secret จริงใน git-tracked file</td><td class="pass ok">ไม่มี; realm imported สำเร็จ (พิสูจน์ว่า auth flow JSON ถูกต้อง)</td></tr>
+</table>
+
+<!-- ============================ PART B ============================ -->
+<h2>ส่วน B — Hardening ของ <code>master</code> realm (Req 8.4/8.5 + 2.2.2)</h2>
+
+<p>master realm คุม realm <code>logchain</code> ได้ทั้งหมด จึงเป็น identity ที่มีค่าสูงสุดในระบบ — ทำผ่าน script
+<span class="file">scripts/harden-master-admin.sh</span> ที่ idempotent และรันรวดเดียวบน fresh state ได้.</p>
+
+<table>
+  <tr><th>การเปลี่ยนแปลง</th><th>รายละเอียด</th></tr>
+  <tr><td>Strong, non-default admin</td><td>เปลี่ยน <code>admin/admin</code> → <code>kc-admin</code> + password แข็งแรงจาก <code>.env</code>; ลบ user <code>admin</code> ทิ้ง</td></tr>
+  <tr><td>Master password policy</td><td>เหมือน logchain realm (length 12, mixed case, digit, history 4)</td></tr>
+  <tr><td>MFA บน human admin</td><td><code>CONFIGURE_TOTP</code> required action บน <code>kc-admin</code> + master conditional-OTP browser flow</td></tr>
+  <tr><td>Automation service account</td><td>client <code>master-automation</code> (client_credentials) — <b>least-privilege</b>: <code>manage-realm, manage-users, manage-clients, view-realm</code> (ไม่ใช่ blanket <code>admin</code>)</td></tr>
+</table>
+
+<h3>ผล Acceptance Test (รันจริงบน fresh state)</h3>
+<table>
+  <tr><th>Test</th><th>ผลลัพธ์</th></tr>
+  <tr><td>Single clean run บน fresh state</td><td class="pass ok">reset keycloak DB → รัน script ครั้งเดียว → hardened ครบ ไม่ต้องแก้มือ</td></tr>
+  <tr><td>Idempotent re-run</td><td class="pass ok">auth ผ่าน service account, "roles already present", ไม่มี privileged write, ไม่พัง</td></tr>
+  <tr><td>default <code>admin/admin</code></td><td class="fail">ล้มเหลว: <code>invalid_grant – Invalid user credentials</code></td></tr>
+  <tr><td><code>kc-admin</code> + password ถูกต้อง</td><td class="fail">ถูก gate ด้วย MFA: <code>Account is not fully set up</code> (รหัสถูก แต่ต้องตั้ง TOTP ก่อน)</td></tr>
+  <tr><td>automation SA (client_credentials)</td><td class="pass ok">ได้ token โดยไม่โดน MFA; อ่าน/แก้ realm ได้</td></tr>
+  <tr><td>least-privilege ของ SA</td><td class="pass ok">realm roles = <code>['default-roles-master']</code> (<b>ไม่มี</b> admin); client roles = 4 ตัวตาม least-priv</td></tr>
+  <tr><td>logchain realm + app log data</td><td class="pass ok">re-import สำเร็จ; ingestion ใช้งานได้; <code>logs</code> rows ไม่ถูกลบ (1 → 2)</td></tr>
+</table>
+
+<div class="note">
+  <b>หมายเหตุ — root cause ของ sed bug ที่เคยทำให้ run แรกพังกลางทาง:</b>
+  greedy <code>sed</code> (<code>.*"id":"…</code>) จับ <code>"id"</code> <i>ตัวสุดท้าย</i> ในresponse ที่มีหลาย object
+  (เช่น id ของ nested protocolMapper/role) → <code>SA_ID</code> ผิด/ว่าง → URL เพี้ยน → HTTP error → script abort.
+  แก้โดยเปลี่ยนไปใช้ <b>structural JSON parsing</b> (<code>python3 json.load</code>) ทั้งหมด — parse ตามโครงสร้างจริง ไม่ขึ้นกับลำดับหรือ nesting.
+</div>
+
+<h3>การ automate Keycloak หลังเปิด MFA (CI/CD)</h3>
+<p>ใช้ <b>service-account client + grant_type=client_credentials</b> — token แบบนี้ออกจาก token endpoint โดยตรง
+<b>ไม่ผ่าน browser flow</b> จึงไม่ติด MFA ของ human. แนวทาง:</p>
+<ul>
+  <li>authenticate เป็น service account แล้วเรียก Admin REST API (หรือ <code>kcadm.sh --client master-automation --secret …</code>)</li>
+  <li><b>least-privilege:</b> ให้เฉพาะ <code>realm-management</code> client roles ที่จำเป็น ไม่ให้ <code>admin</code> รวม — leak secret แล้วเสียหายจำกัด</li>
+  <li>เก็บ secret ใน CI secret store, rotate สม่ำเสมอ; assurance สูงขึ้นใช้ <b>signed-JWT (private_key_jwt)</b> หรือ mTLS แทน shared secret</li>
+  <li>หนึ่ง service account ต่อหนึ่ง consumer เพื่อ audit/revoke แยกกันได้</li>
+</ul>
+
+<!-- ============================ FILES ============================ -->
+<h2>ไฟล์ที่เปลี่ยนทั้งหมด</h2>
+<table>
+  <tr><th>ไฟล์</th><th>สถานะ</th><th>คำอธิบาย</th></tr>
+  <tr><td class="file">infra/keycloak/realm-logchain.json.template</td><td class="added">ใหม่</td><td>realm import (secret เป็น <code>${...}</code> placeholder); log-ingestor, password policy, MFA flow</td></tr>
+  <tr><td class="file">infra/keycloak/realm-logchain.json</td><td class="removed">ลบ</td><td>ไฟล์เก่าที่มี secret hardcode (ถูกแทนด้วย template + render ตอน startup)</td></tr>
+  <tr><td class="file">infra/postgres/init/00-keycloak-db.sh</td><td class="added">ใหม่</td><td>สร้าง keycloak DB role โดยอ่าน password จาก env (แทน <code>.sql</code> เดิม)</td></tr>
+  <tr><td class="file">infra/postgres/init/00-keycloak-db.sql</td><td class="removed">ลบ</td><td>เวอร์ชันเดิมที่ hardcode password</td></tr>
+  <tr><td class="file">scripts/ingest-log.sh</td><td class="added">ใหม่</td><td>ingestion path: ขอ token ด้วย client_credentials → POST log</td></tr>
+  <tr><td class="file">scripts/harden-master-admin.sh</td><td class="added">ใหม่</td><td>hardening master realm (idempotent, structural JSON parsing, least-privilege SA)</td></tr>
+  <tr><td class="file">docker-compose.yml</td><td class="added">แก้</td><td>secret เป็น <code>${VAR}</code>; เพิ่ม <code>keycloak-config</code> init container + <code>keycloak_import</code> volume</td></tr>
+  <tr><td class="file">.env.example</td><td class="added">ใหม่</td><td>reference ของ env vars ที่ต้องตั้ง (ค่า placeholder, ไม่ใช่ค่าจริง)</td></tr>
+  <tr><td class="file">.env</td><td class="added">แก้ (gitignored)</td><td>secret จริงทั้งหมด — ไม่ถูก track ใน git</td></tr>
+</table>
+
+<p class="legend">หมายเหตุ: ไฟล์อื่นที่ขึ้นใน <code>git status</code> (<code>audit-access.entity.ts</code>, <code>auth.module.ts</code>,
+<code>integrity.module.ts</code>, <code>intrgrity.controller.ts</code>, <code>src/auth/strategies/</code>) เป็นงาน M1 auth ที่มีอยู่ก่อนหน้า ไม่ได้แก้ในรอบนี้.</p>
+
+<h3>โครงสร้าง MFA flow (logchain realm)</h3>
+<pre>logchain-browser (top-level)
+ ├─ auth-cookie                      ALTERNATIVE
+ ├─ identity-provider-redirector     ALTERNATIVE
+ └─ logchain-browser-forms           ALTERNATIVE
+     ├─ auth-username-password-form  REQUIRED
+     └─ logchain-conditional-otp     CONDITIONAL
+         ├─ conditional-user-role    REQUIRED   (config: condition.user.role = admin)
+         └─ auth-otp-form            REQUIRED</pre>
+
+<footer>
+  LogChain · PCI DSS Req 8 hardening summary · สร้างโดย Claude Code · 2026-06-14<br>
+  ทุกผลการทดสอบในเอกสารนี้มาจากการรันจริงบน Keycloak 24.0.5 + NestJS API (localhost) — ไม่ใช่ค่าสมมติ.
+</footer>
+
+</div>
+</body>
+</html>

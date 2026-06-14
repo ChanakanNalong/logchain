@@ -13,5 +13,5 @@ export class AuditAccess {
     @Column({ name: 'ip_address', type: 'inet', nullable: true }) ipAddress: string | null;
     @Column({ name: 'duration_ms', type: 'int', nullable: true }) durationMs: number | null;
     @Index()
-    @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) accessedAt: Date;
+    @CreateDateColumn({ name: 'accessed_at', type: 'timestamptz' }) accessedAt: Date;
 }

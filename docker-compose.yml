@@ -5,8 +5,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: logchain
-      POSTGRES_PASSWORD: admin
+      # secrets come from .env (gitignored). DEV-ONLY values — never reuse in prod.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: logchain
+      # consumed by infra/postgres/init/00-keycloak-db.sh to create the keycloak role
+      KEYCLOAK_DB_PASSWORD: ${KC_DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
@@ -19,5 +22,90 @@ services:
       timeout: 5s
       retries: 5
 
+  # Renders the realm template -> import volume, substituting ONLY the named
+  # secret placeholders from .env. Keeps real secrets out of git (the committed
+  # file is realm-logchain.json.template with ${...} placeholders).
+  # Native `--import-realm` env substitution is unreliable (keycloak#12069/#20199),
+  # so we render the file ourselves before Keycloak starts.
+  keycloak-config:
+    image: alpine:3.20
+    container_name: logchain-keycloak-config
+    command:
+      - sh
+      - -c
+      - >
+        apk add --no-cache gettext >/dev/null &&
+        envsubst '$$LOGCHAIN_CLIENT_SECRET $$LOGCHAIN_INGESTOR_SECRET $$KEYCLOAK_ADMIN_USER_PASSWORD'
+        < /tmpl/realm-logchain.json.template
+        > /import/realm-logchain.json &&
+        echo "rendered realm-logchain.json"
+    environment:
+      # DEV-ONLY secrets from .env (gitignored)
+      LOGCHAIN_CLIENT_SECRET: ${LOGCHAIN_CLIENT_SECRET}
+      LOGCHAIN_INGESTOR_SECRET: ${LOGCHAIN_INGESTOR_SECRET}
+      KEYCLOAK_ADMIN_USER_PASSWORD: ${KEYCLOAK_ADMIN_USER_PASSWORD}
+    volumes:
+      - ./infra/keycloak:/tmpl:ro
+      - keycloak_import:/import
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: logchain-keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm
+    environment:
+      # ใช้ postgres instance เดียวกับ app แต่คนละ database + role (สร้างใน 00-keycloak-db.sh)
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      # secrets from .env (gitignored). DEV-ONLY values — never reuse in prod.
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      # master-realm admin console login (secure this account's MFA at the master
+      # realm — it is out of scope of the logchain realm import)
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      # realm rendered by keycloak-config into this shared volume
+      - keycloak_import:/opt/keycloak/data/import:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak-config:
+        condition: service_completed_successfully
+
+  # Kafka broker (KRaft mode — ไม่ต้องใช้ Zookeeper)
+  # hostname `kafka-1` ตรงกับ default KAFKA_BROKERS=kafka-1:9092 ในแอป
+  kafka-1:
+    image: bitnamilegacy/kafka:3.7.1
+    container_name: logchain-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093"
+      # 9092 = internal (container-to-container), 29092 = external (host)
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:29092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
 volumes:
   postgres_data:
+  kafka_data:
+  keycloak_import:
