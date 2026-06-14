@@ -1,98 +1,174 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# LogChain
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS API gateway สำหรับ **log ingestion** ที่ออกแบบตามแนวทาง **PCI DSS** — มี PII masking,
+ความสมบูรณ์ของ log แบบ Merkle batch + anchoring บน blockchain, การส่งต่อไป Kafka เพื่อ detection,
+authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metrics.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## คุณสมบัติหลัก
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Ingestion + PII masking** — mask PII ก่อน hash เสมอ (PCI DSS Req 3); PAN ไม่เคยเข้า hash function
+- **Integrity (M2)** — Merkle batch + per-log proof + tamper detection, anchor `merkleRoot` ลง blockchain
+- **Streaming** — ส่ง log ไป Kafka (KRaft mode) ให้ detection service วิเคราะห์
+- **AuthN/AuthZ** — Keycloak OIDC/JWT (RS256 + JWKS), RBAC ผ่าน realm roles + `RolesGuard`
+- **Observability** — Prometheus metrics, health checks, Swagger (`@ApiTags`)
+- **PCI Req 8 hardening** — ดูหัวข้อ [Authentication & PCI DSS Req 8](#authentication--pci-dss-req-8) ด้านล่าง
 
-## Project setup
+## Stack
 
-```bash
-$ npm install
-```
+| ส่วน | เทคโนโลยี |
+|---|---|
+| Framework | NestJS 11 (TypeScript) |
+| Database | PostgreSQL 16 + TypeORM |
+| Messaging | Kafka 3.7 (KRaft, ไม่มี Zookeeper) |
+| Identity | Keycloak 24 (OIDC/JWT) |
+| Blockchain | ethers v6 (Hardhat local node) |
+| Metrics/Docs | Prometheus, Swagger |
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## Prerequisites
 
-# watch mode
-$ npm run start:dev
+- Node.js + npm
+- Docker + Docker Compose
+- (สำหรับ blockchain) Hardhat local node
 
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
+## Setup & Run
 
 ```bash
-# unit tests
-$ npm run test
+# 1. ติดตั้ง dependencies
+npm install
 
-# e2e tests
-$ npm run test:e2e
+# 2. เตรียม environment — คัดลอกแล้วเติมค่า secret (ดู .env.example)
+cp .env.example .env
+#    .env ถูก gitignore แล้ว — ห้าม commit secret จริง
 
-# test coverage
-$ npm run test:cov
+# 3. ยก infrastructure (postgres + keycloak + kafka)
+docker compose up -d
+
+# 4. harden master realm ของ Keycloak (รันครั้งเดียวหลัง stack ขึ้น)
+./scripts/harden-master-admin.sh
+
+# 5. รันแอป
+npm run start:dev
 ```
 
-## Deployment
+> **หมายเหตุ:** Keycloak realm `logchain` ถูก import อัตโนมัติตอน startup โดยไม่มี secret hardcode —
+> init container `keycloak-config` จะ render `infra/keycloak/realm-logchain.json.template`
+> (แทนค่า `${...}` จาก `.env`) ลง shared volume ก่อน Keycloak เริ่มทำงาน.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Scripts
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Script | หน้าที่ |
+|---|---|
+| `scripts/ingest-log.sh` | ingestion path — ขอ token ด้วย `client_credentials` แล้ว POST log |
+| `scripts/harden-master-admin.sh` | harden master realm (strong cred + MFA + automation service account, idempotent) |
+| `npm run deploy:contract` | deploy smart contract สำหรับ anchoring |
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+---
+
+## API Endpoints
+
+| Method | Path | Roles | คำอธิบาย |
+|---|---|---|---|
+| `POST` | `/api/v1/logs` | `ingestor`, `admin` | Ingest log (mask → hash) |
+| `GET` | `/api/v1/logs` | `analyst`, `operator`, `admin` | รายการ log ล่าสุด |
+| `GET` | `/api/v1/logs/:id` | `analyst`, `operator`, `admin` | log ตาม ID |
+| `GET` | `/api/v1/logs/:id/proof` | `analyst`, `operator`, `admin` | Merkle proof ของ log |
+| `GET` | `/health` | — | Health check |
+
+ทุก endpoint ของ logs/integrity ป้องกันด้วย `AuthGuard('jwt')` + `RolesGuard` (Bearer token).
+
+---
+
+## Authentication & PCI DSS Req 8
+
+ระบบ auth ทำตาม PCI DSS Requirement 8 (*Identify Users & Authenticate Access*) แบ่งเป็น 2 ส่วน:
+(A) `logchain` realm และ (B) `master` realm. **โค้ด M1 auth (RolesGuard/JwtStrategy) และ M2 (Merkle integrity) ไม่ถูกแตะต้อง.**
+
+> เอกสารฉบับเต็มแบบ HTML: [`docs/pci-req8-hardening-summary.html`](docs/pci-req8-hardening-summary.html)
+
+### ส่วน A — `logchain` realm
+
+| Item | Req | สิ่งที่ทำ |
+|---|---|---|
+| 3 | 8.6 | Service account สำหรับ ingestion — client `log-ingestor` (confidential, client_credentials); ปิด ROPC ของ `api-gateway`; ลบ user `ingestor-service` |
+| 1 | 8.3.6 | Password policy: `length(12)` + digit + upper + lower + notUsername + `passwordHistory(4)` |
+| 2 | 8.4 | MFA conditional OTP — browser flow บังคับ TOTP เฉพาะ role `admin` |
+| 4 | 2.2.2 | Externalize secrets ไป `.env`; render realm จาก template; compose ใช้ `${VAR}` |
+
+**MFA flow (logchain realm):**
+
+```
+logchain-browser (top-level)
+ ├─ auth-cookie                      ALTERNATIVE
+ ├─ identity-provider-redirector     ALTERNATIVE
+ └─ logchain-browser-forms           ALTERNATIVE
+     ├─ auth-username-password-form  REQUIRED
+     └─ logchain-conditional-otp     CONDITIONAL
+         ├─ conditional-user-role    REQUIRED   (condition.user.role = admin)
+         └─ auth-otp-form            REQUIRED
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**ผลทดสอบ (รันจริง):**
 
-## Resources
+- ✅ `log-ingestor` client_credentials → token มี `roles:[ingestor]`; ingest สำเร็จ (PII masked → `card [PAN]`)
+- ✅ admin ROPC ถูกปฏิเสธ: `unauthorized_client – Client not allowed for direct access grants`
+- ✅ weak password ถูกปฏิเสธ: `HTTP 400 – must contain at least 1 upper case`
+- ✅ ไม่มี secret จริงใน git-tracked file; realm import สำเร็จ
 
-Check out a few resources that may come in handy when working with NestJS:
+### ส่วน B — `master` realm
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+master realm ควบคุมทุก realm จึงเป็น identity ที่มีค่าสูงสุด — hardening ผ่าน `scripts/harden-master-admin.sh`
+(idempotent, รันรวดเดียวบน fresh state ได้):
 
-## Support
+| การเปลี่ยนแปลง | รายละเอียด |
+|---|---|
+| Strong non-default admin | `admin/admin` → `kc-admin` + password แข็งแรงจาก `.env`; ลบ user `admin` |
+| Password policy | เหมือน logchain realm |
+| MFA | `CONFIGURE_TOTP` required action บน `kc-admin` + conditional-OTP browser flow |
+| Automation SA | client `master-automation` (client_credentials) — **least-privilege**: `manage-realm, manage-users, manage-clients, view-realm` (ไม่ใช่ blanket `admin`) |
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**ผลทดสอบ (รันจริงบน fresh state):**
 
-## Stay in touch
+- ✅ single clean run บน fresh state → hardened ครบ ไม่ต้องแก้มือ
+- ✅ idempotent re-run = clean no-op (auth ผ่าน service account)
+- ✅ default `admin/admin` ล้มเหลว: `invalid_grant – Invalid user credentials`
+- ✅ `kc-admin` + password ถูกต้อง → gate ด้วย MFA: `Account is not fully set up`
+- ✅ automation SA ได้ token โดยไม่โดน MFA; least-privilege confirmed (ไม่มี realm role `admin`)
+- ✅ logchain realm + app log data preserved (logs rows ไม่ถูกลบ)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### การ automate Keycloak หลังเปิด MFA (CI/CD)
 
-## License
+ใช้ **service-account client + `grant_type=client_credentials`** — token แบบนี้ไม่ผ่าน browser flow จึงไม่ติด MFA:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- authenticate เป็น service account แล้วเรียก Admin REST API (หรือ `kcadm.sh --client master-automation --secret …`)
+- **least-privilege:** ให้เฉพาะ `realm-management` client roles ที่จำเป็น ไม่ให้ `admin` รวม
+- เก็บ secret ใน CI secret store, rotate สม่ำเสมอ; assurance สูงขึ้นใช้ signed-JWT (`private_key_jwt`) หรือ mTLS
+- หนึ่ง service account ต่อหนึ่ง consumer เพื่อ audit/revoke แยกกันได้
+
+---
+
+## Security notes
+
+- `.env` ถูก gitignore — secret จริงทั้งหมดอยู่ในนั้น ไม่ถูก track. ใช้ `.env.example` เป็น reference (ค่า placeholder)
+- ค่า secret ใน setup เป็น **DEV-ONLY** — ห้ามใช้ใน production; ต้อง generate/rotate ใหม่
+- master admin TOTP ลงทะเบียนแบบ interactive ตอน login console ครั้งแรก (ไม่มี seed OTP secret โดยตั้งใจ)
+
+## Project structure (ย่อ)
+
+```
+src/
+ ├─ logs/         ingestion, PII masking, entities
+ ├─ integrity/    Merkle batch + per-log proof (M2)
+ ├─ blockchain/   anchoring (ethers)
+ ├─ kafka/        producer
+ ├─ auth/         JwtStrategy, RolesGuard (Keycloak OIDC)
+ ├─ audit/ alerts/ metrics/ health/ vault/
+infra/
+ ├─ keycloak/     realm-logchain.json.template
+ └─ postgres/init/ 00-keycloak-db.sh
+scripts/          ingest-log.sh, harden-master-admin.sh, deploy-contract.mjs
+docs/             pci-req8-hardening-summary.html
+```
