@@ -59,11 +59,11 @@ CREATE TABLE IF NOT EXISTS audit_access (
   status_code       INTEGER,
   ip_address        INET,
   duration_ms       INTEGER,
-  created_at        TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+  accessed_at       TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_access(user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_accessed ON audit_access(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_accessed ON audit_access(accessed_at DESC);
 
 -- ── log_batch_mapping (ยก batch_id ออกจาก logs) ──────
 -- logs table ยังคง INSERT-only สมบูรณ์ การผูก batch ทำที่นี่แทน

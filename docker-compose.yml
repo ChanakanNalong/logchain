@@ -76,7 +76,7 @@ services:
         condition: service_healthy
       keycloak-config:
         condition: service_completed_successfully
-
+        
   # Kafka broker (KRaft mode — ไม่ต้องใช้ Zookeeper)
   # hostname `kafka-1` ตรงกับ default KAFKA_BROKERS=kafka-1:9092 ในแอป
   kafka-1:
