@@ -4,7 +4,9 @@
 /build
 
 # Logs
-logs
+# NOTE: anchor to root so it only ignores a runtime ./logs dir,
+# ไม่ใช่ src/logs/ (โมดูลหลักของแอป)
+/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*

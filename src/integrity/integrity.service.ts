@@ -132,7 +132,7 @@ export class IntegrityService {
         alertType: 'INTEGRITY_TAMPERED',
         severity: 'CRITICAL',
         source: 'INTEGRITY',
-        title: `Batch ${batch.id} integrity violation datected`,
+        title: `Batch ${batch.id} integrity violation detected`,
         detail: {
             batchId: batch.id,
             merkleRoot: batch.merkleRoot,
@@ -148,7 +148,7 @@ export class IntegrityService {
   /**
    * สร้าง Merkle proof สำหรับ log ตัวเดียว
    */
-  async getProotForLog(logId: string) {
+  async getProofForLog(logId: string) {
     // หา batch ของ log นี้จาก mapping
     const mapping = await this.mappingRepo.findOneBy({ logId });
     if (!mapping) return null; // log ยังไม่ถูก seal

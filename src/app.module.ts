@@ -59,11 +59,12 @@ import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
     ScheduleModule.forRoot(),
     IntegrityModule,
   ],
-  controllers: [HealthController],
+  controllers: [AppController, HealthController],
   providers: [
+    AppService,
     // APP_INTERCEPTOR -> register AuditInterceptor แบบ global
     // ทุก request จะถูก intercept โดยอัตโนมัติ ไม่ต้อง @UseInterceptors ทุก controller
-    {provide: APP_INTERCEPTOR, useClass: AuditInterceptor},
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule {}

@@ -38,4 +38,4 @@ async function bootstrap() {
   await app.listen(port);
   logger.log(`API Gateway running on :${port}`);
 }
-bootstrap();
+void bootstrap();

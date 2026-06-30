@@ -12,5 +12,5 @@ export class Alert {
     @Column({ type: 'text' }) title: string;
     @Column({ type: 'jsonb', nullable: true }) detail: object | null;
     @Index() @Column({ default: 'OPEN' }) status: string;
-    @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createAt: Date;
+    @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt: Date;
 }

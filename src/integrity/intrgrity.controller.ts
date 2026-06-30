@@ -2,8 +2,7 @@ import { Controller, Get, Param,UseGuards, NotFoundException } from "@nestjs/com
 import { AuthGuard } from "@nestjs/passport";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { IntegrityService } from "./integrity.service";
-import { RolesGuard,Roles } from "src/auth/guards/roles.guard";
-import { verify } from "crypto";
+import { RolesGuard, Roles } from "src/auth/guards/roles.guard";
 
 @ApiTags('integrity')
 @ApiBearerAuth()
@@ -20,9 +19,9 @@ export class IntegrityController {
     @Roles('analyst', 'operator', 'admin')
     @ApiOperation({ summary: 'Get Merkle proof for a single log' })
     async getProof(@Param('id') id: string) {
-        const result = await this.integrity.getProotForLog(id);
+        const result = await this.integrity.getProofForLog(id);
         if (!result) {
-            throw new NotFoundException('Log not found or not yet sealed in abatch');
+            throw new NotFoundException('Log not found or not yet sealed in a batch');
         }
         
         return {

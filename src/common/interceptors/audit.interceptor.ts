@@ -36,7 +36,8 @@ export class AuditInterceptor implements NestInterceptor {
         const res = ctx.switchToHttp().getResponse();
         const user = req.user;
     
-        this.auditService.log({
+        // fire-and-forget: audit ต้องไม่ block response (AuditService จัดการ error เองภายใน)
+        void this.auditService.log({
             userId: user?.userId ?? 'anonymous',
             username: user?.username ?? null,
             action: `${req.method} ${req.route?.path ?? req.url}`,

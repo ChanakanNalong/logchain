@@ -1,0 +1,33 @@
+# prometheus scrape config สำหรับ LogChain
+global:
+  scrape_interval:      15s
+  evaluation_interval:  15s
+
+scrape_configs:
+  # Prometheus เอง
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Host metrics (CPU/RAM/disk ของเครื่อง)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # NestJS api-gateway (รันบน host ตอนนี้)
+  - job_name: 'nestjs-api'
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+    metrics_path: '/metrics'
+
+  # FastAPI detection service (รันบน host ตอนนี้)
+  - job_name: 'fastapi-detect'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+    metrics_path: '/metrics'
+
+  # Python Kafka consumer - port 9101 (จะ  implement ทีหลัง)
+  - job_name: 'detection-consumer'
+    static_configs:
+      - targets: ['host.docker.internal:9101']
+    metrics_path: '/metrics'
