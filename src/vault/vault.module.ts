@@ -1,4 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { VaultService } from './vault.service';
 
-@Module({})
+@Global()
+@Module({
+    providers: [VaultService],
+    exports: [VaultService],
+})
 export class VaultModule {}
