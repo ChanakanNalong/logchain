@@ -53,6 +53,13 @@ vault kv put secret/logchain/blockchain \
 
 # detection-policy ให้สิทธิ์อ่าน path นี้ และ app/vault.py ก็อ่านจากตรงนี้
 # ถ้า ABUSEIPDB_KEY ว่าง enrichment จะ fallback เป็น mock mode เอง
+vault kv put secret/logchain/notification \
+  host="${MAIL_HOST:-smtp.gmail.com}" \
+  port="${MAIL_PORT:-587}" \
+  user="${MAIL_USER:-}" \
+  pass="${MAIL_PASS:-}" \
+  to="${MAIL_TO:-${MAIL_USER:-}}"
+
 vault kv put secret/logchain/detection \
     abuseipdb_key="${ABUSEIPDB_KEY}"
 

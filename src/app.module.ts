@@ -9,6 +9,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { LogsModule } from './logs/logs.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { NotificationModule } from './notification/notification.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -64,6 +65,7 @@ import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
     AuditModule,
     LogsModule,
     AlertsModule,
+    NotificationModule,
     MetricsModule,
     BlockchainModule,
     ScheduleModule.forRoot(),
