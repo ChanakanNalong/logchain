@@ -10,6 +10,8 @@ import { AuthModule } from './auth/auth.module';
 import { LogsModule } from './logs/logs.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { NotificationModule } from './notification/notification.module';
+import { RetentionModule } from './retention/retention.module';
+import { ErasureModule } from './erasure/erasure.module';
 import { KafkaModule } from './kafka/kafka.module';
 import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
@@ -66,6 +68,8 @@ import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
     LogsModule,
     AlertsModule,
     NotificationModule,
+    RetentionModule,
+    ErasureModule,
     MetricsModule,
     BlockchainModule,
     ScheduleModule.forRoot(),
