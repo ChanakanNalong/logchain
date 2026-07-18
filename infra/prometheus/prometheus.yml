@@ -31,3 +31,12 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:9101']
     metrics_path: '/metrics'
+
+  # Kafka cluster metrics (ISR, replication lag, consumer offsets)
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']

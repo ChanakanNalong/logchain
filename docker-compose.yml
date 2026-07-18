@@ -10,12 +10,22 @@ services:
       POSTGRES_DB: logchain
       # consumed by infra/postgres/init/00-keycloak-db.sh to create the keycloak role
       KEYCLOAK_DB_PASSWORD: ${KC_DB_PASSWORD}
+      # consumed by infra/postgres/init/01-replication-user.sh — pg_hba.conf อ้าง role นี้
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # init scripts รันอัตโนมัติตอน container สร้างครั้งแรก
       - ./infra/postgres/init:/docker-entrypoint-initdb.d
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U logchain -d logchain"]
       interval: 10s
@@ -79,14 +89,18 @@ services:
         
   # Kafka broker (KRaft mode — ไม่ต้องใช้ Zookeeper)
   # hostname `kafka-1` ตรงกับ default KAFKA_BROKERS=kafka-1:9092 ในแอป
+  # ── Kafka broker 1 (KRaft, controller + broker) ──
   kafka-1:
     image: bitnamilegacy/kafka:3.7.1
-    container_name: logchain-kafka
+    container_name: logchain-kafka-1
     restart: unless-stopped
     environment:
       KAFKA_CFG_NODE_ID: "1"
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093"
+      # ต้องเป็นค่าเดียวกันทั้ง 3 broker ไม่งั้น bitnami สุ่มให้ทีละ container
+      # แล้ว Raft จะ vote กันไม่ได้ (INCONSISTENT_CLUSTER_ID)
+      KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
       # 9092 = internal (container-to-container), 29092 = external (host)
       KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092"
       KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:29092"
@@ -94,16 +108,114 @@ services:
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # cluster-wide defaults ตาม scope (3 broker + ISR)
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "2"
       ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
       - "29092:29092"
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_1_data:/bitnami/kafka
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 10s
+      interval: 15s
+      # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
+      timeout: 25s
       retries: 5
+      start_period: 45s
+
+  # ── Kafka broker 2 ──
+  kafka-2:
+    image: bitnamilegacy/kafka:3.7.1
+    container_name: logchain-kafka-2
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "2"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-2:9092,EXTERNAL://localhost:29093"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # cluster-wide defaults ตาม scope (3 broker + ISR)
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      # ฝั่ง container ต้องเป็นพอร์ตของ EXTERNAL listener (29093) ไม่ใช่ 29092
+      # ซึ่งไม่มีอะไร listen อยู่เลย (PLAINTEXT อยู่ที่ 9092)
+      - "29093:29093"
+    volumes:
+      - kafka_2_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
+      timeout: 25s
+      retries: 5
+      start_period: 45s
+
+  # ── Kafka broker 3 ──
+  kafka-3:
+    image: bitnamilegacy/kafka:3.7.1
+    container_name: logchain-kafka-3
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: "3"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-3:9092,EXTERNAL://localhost:29094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # cluster-wide defaults ตาม scope (3 broker + ISR)
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "29094:29094"
+    volumes:
+      - kafka_3_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
+      timeout: 25s
+      retries: 5
+      start_period: 45s
+
+  # ---- Kafka exporter (metrics for Prometheus) ----
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: logchain-kafka-exporter
+    restart: unless-stopped
+    command:
+      - "--kafka.server=kafka-1:9092"
+      - "--kafka.server=kafka-2:9092"
+      - "--kafka.server=kafka-3:9092"
+    ports:
+      - "9308:9308"
+    depends_on:
+      kafka-1: {condition: service_healthy}
+      kafka-2: {condition: service_healthy}
+      kafka-3: {condition: service_healthy}
+    networks:
+      - default
 
   prometheus:
     image: prom/prometheus:v2.55.0
@@ -158,9 +270,138 @@ services:
     networks:
       - default
 
+  # standby: data dir มาจาก pg_basebackup -R (สร้าง standby.signal + primary_conninfo)
+  # ไม่ใช้ POSTGRES_* env เพราะ data dir ถูก seed มาแล้ว entrypoint จะข้าม initdb
+  # hot standby - clone จาก primary ด้วย pg_basebackup ตอนสตาร์ทครั้งแรก
+  # ไม่มี POSTGRES_PASSWORD เพราะไม่ได้ initdb เอง (ข้อมูลมาจาก primary ทั้งก้อน)
+  postgres-standby:
+    image: postgres:16-alpine
+    container_name: logchain-postgres-standby
+    restart: unless-stopped
+    environment:
+      PGUSER: logchain
+      PRIMARY_HOST: postgres
+      REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_standby_data:/var/lib/postgresql/data
+      - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./infra/postgres/standby-entrypoint.sh:/usr/local/bin/standby-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/standby-entrypoint.sh"]
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logchain -d logchain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: logchain-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://logchain:${POSTGRES_PASSWORD}@postgres:5432/logchain?sslmode=disable"
+      PG_EXPORTER_INCLUDE_DATABASES: "logchain,keycloak"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── HashiCorp Vault (secret management, KV-v2 + AppRole) ──
+  # server mode + file storage: data อยู่บน volume ไม่หายตอน restart
+  # แลกมาด้วยการที่มันตื่นมา sealed เสมอ -> vault-unseal เป็นคนปลดล็อกให้
+  vault:
+    image: hashicorp/vault:1.18
+    container_name: logchain-vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK  # ให้ mlock ทำงาน (Vault ป้องกัน swap memory ที่มี secret)
+    # อย่าใส่ -config เอง! entrypoint ของ image เติม -config=/vault/config ให้อยู่แล้ว
+    # ถ้าใส่ซ้ำ vault จะโหลด vault.hcl สองรอบ ได้ listener ซ้อนกัน -> bind: address already in use
+    command: server
+    environment:
+      # vault CLI (ที่ healthcheck เรียก) default ยิง https:// ถ้าไม่ตั้งจะ TLS error
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN}
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault_data:/vault/file
+      - ./infra/vault/config:/vault/config:ro
+    healthcheck:
+      # exit 0 = unsealed เท่านั้น (sealed = 2) -> service_healthy แปลว่าใช้งานได้จริง
+      # ไม่ใช่แค่ process ขึ้น ซึ่งเป็นเงื่อนไขที่ vault-init รออยู่
+      test: ["CMD-SHELL", "vault status > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # init Vault ครั้งแรก + คอย unseal ให้ทุกครั้งที่ vault ถูก restart
+  # ต้องเป็น sidecar ที่รันค้าง ไม่ใช่ one-shot เพราะ vault มี restart: unless-stopped
+  # พอเครื่อง reboot vault จะฟื้นมาแบบ sealed เองโดยไม่มีใครปลดให้
+  vault-unseal:
+    image: hashicorp/vault:1.18
+    container_name: logchain-vault-unseal
+    restart: unless-stopped
+    depends_on:
+      - vault
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+    volumes:
+      - ./infra/vault/unseal.sh:/vault/unseal.sh:ro
+      - ./infra/vault/.secrets:/vault/secrets  # gitignored — unseal keys + root token
+    entrypoint: ["/bin/sh", "/vault/unseal.sh"]
+
+  vault-init:
+    image: hashicorp/vault:1.18
+    container_name: logchain-vault-init
+    depends_on:
+      vault:
+        condition: service_healthy
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      # ไม่มี VAULT_TOKEN แล้ว — init.sh อ่าน root token จาก .secrets/init.env
+      # ที่ vault-unseal สร้างไว้ตอน operator init
+      #
+      # secrets ที่จะ seed เข้า Vault (มาจาก .env ปัจจุบัน)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      LOGCHAIN_CLIENT_SECRET: ${LOGCHAIN_CLIENT_SECRET}
+      LOGCHAIN_INGESTOR_SECRET: ${LOGCHAIN_INGESTOR_SECRET}
+      BLOCKCHAIN_PRIVATE_KEY: ${BLOCKCHAIN_PRIVATE_KEY}
+      ABUSEIPDB_KEY: ${ABUSEIPDB_KEY:-}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASS: ${MAIL_PASS:-}
+      MAIL_TO: ${MAIL_TO:-}
+    volumes:
+      - ./infra/vault/init.sh:/vault/init.sh:ro
+      - ./infra/vault/policies:/vault/policies:ro
+      - ./infra/vault/.secrets:/vault/secrets:ro
+    entrypoint: ["/bin/sh", "vault/init.sh"]
+    restart: "no"
+
 volumes:
   postgres_data:
-  kafka_data:
+  postgres_standby_data:
   keycloak_import:
   prometheus_data:
   grafana_data:
+  kafka_1_data:
+  kafka_2_data:
+  kafka_3_data:
+  vault_data:

@@ -1,6 +1,7 @@
 import { Injectable,Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ethers } from "ethers";
+import { VaultService } from "../vault/vault.service";
 
 // ABI แบบ minimal — แค่ 3 function ที่ใช้จริง
 // รูปแบบนี้เรียก "Human-Readable ABI" ของ ethers
@@ -19,13 +20,17 @@ export class BlockchainService implements OnModuleInit {
     private contract: ethers.Contract;
     private isReady = false;
 
-    constructor(private readonly cfg: ConfigService) {}
+    constructor(
+      private readonly configService: ConfigService,
+      private readonly vaultService: VaultService,
+    ) {}
 
     async onModuleInit() {
         try {
-            const rpcUrl = this.cfg.get<string>('BLOCKCHAIN_RPC_URL', 'http://127.0.0.1:8545');
-            const pk = this.cfg.get<string>('BLOCKCHAIN_PRIVATE_KEY');
-            const address = this.cfg.get<string>('CONTRACT_ADDRESS');
+            const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL', 'http://127.0.0.1:8545');
+            // private key มาจาก Vault ไม่ใช่ .env แล้ว
+            const pk = this.vaultService.get().blockchain.privateKey;
+            const address = this.configService.get<string>('CONTRACT_ADDRESS');
 
             if (!pk || !address) {
                 this.logger.warn('Blockchain config missing - integrity disabled');
