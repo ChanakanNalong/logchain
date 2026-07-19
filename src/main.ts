@@ -7,6 +7,9 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
+
+  app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
+
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
@@ -17,8 +20,9 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3002'],
-    methods: ['GET', 'POST'],
+    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3001'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
     credentials: true,
   });
 
@@ -28,7 +32,12 @@ async function bootstrap() {
       .setVersion('1.0')
       .addBearerAuth()
       .build();
-    SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config));
+    SwaggerModule.setup(
+      'api/docs', 
+      app, 
+      SwaggerModule.createDocument(app, config),
+    );
+    
     logger.log('Swagger: http://localhost:3000/api/docs');
   }
 
@@ -36,6 +45,7 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
+
   logger.log(`API Gateway running on :${port}`);
 }
 void bootstrap();

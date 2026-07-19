@@ -7,7 +7,7 @@ import { LogBatchMapping } from "src/logs/entities/log-batch-mapping.entity";
 import { MerkleService } from "./service/merkle.service";
 import { IntegrityService } from "./integrity.service";
 import { IntegritySchedule } from "./integrity.scheduler";
-import { IntegrityController } from "./intrgrity.controller";
+import { IntegrityController } from "./integrity.controller";
 import { BlockchainModule } from "src/blockchain/blockchain.module";
 import { AuthModule } from "src/auth/auth.module";
 
