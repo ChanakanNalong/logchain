@@ -45,7 +45,7 @@ export class ErasureService {
   }
 
   private appendErasureLog(entry: object) {
-    let logs = [];
+    let logs: object[] = [];
     if (fs.existsSync(this.logPath)) {
       try { logs = JSON.parse(fs.readFileSync(this.logPath, 'utf-8')); } catch {}
     }
