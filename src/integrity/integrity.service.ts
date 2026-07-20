@@ -86,23 +86,42 @@ export class IntegrityService {
     }
 
     /**
-   * Verify ทุก batch ที่ CONFIRMED
+   * Verify batch ที่ CONFIRMED และ UNVERIFIED
+   * (UNVERIFIED ถูก re-check ด้วย เผื่อ chain กลับมา / tx ถูก confirm ทีหลัง)
    */
   async verifyAllBatches(): Promise<void> {
     if (!this.blockchain.ready) return;
 
-    const confirmed = await this.batchesRepo.find({ where: { status: 'CONFIRMED'}});
+    const batches = await this.batchesRepo.find({
+      where: [{ status: 'CONFIRMED' }, { status: 'UNVERIFIED' }],
+    });
 
-    for (const batch of confirmed) {
-        const leaves = await this.getLeavesForBatch(batch.id);
-        const { root } = this.merkle.buildTree(leaves);
-        const isValid = await this.blockchain.verifyRoot(batch.id, root);
+    for (const batch of batches) {
+      const leaves = await this.getLeavesForBatch(batch.id);
+      const { root } = this.merkle.buildTree(leaves);
+      const { result, onChainRoot } = await this.blockchain.checkRoot(batch.id, root);
 
-        if (!isValid) {
-            await this.raiseTamperAlert(batch);
-            batch.status = 'TAMPERED';
-            await this.batchesRepo.save(batch);
+      if (result === 'MISMATCH') {
+        // root อยู่บน chain แต่ไม่ตรง = ข้อมูลถูกแก้ไขจริง
+        await this.raiseTamperAlert(batch, root, onChainRoot);
+        batch.status = 'TAMPERED';
+        await this.batchesRepo.save(batch);
+      } else if (result === 'MISSING') {
+        // ไม่มี root บน chain — verify ไม่ได้ ไม่ใช่หลักฐาน tamper
+        if (batch.status !== 'UNVERIFIED') {
+          this.logger.warn(
+            `Batch ${batch.id} unverifiable — no root on chain (tx=${batch.txHash?.slice(0, 12)}...). ` +
+              'Likely chain reset or unconfirmed tx, not tampering.',
+          );
+          batch.status = 'UNVERIFIED';
+          await this.batchesRepo.save(batch);
         }
+      } else if (batch.status === 'UNVERIFIED') {
+        // เคย unverifiable แต่ตอนนี้ verify ผ่าน → กลับเป็น CONFIRMED
+        this.logger.log(`Batch ${batch.id} re-verified — back to CONFIRMED`);
+        batch.status = 'CONFIRMED';
+        await this.batchesRepo.save(batch);
+      }
     }
   }
 
@@ -121,29 +140,39 @@ export class IntegrityService {
     return logIds.map(id => logMap.get(id)!);
   }
 
-  private async raiseTamperAlert(batch: Batch): Promise<void> {
+  private async raiseTamperAlert(
+    batch: Batch,
+    recomputedRoot: string,
+    onChainRoot: string,
+  ): Promise<void> {
     const existing = await this.alertsRepo.findOne({
-        where: { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED' },
+      where: { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED' },
     });
     if (existing) return;
 
-    await this.alertsRepo.save(this.alertsRepo.create({
+    await this.alertsRepo.save(
+      this.alertsRepo.create({
         batchId: batch.id,
         alertType: 'INTEGRITY_TAMPERED',
         severity: 'CRITICAL',
         source: 'INTEGRITY',
         title: `Batch ${batch.id} integrity violation detected`,
         detail: {
-            batchId: batch.id,
-            merkleRoot: batch.merkleRoot,
-            txHash: batch.txHash,
-            message: 'On-chain root does not match recomputed root',
+          batchId: batch.id,
+          storedRoot: batch.merkleRoot,
+          recomputedRoot,
+          onChainRoot,
+          txHash: batch.txHash,
+          message:
+            'On-chain root exists but does not match the recomputed root — log data was modified after sealing',
         },
         status: 'OPEN',
-    }));
+      }),
+    );
 
     this.logger.error(`TAMPER DETECTED on batch ${batch.id}`);
   }
+
 
   /**
    * สร้าง Merkle proof สำหรับ log ตัวเดียว
