@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { ShieldCheck, ShieldX, Clock } from 'lucide-react';
 
 interface LogEntry {
@@ -17,8 +17,8 @@ export default function IntegrityPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios
-      .get(process.env.NEXT_PUBLIC_API_URL + '/logs')
+    api
+      .get('/logs')
       .then((r) => setLogs(r.data))
       .catch(() => setLogs([]))
       .finally(() => setLoading(false));

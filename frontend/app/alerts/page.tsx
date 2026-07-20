@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 
 interface Alert {
@@ -25,15 +25,15 @@ export default function AlertsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios
-      .get(process.env.NEXT_PUBLIC_API_URL + '/alerts')
+    api
+      .get('/alerts')
       .then((r) => setAlerts(r.data))
       .catch(() => setAlerts([]))
       .finally(() => setLoading(false));
   }, []);
 
   const resolve = async (id: string) => {
-    await axios.patch(process.env.NEXT_PUBLIC_API_URL + '/alerts/' + id + '/resolve');
+    await api.patch('/alerts/' + id + '/resolve');
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status: 'RESOLVED' } : a)),
     );
