@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '@/lib/axios';
 import { FileText, Clock } from 'lucide-react';
 
 interface Report {
@@ -16,8 +16,8 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios
-      .get(process.env.NEXT_PUBLIC_API_URL + '/compliance/reports')
+    api
+      .get('/compliance/reports')
       .then((r) => setReports(r.data))
       .catch(() => setReports([]))
       .finally(() => setLoading(false));
