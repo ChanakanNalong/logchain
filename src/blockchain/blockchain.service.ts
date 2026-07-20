@@ -103,6 +103,33 @@ export class BlockchainService implements OnModuleInit {
     return { root: result.root, timestamp: Number(result.timestamp) };
   }
 
+  /**
+   * ตรวจสถานะ root บน chain - แยก "ไม่มีบน chain" ออกจาก "มีแต่ไม่ตรง"
+   * 
+   * MATCH    = root ตรง -> integrity ผ่าน
+   * MISSING  = ไม่มี root ของ batch นี้บน chain (tx หาย / chain / ยังไม่ confirm)
+   *          -> verify ไม่ได้ ไม่ใช่หลักฐานว่าถูกแก้ไข
+   * MISMATCH = มี root บน chain แต่ไม่ตรงกับที่คำนวณใหม่ -> ข้อมูลถูกแก้ไขจริง
+   */
+  async checkRoot(
+    batchId: string,
+    merkleRooT: string,
+  ): Promise<{ result: 'MATCH' | 'MISSING' | 'MISMATCH'; onChainRoot: string }> {
+    if (!this.isReady) throw new Error('Blockchain not ready');
+
+    const { root: onChainRoot } = await this.getRoot(batchId);
+    const expected = (merkleRooT.startsWith('0x') ? merkleRooT : '0x' + merkleRooT).toLowerCase();
+
+    // bytes32 ที่ไม่เคยถูกเซ็ต จะเป็น 0x000...0
+    if (/^0x0+$/.test(onChainRoot)) {
+      return { result: 'MISSING', onChainRoot };
+    }
+    return {
+      result: onChainRoot.toLowerCase() === expected ? 'MATCH' : 'MISMATCH',
+      onChainRoot,
+    };
+  }
+
   get ready(): boolean {
     return this.isReady
   }
