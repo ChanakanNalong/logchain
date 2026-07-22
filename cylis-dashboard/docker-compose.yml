@@ -1,0 +1,7 @@
+services:
+  cylis-dashboard:
+    build: .
+    container_name: cylis-dashboard-app
+    ports:
+      - "8080:80"
+    restart: unless-stopped

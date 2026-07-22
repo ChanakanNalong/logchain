@@ -63,3 +63,4 @@ infra/vault/.secrets/
 # ไฟล์สำรอง .env — มี secret จริง ห้าม commit
 .env.backup
 .env.*.bak
+dist/
