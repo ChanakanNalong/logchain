@@ -17,7 +17,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+      
+      # Backend
       - name: Install dependencies
         run: npm ci
 
@@ -26,6 +27,20 @@ jobs:
         continue-on-error: true
 
       - name: Build check
+        run: npm run build
+
+      # Frontend
+      - name: Install dependencies (frontend)
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+  
+      - name: Build check (frontend)
+        working-directory: frontend
         run: npm run build
 
       - name: Run Trivy filesystem scan

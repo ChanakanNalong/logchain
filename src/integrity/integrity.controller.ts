@@ -2,12 +2,12 @@ import { Controller, Get, Param,UseGuards, NotFoundException } from "@nestjs/com
 import { AuthGuard } from "@nestjs/passport";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { IntegrityService } from "./integrity.service";
-import { RolesGuard, Roles } from "src/auth/guards/roles.guard";
+import { RolesGuard, Roles } from "../auth/guards/roles.guard";
 
 @ApiTags('integrity')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Controller('api/v1/logs')
+@Controller('logs')
 export class IntegrityController {
     constructor(private readonly integrity: IntegrityService) {}
 

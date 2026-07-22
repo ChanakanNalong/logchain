@@ -22,5 +22,5 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
   },
-  "exclude": ["node_modules", "dist", "cylis-dashboard"]
+  "exclude": ["node_modules", "dist", "frontend", "cylis-dashboard", "test"]
 }
