@@ -13,8 +13,8 @@ import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 @ApiTags('logs')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Controller('api/v1/logs')
-export class LogController {
+@Controller('logs')
+export class LogsController {
     constructor(private readonly logsService: LogService) { }
 
     @Post()

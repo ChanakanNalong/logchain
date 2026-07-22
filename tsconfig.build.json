@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "cylis-dashboard", "**/*spec.ts"]
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "frontend",
+    "cylis-dashboard",
+    "**/*spec.ts"
+  ]
 }
