@@ -39,7 +39,7 @@ export class IntegrityService {
      // 2. logs ที่ยังไม่ถูก map (batch ใหม่)
      const pendingLogs = await this.logsRepo.find({
         where: mappedIds.length > 0 ? { id: Not(In(mappedIds))} : {},
-        order: { createdAt: 'ASC' },
+        order: { createdAt: 'ASC', id: 'ASC' },   // ต้องตรงกับ getLeavesForBatch
         take: BATCH_SIZE
      });
 
@@ -93,7 +93,11 @@ export class IntegrityService {
     if (!this.blockchain.ready) return;
 
     const batches = await this.batchesRepo.find({
-      where: [{ status: 'CONFIRMED' }, { status: 'UNVERIFIED' }],
+      where: [
+        { status: 'CONFIRMED' }, 
+        { status: 'UNVERIFIED' },
+        { status: 'TAMPERED' },
+      ],
     });
 
     for (const batch of batches) {
@@ -116,9 +120,9 @@ export class IntegrityService {
           batch.status = 'UNVERIFIED';
           await this.batchesRepo.save(batch);
         }
-      } else if (batch.status === 'UNVERIFIED') {
+      } else if (batch.status !== 'CONFIRMED') {
         // เคย unverifiable แต่ตอนนี้ verify ผ่าน → กลับเป็น CONFIRMED
-        this.logger.log(`Batch ${batch.id} re-verified — back to CONFIRMED`);
+        this.logger.log(`Batch ${batch.id} re-verified (${batch.status} → CONFIRMED)`);
         batch.status = 'CONFIRMED';
         await this.batchesRepo.save(batch);
       }
@@ -129,15 +133,15 @@ export class IntegrityService {
    * helper — ดึง rawHash ของ logs ใน batch (เรียงตามลำดับเดิม)
    */
   private async getLeavesForBatch(batchId: string): Promise<string[]> {
-    const mappings = await this.mappingRepo.find({
-        where: { batchId },
-        order: { mappedAt: 'ASC' },
-    });
+    const mappings = await this.mappingRepo.find({ where: { batchId } });
     const logIds = mappings.map(m => m.logId);
-    const logs = await this.logsRepo.find({ where: { id: In(logIds) } });
-    // เรียง logs ตามลำดับ logIds เพื่อให้ Merkle tree เหมือนตอน seal
-    const logMap = new Map(logs.map(l => [l.id, l.rawHash]));
-    return logIds.map(id => logMap.get(id)!);
+    if (logIds.length === 0) return [];
+
+    const logs = await this.logsRepo.find({
+      where: { id: In(logIds) },
+      order: { createdAt: 'ASC', id: 'ASC' },   // ต้องตรงกับ sealBatch
+    });
+    return logs.map(l => l.rawHash);
   }
 
   private async raiseTamperAlert(
