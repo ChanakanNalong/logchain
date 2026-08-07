@@ -1,0 +1,11 @@
+# Grafana จะอ่านไฟล์นี้ตอน start แล้วเพิ่ม Prometheus เป็น datasource อัตโนมัติ
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

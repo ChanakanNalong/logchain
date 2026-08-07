@@ -1,0 +1,13 @@
+# Grafana auto-load dashboards จาก folder
+apiVersion: 1
+
+providers:
+  - name: 'LogChain'
+    orgid: 1
+    folder: 'LogChain'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options: 
+      path: /var/lib/grafana/dashboards
