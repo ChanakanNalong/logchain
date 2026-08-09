@@ -9,6 +9,8 @@ export interface LogChainSecrets {
   keycloak: {
     clientSecret: string;
     ingestorSecret: string;
+    /** service-account client (logchain-admin-svc) สำหรับ Keycloak Admin REST */
+    adminClientSecret: string;
   };
   blockchain: {
     privateKey: string;
@@ -100,6 +102,7 @@ export class VaultService implements OnModuleInit {
         keycloak: {
           clientSecret: kc.data.data.client_secret,
           ingestorSecret: kc.data.data.ingestor_secret,
+          adminClientSecret: kc.data.data.admin_client_secret,
         },
         blockchain: {
           privateKey: bc.data.data.private_key,

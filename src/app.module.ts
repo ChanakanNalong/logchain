@@ -30,6 +30,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { IntegrityModule } from './integrity/integrity.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { StatsModule } from './stats/stats.module';
+import { AdminModule } from './admin/admin.module';
 import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
 
 
@@ -78,6 +79,7 @@ import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
     IntegrityModule,
     ComplianceModule,
     StatsModule,
+    AdminModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
