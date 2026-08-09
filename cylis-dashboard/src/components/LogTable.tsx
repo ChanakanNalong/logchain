@@ -1,5 +1,5 @@
-import { useTheme, monoFont } from "../theme.js";
-import { Th, Td, Badge } from "./ui.tsx";
+import { useTheme, monoFont } from "@/theme";
+import { Th, Td, Badge } from "@/components/ui";
 
 export default function LogTable({ logs }: any) {
   const t = useTheme();
@@ -16,7 +16,10 @@ export default function LogTable({ logs }: any) {
         <tbody>
           {logs.map((r) => (
             <tr key={r.id}>
-              <Td style={{ color: t.blue2, ...monoFont }}>{r.id}</Td>
+              {/* rows carry the full log id; only the display is shortened */}
+              <Td style={{ color: t.blue2, ...monoFont }} title={r.id}>
+                {typeof r.id === "string" ? r.id.slice(0, 8) : r.id}
+              </Td>
               <Td style={{ color: t.muted, ...monoFont }}>{r.ts}</Td>
               <Td>{r.source}</Td>
               <Td style={{ ...monoFont }}>{r.ip}</Td>

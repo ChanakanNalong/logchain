@@ -1,4 +1,5 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+// src/compliance/compliance.controller.ts
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import { ComplianceService } from './compliance.service';
@@ -10,7 +11,7 @@ export class ComplianceController {
 
   @Get('reports')
   @Roles('admin', 'auditor')
-  getReports() {
-    return this.complianceService.getReports();
+  getReports(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.complianceService.getReports(from, to);
   }
 }

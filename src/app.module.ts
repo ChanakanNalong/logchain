@@ -29,6 +29,7 @@ import { AuditAccess } from './audit/entities/audit-access.entity';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IntegrityModule } from './integrity/integrity.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { StatsModule } from './stats/stats.module';
 import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
 
 
@@ -76,6 +77,7 @@ import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
     ScheduleModule.forRoot(),
     IntegrityModule,
     ComplianceModule,
+    StatsModule,
   ],
   controllers: [AppController, HealthController],
   providers: [

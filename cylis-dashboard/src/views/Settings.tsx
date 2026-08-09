@@ -1,7 +1,7 @@
 import { Users, Lock } from "lucide-react";
-import { useTheme, monoFont } from "../theme.js";
-import { Card, SectionLabel, Badge, Button, Th } from "../components/ui.tsx";
-import { alertConfig, rbacRoles } from "../data/mockData.js";
+import { useTheme, monoFont } from "@/theme";
+import { Card, SectionLabel, Badge, Button, Th } from "@/components/ui";
+import { alertConfig, rbacRoles } from "@/data/mockData";
 
 export default function Settings() {
   const t = useTheme();

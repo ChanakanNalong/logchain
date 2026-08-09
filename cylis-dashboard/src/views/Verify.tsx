@@ -1,8 +1,8 @@
 import { Fragment, useState } from "react";
 import { Hash, ChevronRight, CircleCheck, CircleX, Search } from "lucide-react";
-import { useTheme, monoFont } from "../theme.js";
-import { Card, SectionLabel, Button } from "../components/ui.tsx";
-import { api } from "../lib/api";
+import { useTheme, monoFont } from "@/theme";
+import { Card, SectionLabel, Button } from "@/components/ui";
+import { api } from "@/lib/api";
 
 export default function Verify() {
   const t = useTheme();
@@ -25,7 +25,8 @@ export default function Verify() {
     }
   }
 
-  const verified = result?.verified ?? false;
+  // GET /logs/:id/proof returns { logId, rawHash, batch, proof, verify }
+  const verified = result?.verify ?? false;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -64,7 +65,7 @@ export default function Verify() {
             <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
               <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14 }}>
                 <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>LOG HASH (recomputed)</div>
-                <div style={{ fontSize: 12, wordBreak: "break-all", ...monoFont }}>{result.log?.rawHash}</div>
+                <div style={{ fontSize: 12, wordBreak: "break-all", ...monoFont }}>{result.rawHash}</div>
               </div>
               <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14 }}>
                 <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>BATCH MERKLE ROOT</div>

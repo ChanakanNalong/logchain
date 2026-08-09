@@ -1,3 +1,5 @@
+"use client";
+
 import { createContext, useContext } from "react";
 
 // Dark navy theme (default)
@@ -40,13 +42,15 @@ export const lightTheme = {
   glow: "rgba(59,130,246,0.08)",
 };
 
+// Font families come from next/font (see src/app/layout.tsx), which exposes
+// them as the --font-mono / --font-sans CSS variables on <html>.
 export const monoFont = {
-  fontFamily: "'JetBrains Mono',ui-monospace,monospace",
+  fontFamily: "var(--font-mono),ui-monospace,monospace",
   fontFeatureSettings: "'tnum' 1,'zero' 1",
 };
 
 export const sansFont = {
-  fontFamily: "'Manrope','Inter',system-ui,sans-serif",
+  fontFamily: "var(--font-sans),system-ui,sans-serif",
 };
 
 export type Theme = typeof darkTheme;

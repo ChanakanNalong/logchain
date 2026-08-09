@@ -1,7 +1,7 @@
 import { Database } from "lucide-react";
-import { useTheme, monoFont, sansFont } from "../theme.js";
-import { Card, SectionLabel, Badge } from "../components/ui.tsx";
-import { datasetStats, rawHdfsLogs, dataSources } from "../data/mockData.js";
+import { useTheme, monoFont, sansFont } from "@/theme";
+import { Card, SectionLabel, Badge } from "@/components/ui";
+import { datasetStats, rawHdfsLogs, dataSources } from "@/data/mockData";
 
 export default function Dataset() {
   const t = useTheme();

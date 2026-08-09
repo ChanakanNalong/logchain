@@ -1,8 +1,8 @@
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts";
 import { Target, TrendingUp, Activity, Brain } from "lucide-react";
-import { useTheme, monoFont, sansFont } from "../theme.js";
-import { Card, SectionLabel, Badge, Th, Td } from "../components/ui.tsx";
-import { lossCurve, confusionMatrix, hdfsSequences } from "../data/mockData.js";
+import { useTheme, monoFont, sansFont } from "@/theme";
+import { Card, SectionLabel, Badge, Th, Td } from "@/components/ui";
+import { lossCurve, confusionMatrix, hdfsSequences } from "@/data/mockData";
 
 const metricCards = [
   { l: "F1 Score", v: "0.7138", sub: "seed=42, HDFS_v1", icon: TrendingUp, tone: "good" },
