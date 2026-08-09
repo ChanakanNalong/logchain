@@ -1,4 +1,4 @@
-import { useTheme, monoFont, sansFont } from "../theme.js";
+import { useTheme, monoFont, sansFont } from "@/theme";
 
 /** Card container with surface background + border */
 export function Card({ children, style }: any) {
@@ -131,22 +131,11 @@ export function Th({ children }: any) {
 }
 
 /** Table body cell */
-export function Td({ children, style }: any) {
+export function Td({ children, style, ...rest }: any) {
   const t = useTheme();
   return (
-    <td style={{ padding: "10px", borderTop: `1px solid ${t.border}`, ...style }}>
+    <td style={{ padding: "10px", borderTop: `1px solid ${t.border}`, ...style }} {...rest}>
       {children}
     </td>
-  );
-}
-
-/** Global font import + resets, rendered once at the app root */
-export function GlobalStyle() {
-  return (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-      * { box-sizing: border-box; }
-      body { -webkit-font-smoothing: antialiased; }
-    `}</style>
   );
 }

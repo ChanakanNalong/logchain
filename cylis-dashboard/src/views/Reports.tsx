@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
-import { useTheme, monoFont, sansFont } from "../theme.js";
-import { Card, SectionLabel, Badge, Button } from "../components/ui.tsx";
-import { incidentTimeline, merkleProofSummary } from "../data/mockData.js";
+import { useTheme, monoFont, sansFont } from "@/theme";
+import { Card, SectionLabel, Badge, Button } from "@/components/ui";
+import { incidentTimeline, merkleProofSummary } from "@/data/mockData";
 
 export default function Reports() {
   const t = useTheme();

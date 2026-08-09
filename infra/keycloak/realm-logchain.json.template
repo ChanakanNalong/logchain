@@ -13,7 +13,8 @@
       { "name": "analyst",  "description": "View logs, alerts, integrity" },
       { "name": "operator", "description": "Acknowledge and resolve alerts" },
       { "name": "admin",    "description": "Full access" },
-      { "name": "ingestor", "description": "POST logs only (service account)" }
+      { "name": "ingestor", "description": "POST logs only (service account)" },
+      { "name": "auditor",  "description": "Read compliance reports" }
     ]
   },
   "clients": [
@@ -72,12 +73,25 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:3001/*"],
-      "webOrigins": ["http://localhost:3001"],
-      "attributes": { 
-        "pkce.code.challenge.method": "S256" 
+      "redirectUris": ["http://localhost:3001/*", "http://localhost:3003/*"],
+      "webOrigins": ["http://localhost:3001", "http://localhost:3003"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
       },
-      "defaultClientScopes": ["profile", "email", "roles"]
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [

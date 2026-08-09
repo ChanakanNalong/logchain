@@ -1,28 +1,10 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Search, ChevronDown, Check } from "lucide-react";
-import { useTheme, sansFont } from "../theme.js";
-import { Card, SectionLabel } from "../components/ui.tsx";
-import LogTable from "../components/LogTable.tsx";
-import { api } from "../lib/api";
-
-function toTone(sev: string): string {
-  const s = (sev ?? "").toUpperCase();
-  if (s === "CRITICAL" || s === "HIGH") return "danger";
-  if (s === "WARNING" || s === "MEDIUM") return "warn";
-  return "good";
-}
-
-function mapLog(l: any) {
-  return {
-    id: l.id?.slice(0, 8) ?? "—",
-    ts: l.createdAt ? new Date(l.createdAt).toLocaleString("sv-SE") : "—",
-    source: l.source ?? "—",
-    ip: l.sourceIp ?? "—",
-    event: l.message ?? "—",
-    attackType: l.eventType ?? "—",
-    sev: toTone(l.severity),
-  };
-}
+import { useTheme, sansFont } from "@/theme";
+import { Card, SectionLabel } from "@/components/ui";
+import LogTable from "@/components/LogTable";
+import { api } from "@/lib/api";
+import { mapLog, unwrapLogs } from "@/lib/logRows";
 
 /** Button + popup dropdown for filtering logs by attack type */
 function AttackTypeFilter({ value, onChange, options }: any) {
@@ -125,10 +107,7 @@ export default function Logs() {
 
   useEffect(() => {
     api.get("/logs")
-      .then((r) => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
-        setLogs(rows.map(mapLog));
-      })
+      .then((r) => setLogs(unwrapLogs(r.data).map(mapLog)))
       .catch((e) => { console.error("logs fetch failed", e); setLogs([]); })
       .finally(() => setLoading(false));
   }, []);

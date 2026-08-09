@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
@@ -13,16 +15,15 @@ import {
   Moon,
   Earth,
 } from "lucide-react";
-import { darkTheme, lightTheme, ThemeContext } from "./theme.js";
-import { GlobalStyle } from "./components/ui.tsx";
-import Dashboard from "./pages/Dashboard.tsx";
-import Logs from "./pages/Logs.tsx";
-import MLDetection from "./pages/MLDetection.tsx";
-import Dataset from "./pages/Dataset.tsx";
-import Verify from "./pages/Verify.tsx";
-import Reports from "./pages/Reports.tsx";
-import Settings from "./pages/Settings.tsx";
-import { sansFont, monoFont } from "./theme.js";
+import { darkTheme, lightTheme, ThemeContext } from "@/theme";
+import Dashboard from "@/views/Dashboard";
+import Logs from "@/views/Logs";
+import MLDetection from "@/views/MLDetection";
+import Dataset from "@/views/Dataset";
+import Verify from "@/views/Verify";
+import Reports from "@/views/Reports";
+import Settings from "@/views/Settings";
+import { sansFont, monoFont } from "@/theme";
 
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, Page: Dashboard },
@@ -82,7 +83,7 @@ export default function App() {
           width: "100vw",
           background: theme.bg,
           color: theme.text,
-          fontFamily: "'Inter',system-ui,sans-serif",
+          fontFamily: "var(--font-sans),system-ui,sans-serif",
           position: "fixed",
           top: 0,
           left: 0,
@@ -92,8 +93,6 @@ export default function App() {
           transition: "background .3s,color .3s",
         }}
       >
-        <GlobalStyle />
-
         {/* Ambient glow */}
         <div
           style={{
@@ -172,7 +171,7 @@ export default function App() {
 
             <div style={{ marginTop: "auto", padding: "14px 12px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
-                <Earth size={12} /> Polygon PoS · KRaft
+                <Earth size={12} /> Local Hardhat · Dev
               </div>
             </div>
           </aside>
