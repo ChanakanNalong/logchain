@@ -92,6 +92,31 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "logchain-admin-svc",
+      "name": "LogChain Admin REST service account",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${LOGCHAIN_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -106,13 +131,21 @@
         { "type": "password", "value": "${KEYCLOAK_ADMIN_USER_PASSWORD}", "temporary": false }
       ],
       "requiredActions": ["CONFIGURE_TOTP"],
-      "realmRoles": ["admin", "ingestor", "analyst", "operator"]
+      "realmRoles": ["admin", "ingestor", "analyst", "operator", "auditor"]
     },
     {
       "username": "service-account-log-ingestor",
       "enabled": true,
       "serviceAccountClientId": "log-ingestor",
       "realmRoles": ["ingestor"]
+    },
+    {
+      "username": "service-account-logchain-admin-svc",
+      "enabled": true,
+      "serviceAccountClientId": "logchain-admin-svc",
+      "clientRoles": {
+        "realm-management": ["view-users", "manage-users", "view-realm"]
+      }
     }
   ],
   "authenticationFlows": [

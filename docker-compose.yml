@@ -45,7 +45,7 @@ services:
       - -c
       - >
         apk add --no-cache gettext >/dev/null &&
-        envsubst '$$LOGCHAIN_CLIENT_SECRET $$LOGCHAIN_INGESTOR_SECRET $$KEYCLOAK_ADMIN_USER_PASSWORD'
+        envsubst '$$LOGCHAIN_CLIENT_SECRET $$LOGCHAIN_INGESTOR_SECRET $$LOGCHAIN_ADMIN_CLIENT_SECRET $$KEYCLOAK_ADMIN_USER_PASSWORD'
         < /tmpl/realm-logchain.json.template
         > /import/realm-logchain.json &&
         echo "rendered realm-logchain.json"
@@ -53,6 +53,7 @@ services:
       # DEV-ONLY secrets from .env (gitignored)
       LOGCHAIN_CLIENT_SECRET: ${LOGCHAIN_CLIENT_SECRET}
       LOGCHAIN_INGESTOR_SECRET: ${LOGCHAIN_INGESTOR_SECRET}
+      LOGCHAIN_ADMIN_CLIENT_SECRET: ${LOGCHAIN_ADMIN_CLIENT_SECRET}
       KEYCLOAK_ADMIN_USER_PASSWORD: ${KEYCLOAK_ADMIN_USER_PASSWORD}
     volumes:
       - ./infra/keycloak:/tmpl:ro
@@ -380,6 +381,7 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASSWORD}
       LOGCHAIN_CLIENT_SECRET: ${LOGCHAIN_CLIENT_SECRET}
       LOGCHAIN_INGESTOR_SECRET: ${LOGCHAIN_INGESTOR_SECRET}
+      LOGCHAIN_ADMIN_CLIENT_SECRET: ${LOGCHAIN_ADMIN_CLIENT_SECRET}
       BLOCKCHAIN_PRIVATE_KEY: ${BLOCKCHAIN_PRIVATE_KEY}
       ABUSEIPDB_KEY: ${ABUSEIPDB_KEY:-}
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
