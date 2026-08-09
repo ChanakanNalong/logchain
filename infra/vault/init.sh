@@ -46,7 +46,8 @@ vault kv put secret/logchain/database \
 
 vault kv put secret/logchain/keycloak \
     client_secret="${LOGCHAIN_CLIENT_SECRET}" \
-    ingestor_secret="${LOGCHAIN_INGESTOR_SECRET}"
+    ingestor_secret="${LOGCHAIN_INGESTOR_SECRET}" \
+    admin_client_secret="${LOGCHAIN_ADMIN_CLIENT_SECRET}"
 
 vault kv put secret/logchain/blockchain \
     private_key="${BLOCKCHAIN_PRIVATE_KEY}"
