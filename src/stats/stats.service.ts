@@ -21,6 +21,7 @@ export interface StatsOverview {
   openAlerts: number;
   traffic: { h: string; total: number }[];
   topSources: { ip: string; hits: number }[];
+  anomalyTypes: { type: string; severity: string; source: string; count: number }[];
 }
 
 @Injectable()
@@ -32,12 +33,13 @@ export class StatsService {
   ) {}
 
   async getOverview(): Promise<StatsOverview> {
-    const [totalLogs, batches, openAlerts, traffic, topSources] = await Promise.all([
+    const [totalLogs, batches, openAlerts, traffic, topSources, anomalyTypes] = await Promise.all([
       this.logsRepo.count(),
       this.getBatchStats(),
       this.alertsRepo.count({ where: { status: 'OPEN' } }),
       this.getTrafficLast24h(),
       this.getTopSources(),
+      this.getAnomalyTypes(),
     ]);
 
     return {
@@ -56,6 +58,7 @@ export class StatsService {
       openAlerts,
       traffic,
       topSources,
+      anomalyTypes,
     };
   }
 
@@ -121,5 +124,22 @@ export class StatsService {
       .getRawMany();
 
     return rows.map((row) => ({ ip: row.ip, hits: parseInt(row.hits, 10) || 0 }));
+  }
+
+  private async getAnomalyTypes() {
+    const rows = await this.alertsRepo.createQueryBuilder('a')
+      .select('a.alertType', 'type')
+      .addSelect('a.severity', 'severity')
+      .addSelect('a.source', 'source')
+      .addSelect('COUNT(*)', 'count')
+      .where('a.source != :integritySource', { integritySource: 'INTEGRITY' })
+      .groupBy('a.alertType')
+      .addGroupBy('a.severity')
+      .addGroupBy('a.source')
+      .orderBy('count', 'DESC')
+      .getRawMany();
+    return rows.map(r => ({
+      type: r.type, severity: r.severity, source: r.source, count: +r.count,
+    }));
   }
 }
