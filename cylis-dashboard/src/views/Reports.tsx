@@ -31,8 +31,12 @@ interface ReportData {
   audit: { day: string; byAction: Record<string, number> }[];
 }
 
-const fmt = (d: Date) => d.toISOString().slice(0, 10);
+// group วันด้วย Asia/Bangkok (UTC+7) ให้ตรงกับ backend — กันช่วงตี 0-7 โมงส่งวันผิด
+const fmt = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
 const daysAgo = (d: Date, n: number) => new Date(d.getTime() - n * 86400000);
+
+/** escape ค่าให้ปลอดภัยใน CSV (comma / quote / newline) */
+const csvCell = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
 /** flatten any per-day / snapshot section into rows for a CSV file */
 function toCsv(data: ReportData): string {
@@ -46,9 +50,14 @@ function toCsv(data: ReportData): string {
   (["expired", "dueIn30d", "cdeScoped", "total"] as const).forEach((k) =>
     lines.push(`retention,,${k},${data.retention[k]}`),
   );
-  data.erasure.forEach((r) => lines.push(`erasure,${r.day},requests,${r.requests}`));
+  data.erasure.forEach((r) => {
+    lines.push(`erasure,${r.day},requests,${r.requests}`);
+    r.records?.forEach((x) =>
+      lines.push(`erasure,${r.day},requester,${csvCell(x.requester)}`),
+    );
+  });
   data.audit.forEach((r) =>
-    Object.entries(r.byAction).forEach(([k, v]) => lines.push(`audit,${r.day},${k},${v}`)),
+    Object.entries(r.byAction).forEach(([k, v]) => lines.push(`audit,${r.day},${csvCell(k)},${v}`)),
   );
   return lines.join("\n");
 }
@@ -88,7 +97,9 @@ export default function Reports() {
       .catch((e) => {
         if (cancelled) return;
         console.error("reports fetch failed", e);
-        if (e.response?.status === 403) setForbidden(true);
+        const status = e.response?.status;
+        if (status === 403) setForbidden(true);
+        else if (status === 400) setError("Invalid date range — please check the from/to dates.");
         else setError("Could not load compliance report.");
       })
       .finally(() => {
@@ -198,15 +209,16 @@ export default function Reports() {
                 <tbody>
                   {data.integrity.map((r) => {
                     const bad = r.tampered > 0;
+                    const tone = r.tampered > 0 ? "danger" : r.unverified > 0 ? "warn" : "good";
                     return (
                       <tr key={r.day} style={bad ? { background: "rgba(244,63,94,0.08)" } : undefined}>
                         <Td style={{ ...monoFont }}>{r.day}</Td>
                         <Td>{r.confirmed}</Td>
                         <Td style={bad ? { color: t.danger, fontWeight: 700 } : undefined}>{r.tampered}</Td>
-                        <Td>{r.unverified}</Td>
+                        <Td style={r.unverified > 0 ? { color: t.warn } : undefined}>{r.unverified}</Td>
                         <Td>{r.pending}</Td>
                         <Td>{r.total}</Td>
-                        <Td><Badge tone={bad ? "danger" : "good"}>{r.integrityRate}%</Badge></Td>
+                        <Td><Badge tone={tone}>{r.integrityRate}%</Badge></Td>
                       </tr>
                     );
                   })}
@@ -217,11 +229,11 @@ export default function Reports() {
         )}
       </Card>
 
-      {/* ② Data Retention Status (PDPA / PCI-DSS) — snapshot */}
+      {/* ② Data Retention Status (PDPA / PCI-DSS) — snapshot ณ เวลา generate (now), ไม่ผูก date range */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <SectionLabel dot={t.warn}>② Data Retention Status</SectionLabel>
-          <Badge tone="neutral">snapshot @ {to}</Badge>
+          <Badge tone="neutral">snapshot @ {new Date(data.generatedAt).toLocaleDateString()}</Badge>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginTop: 14 }}>
           {[
