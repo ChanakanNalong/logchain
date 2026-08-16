@@ -81,9 +81,11 @@ export class StatsService {
       const count = parseInt(row.count, 10) || 0;
       byStatus[row.status] = count;
       total += count;
-      sealedLogs += parseInt(row.log_count, 10) || 0;
+      // batch FAILED ตั้ง status แล้ว return ก่อนใส่ mapping — log_count มีแต่ไม่มี log ผูกจริง
+      if (row.status !== 'FAILED') {
+        sealedLogs += parseInt(row.log_count, 10) || 0;
+      }
     }
-
     return {
       byStatus,
       total,
@@ -95,16 +97,19 @@ export class StatsService {
 
   /** จำนวน log ต่อชั่วโมงย้อนหลัง 24 ชม. — ชั่วโมงที่ไม่มี log จะไม่มีแถว */
   private async getTrafficLast24h() {
-    const rows = await this.logsRepo
-      .createQueryBuilder('log')
-      .select("to_char(date_trunc('hour', log.createdAt), 'HH24:00')", 'h')
-      .addSelect('COUNT(*)', 'total')
-      .where("log.createdAt >= now() - interval '24 hours'")
-      .groupBy("date_trunc('hour', log.createdAt)")
-      .orderBy("date_trunc('hour', log.createdAt)", 'ASC')
-      .getRawMany();
-
-    return rows.map((row) => ({ h: row.h, total: parseInt(row.total, 10) || 0 }));
+    const rows = await this.logsRepo.query(`
+      SELECT to_char(hours.h, 'HH24:00') AS h,
+              COUNT(l.id)
+      FROM generate_series(
+              date_trunc('hour', now() - interval '23 hours'),
+              date_trunc('hour', now()),
+              interval '1 hour'
+          ) AS hours(h)
+      LEFT JOIN logs l ON date_trunc('hour', l.created_at) = hours.h
+      GROUP BY hours.h
+      ORDER BY hours.h ASC;
+    `);
+    return rows.map((row: any) => ({ h: row.h, total: parseInt(row.total, 10) || 0 }));
   }
 
   /**
@@ -115,7 +120,7 @@ export class StatsService {
     const rows = await this.logsRepo
       .createQueryBuilder('log')
       // ต้องอ้างชื่อคอลัมน์ตรงๆ — TypeORM ไม่แปลง `log.sourceIp` ให้เมื่อมี `::text` ต่อท้าย
-      .select('"log"."source_id"::text', 'ip')
+      .select('host("log"."source_id")', 'ip')
       .addSelect('COUNT(*)', 'hits')
       .where('log.sourceIp IS NOT NULL')
       .groupBy('log.sourceIp')
