@@ -16,7 +16,7 @@ const CONTRACT_ABI = [
 export class BlockchainService implements OnModuleInit {
     private readonly logger = new Logger(BlockchainService.name);
     private provider: ethers.JsonRpcProvider;
-    private wallet: ethers.Wallet;
+    private wallet: ethers.NonceManager;
     private contract: ethers.Contract;
     private isReady = false;
 
@@ -40,7 +40,7 @@ export class BlockchainService implements OnModuleInit {
             // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
             this.provider = new ethers.JsonRpcProvider(rpcUrl);
             // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
-            this.wallet = new ethers.Wallet(pk, this.provider);
+            this.wallet = new ethers.NonceManager(new ethers.Wallet(pk, this.provider));
             // contract instance - ผูก address + ABI + wallet
             this.contract = new ethers.Contract(address, CONTRACT_ABI, this.wallet);
 

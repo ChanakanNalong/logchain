@@ -130,6 +130,38 @@ export class IntegrityService {
   }
 
   /**
+ * Re-anchor batch ที่ verify ไม่ได้ (chain reset / redeploy)
+ * ใข้ root เดินจาก DB เท่านั้น - ไม่ recompute
+ * ถ้า log ถูกแก้จริง รอบ verify ถัดไปจะจับได้เป็น MISMATCH ตามปกติ
+ */
+async reanchorUnverified(): Promise<void> {
+  if (!this.blockchain.ready) return;
+  if (process.env.INTEGRITY_AUTO_REANCHOR !== 'true') return;
+
+  const batches = await this.batchesRepo.find({ where: { status: 'UNVERIFIED' } });
+  if (batches.length === 0) return;
+
+  for (const batch of batches) {
+    try {
+      const storeRoot = '0x' + batch.merkleRoot;
+      const { result } = await this.blockchain.checkRoot(batch.id, storeRoot);
+      if (result !== 'MISSING') continue;
+
+      const { txHash, blockNumber } = await this.blockchain.storeRoot(batch.id, storeRoot);
+      batch.txHash = txHash;
+      batch.blockNumber = blockNumber;
+      await this.batchesRepo.save(batch);
+      
+      this.logger.warn(
+        `Batch ${batch.id} re-anchored after chain reset (root unchanged) tx=${txHash.slice(0, 12)}...`
+      );
+    } catch (err: any) {
+      this.logger.error(`Re-anchor failed for batch ${batch.id}: ${err.message}`);
+    }
+  }
+}
+
+  /**
    * helper — ดึง rawHash ของ logs ใน batch (เรียงตามลำดับเดิม)
    */
   private async getLeavesForBatch(batchId: string): Promise<string[]> {
