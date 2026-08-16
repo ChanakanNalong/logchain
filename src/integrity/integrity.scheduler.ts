@@ -22,6 +22,7 @@ export class IntegritySchedule {
     @Cron(CronExpression.EVERY_MINUTE)
     async handlVerify() {
         try {
+            await this.integrity.reanchorUnverified();
             await this.integrity.verifyAllBatches();
         } catch (err) {
             this.logger.error('Verify job failed', err);
