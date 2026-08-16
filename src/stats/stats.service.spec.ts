@@ -16,6 +16,7 @@ function makeQueryBuilder() {
     addSelect: jest.fn(() => qb),
     where: jest.fn(() => qb),
     groupBy: jest.fn(() => qb),
+    addGroupBy: jest.fn(() => qb),
     orderBy: jest.fn(() => qb),
     limit: jest.fn(() => qb),
     // ตัว service เรียก getRawMany หลายครั้งต่อ repo (traffic แล้วก็ topSources)
@@ -29,18 +30,24 @@ describe('StatsService', () => {
   let logsQb: any;
   let batchQb: any;
   let logsRepo: any;
+  let alertsQb: any;
   let alertsRepo: any;
 
   beforeEach(async () => {
     logsQb = makeQueryBuilder();
     batchQb = makeQueryBuilder();
+    alertsQb = makeQueryBuilder();
 
     logsRepo = {
       count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(() => logsQb),
+      query: jest.fn().mockResolvedValue([]),
     };
     const batchesRepo = { createQueryBuilder: jest.fn(() => batchQb) };
-    alertsRepo = { count: jest.fn().mockResolvedValue(0) };
+    alertsRepo = { 
+      count: jest.fn().mockResolvedValue(0),
+      createQueryBuilder: jest.fn(() => alertsQb),
+     };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -56,7 +63,7 @@ describe('StatsService', () => {
 
   it('returns integrityRate 0 when there are no batches at all', async () => {
     batchQb._results = [[]]; // group-by คืนแถวว่าง = ยังไม่มี batch
-    logsQb._results = [[], []]; // traffic, topSources
+    logsQb._results = [[]]; // traffic, topSources
 
     const result = await service.getOverview();
 
@@ -81,7 +88,7 @@ describe('StatsService', () => {
         { status: 'PENDING', count: '2', log_count: '150' },
       ],
     ];
-    logsQb._results = [[], []];
+    logsQb._results = [[]];
     logsRepo.count.mockResolvedValue(950);
     alertsRepo.count.mockResolvedValue(4);
 
@@ -110,7 +117,7 @@ describe('StatsService', () => {
         { status: 'PENDING', count: '1', log_count: '10' },
       ],
     ];
-    logsQb._results = [[], []];
+    logsQb._results = [[]];
 
     const result = await service.getOverview();
 
@@ -119,11 +126,11 @@ describe('StatsService', () => {
 
   it('maps traffic buckets and top sources to numbers', async () => {
     batchQb._results = [[]];
+    logsRepo.query.mockResolvedValue([
+      { h: '08:00', total: '12' },
+      { h: '09:00', total: '30' },
+    ]);
     logsQb._results = [
-      [
-        { h: '08:00', total: '12' },
-        { h: '09:00', total: '30' },
-      ],
       [
         { ip: '203.154.12.88', hits: '9' },
         { ip: '10.0.4.2', hits: '3' },
@@ -143,4 +150,52 @@ describe('StatsService', () => {
     // ไม่มีคอลัมน์ประเทศในตาราง logs — ห้ามมี field country หลุดออกไป
     expect(result.topSources[0]).not.toHaveProperty('country');
   });
+
+  it('excludes FAILED batches from sealedLogs', async () => {
+    batchQb._results = [
+      [
+        { status: 'CONFIRMED', count: '2', log_count: '200' },
+        { status: 'FAILED', count: '1', log_count: '100' },
+      ],
+    ];
+    logsQb._results = [[]];
+
+    const result = await service.getOverview();
+    expect(result.sealedLogs).toBe(200);
+  });
+
+  it('returns all 24 hourly buckets including empty hours', async () => {
+    batchQb._results = [[]];
+    logsRepo.query.mockResolvedValue(
+      Array.from({ length: 24 }, (_, i) => ({ h: `${String(i).padStart(2, '0')}:00`, total: '0' })),
+    );
+    logsQb._results = [[]];
+
+    const result = await service.getOverview();
+    expect(result.traffic).toHaveLength(24);
+    expect(result.traffic.every((b) => b.total === 0)).toBe(true);
+  });
+
+  it('maps anomaly type to numbers and excludes integrity alert', async () => {
+    batchQb._results = [[]];
+    logsQb._results = [[]];
+    alertsQb._results = [
+      [
+        { type: 'RULE_MATCH', severity: 'CRITICAL', source: 'web-server-01', count: '3' },
+        { type: 'ML_ANOMALY', severity: 'INFO', source: 'web-server-01', count: '1' },
+      ],
+    ];
+
+    const result = await service.getOverview();
+    
+    expect(result.anomalyTypes).toEqual([
+      { type: 'RULE_MATCH', severity: 'CRITICAL', source: 'web-server-01', count: 3 },
+      { type: 'ML_ANOMALY', severity: 'INFO', source: 'web-server-01', count: 1 }
+    ]);
+    // integrity alert ต้องถูกกรองที่ SQL - ยืนยันว่ามี where กันไว้จริง
+    expect(alertsQb.where).toHaveBeenCalledWith(
+      expect.stringContaining('source'),
+      expect.objectContaining({ integritySource: 'INTEGRITY'}),
+    )
+  })
 });
