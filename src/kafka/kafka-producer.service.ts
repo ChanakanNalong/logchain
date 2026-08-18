@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kafka, Producer, CompressionTypes } from 'kafkajs';
+import { buildKafkaSsl } from './kafka-ssl.config';
 
 export interface LogEvent {
   id: string;
@@ -24,6 +25,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
     const kafka = new Kafka({
       clientId: 'api-gateway',
       brokers: cfg.get<string>('KAFKA_BROKERS', 'kafka-1:9092').split(','),
+      ...buildKafkaSsl(cfg),
       retry: { retries: 1, 
       initialRetryTime: 100 },
       logLevel: 1,

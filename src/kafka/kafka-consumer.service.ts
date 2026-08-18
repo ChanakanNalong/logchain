@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Kafka, Consumer } from 'kafkajs';
+import { buildKafkaSsl } from './kafka-ssl.config';
 import { AlertsService } from '../alerts/alerts.service';
 
 /**
@@ -24,6 +25,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     const kafka = new Kafka({
       clientId: 'api-gateway-consumer',
       brokers: cfg.get<string>('KAFKA_BROKERS', 'kafka-1:9092').split(','),
+      ...buildKafkaSsl(cfg),
       retry: { retries: 8, initialRetryTime: 1000, maxRetryTime: 10000 },
       logLevel: 1,
     });
