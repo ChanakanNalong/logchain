@@ -64,3 +64,6 @@ infra/vault/.secrets/
 .env.backup
 .env.*.bak
 dist/
+
+# Kafka mTLS certs — generate ด้วย infra/kafka/gen-certs.sh
+infra/kafka/certs/
