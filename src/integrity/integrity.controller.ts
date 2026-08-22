@@ -1,4 +1,4 @@
-import { Controller, Get, Param,UseGuards, NotFoundException } from "@nestjs/common";
+import { Controller, Get, Param,UseGuards, NotFoundException, Post, HttpCode } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { IntegrityService } from "./integrity.service";
@@ -10,6 +10,21 @@ import { RolesGuard, Roles } from "../auth/guards/roles.guard";
 @Controller('logs')
 export class IntegrityController {
     constructor(private readonly integrity: IntegrityService) {}
+
+    /**
+     *  POST /api/v1/logs/verify-now
+     *  สั่ง re-anchor + verify ทันที (ปกติ cron ทำทุก 1 นาที)
+     */
+
+    @Post('verify-now')
+    @Roles('admin')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Trigger integrity verification immediately' })
+    async verifyNow() {
+        await this.integrity.reanchorUnverified();
+        await this.integrity.verifyAllBatches();
+        return { ok: true, verifiedAt: new Date().toISOString() };
+    }
 
     /**
      * GET /api/v1/logs/:id/proof
