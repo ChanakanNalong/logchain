@@ -5,12 +5,12 @@ C="infra/kafka/certs"
 K() { docker exec logchain-kafka-1 "$@"; }
 
 echo "═══ 1) ต่อ Kafka พร้อม client certificate ═══"
-K bash -c '
-cat /opt/bitnami/kafka/config/certs/kafka.keystore.pem \
-    /opt/bitnami/kafka/config/certs/kafka.keystore.key > /tmp/c.pem
-printf "security.protocol=SSL\nssl.truststore.type=PEM\nssl.truststore.location=/opt/bitnami/kafka/config/certs/kafka.truststore.pem\nssl.keystore.type=PEM\nssl.keystore.location=/tmp/c.pem\n" > /tmp/ok.properties
-kafka-topics.sh --bootstrap-server localhost:39092 --command-config /tmp/ok.properties --list' \
-  && echo "→ ✅ เข้าถึงได้ (มี cert)" || echo "→ ❌ ไม่ควรพัง"
+docker run --rm --network host -v "$PWD/infra/kafka/certs:/certs:ro" \
+  bitnamilegacy/kafka:3.7.1 bash -c '
+cat /certs/clients/nestjs.crt /certs/clients/nestjs.key > /tmp/c.pem
+printf "security.protocol=SSL\nssl.truststore.type=PEM\nssl.truststore.location=/certs/ca.crt\nssl.keystore.type=PEM\nssl.keystore.location=/tmp/c.pem\n" > /tmp/ok.properties
+kafka-topics.sh --bootstrap-server localhost:39092,localhost:39093,localhost:39094 --command-config /tmp/ok.properties --list' \
+  && echo "→ ✅ เข้าถึงได้ (client cert จริง, เห็นครบ 3 broker)" || echo "→ ❌ ไม่ควรพัง"
 
 echo
 echo "═══ 2) ต่อโดยไม่มี client certificate ═══"
