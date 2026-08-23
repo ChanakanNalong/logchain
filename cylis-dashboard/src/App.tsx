@@ -171,7 +171,7 @@ export default function App() {
 
             <div style={{ marginTop: "auto", padding: "14px 12px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
-                <Earth size={12} /> Local Hardhat · Dev
+                <Earth size={12} /> Polygon Amoy · Dev
               </div>
             </div>
           </aside>
