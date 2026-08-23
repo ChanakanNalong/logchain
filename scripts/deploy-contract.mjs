@@ -44,7 +44,11 @@ function upsertEnv(raw, key, value) {
 
 async function main() {
   const { raw, map } = readEnv(ENV_PATH);
-  const rpcUrl = map.BLOCKCHAIN_RPC_URL ?? 'http://127.0.0.1:8545';
+  const rpcUrl = map.BLOCKCHAIN_RPC_URL;
+  if (!rpcUrl)
+    throw new Error(
+      'BLOCKCHAIN_RPC_URL ไม่มีใน .env — ต้องตั้งก่อน deploy (เช่น https://polygon-amoy-bor-rpc.publicnode.com)',
+    );
   const pk = map.BLOCKCHAIN_PRIVATE_KEY;
   if (!pk) throw new Error('BLOCKCHAIN_PRIVATE_KEY ไม่มีใน .env');
 

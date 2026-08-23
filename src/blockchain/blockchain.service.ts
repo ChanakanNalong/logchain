@@ -26,17 +26,27 @@ export class BlockchainService implements OnModuleInit {
     ) {}
 
     async onModuleInit() {
+        // private key มาจาก Vault ไม่ใช่ .env แล้ว
+        const pk = this.vaultService.get().blockchain.privateKey;
+        const address = this.configService.get<string>('CONTRACT_ADDRESS');
+
+        if (!pk || !address) {
+            this.logger.warn('Blockchain config missing - integrity disabled');
+            return;
+        }
+
+        // มี key + contract แล้ว = ตั้งใจเปิด integrity — RPC หายคือ misconfig
+        // fail ตอน boot ดีกว่า fallback ไป 127.0.0.1:8545 เงียบ ๆ
+        // แล้วนึกว่า anchor ขึ้น Amoy อยู่ (หลักเดียวกับ buildKafkaSsl)
+        const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL');
+        if (!rpcUrl) {
+            throw new Error(
+                'BLOCKCHAIN_RPC_URL is required when CONTRACT_ADDRESS is set ' +
+                    '(e.g. https://polygon-amoy-bor-rpc.publicnode.com)',
+            );
+        }
+
         try {
-            const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL', 'http://127.0.0.1:8545');
-            // private key มาจาก Vault ไม่ใช่ .env แล้ว
-            const pk = this.vaultService.get().blockchain.privateKey;
-            const address = this.configService.get<string>('CONTRACT_ADDRESS');
-
-            if (!pk || !address) {
-                this.logger.warn('Blockchain config missing - integrity disabled');
-                return;
-            }
-
             // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
             this.provider = new ethers.JsonRpcProvider(rpcUrl);
             // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
