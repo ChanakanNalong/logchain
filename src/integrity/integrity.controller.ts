@@ -27,6 +27,23 @@ export class IntegrityController {
     }
 
     /**
+     *  POST /api/v1/logs/seal-now
+     *  สั่ง seal batch ทันที (ปกติ cron ทำทุก 30 นาที) - ใช้ตอน demo
+     */
+
+    @Post('seal-now')
+    @Roles('admin')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Seal a batch of pending logs immediately' })
+    async sealNow() {
+        const batch = await this.integrity.sealBatch();
+        if (!batch) {
+            return { message: 'No pending logs to seal' };
+        }
+        return batch;
+    }
+
+    /**
      * GET /api/v1/logs/:id/proof
      * คืน Merkle proof ของ log ตัวเดียว - พิสูจน์ว่า log อยู่ใน chain จริง
      */

@@ -10,9 +10,14 @@ for c in postgres keycloak vault kafka-1; do
 done
 curl -sf localhost:3000/health >/dev/null && ok "backend :3000" || bad "backend ไม่ตอบ"
 curl -sf localhost:3003 >/dev/null && ok "frontend :3003" || bad "frontend ไม่ตอบ"
-curl -sf -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-  http://127.0.0.1:8545 >/dev/null && ok "hardhat :8545" || bad "hardhat ไม่ตอบ"
+RPC=$(grep -E '^BLOCKCHAIN_RPC_URL=' .env | cut -d= -f2- | tr -d '\r')
+if [ -z "$RPC" ]; then
+  bad "ไม่เจอ BLOCKCHAIN_RPC_URL ใน .env"
+else
+  curl -sf -X POST -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+    "$RPC" >/dev/null && ok "RPC $RPC" || bad "RPC ไม่ตอบ ($RPC)"
+fi
 pgrep -f "app.consumer" >/dev/null && ok "detection consumer" || bad "detection ไม่รัน"
 
 echo "── integrity ──"
