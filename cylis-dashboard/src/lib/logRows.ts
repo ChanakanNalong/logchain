@@ -17,6 +17,7 @@ export function mapLog(l: any) {
     ip: l.sourceIp ?? "—",
     event: l.message ?? "—",
     attackType: l.eventType ?? "—",
+    severity: l.severity ?? "—",
     sev: toTone(l.severity),
   };
 }

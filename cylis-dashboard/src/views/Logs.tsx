@@ -1,20 +1,23 @@
-import { useMemo, useRef, useState, useEffect } from "react";
-import { Search, ChevronDown, Check } from "lucide-react";
-import { useTheme, sansFont } from "@/theme";
-import { Card, SectionLabel } from "@/components/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Search, ChevronDown, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { useTheme, sansFont, monoFont } from "@/theme";
+import { Card, SectionLabel, Button } from "@/components/ui";
 import LogTable from "@/components/LogTable";
 import { api } from "@/lib/api";
 import { mapLog, unwrapLogs } from "@/lib/logRows";
 
-/** Button + popup dropdown for filtering logs by attack type */
-function AttackTypeFilter({ value, onChange, options }: any) {
+const PAGE_SIZE = 10;
+
+/** Button + popup dropdown, reused for both the attack-type and severity filters */
+function FilterDropdown({ value, onChange, options }: any) {
   const t = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function onClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
@@ -64,7 +67,7 @@ function AttackTypeFilter({ value, onChange, options }: any) {
             overflowY: "auto",
           }}
         >
-          {options.map((opt) => (
+          {options.map((opt: string) => (
             <button
               key={opt}
               onClick={() => {
@@ -98,10 +101,21 @@ function AttackTypeFilter({ value, onChange, options }: any) {
   );
 }
 
+const ALL_TYPES = "All types";
+const ALL_SEVERITIES = "All severities";
+
 export default function Logs() {
   const t = useTheme();
-  const [query, setQuery] = useState("");
-  const [attackType, setAttackType] = useState("All types");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // URL is the source of truth on mount; state below just mirrors it so
+  // typing/paging doesn't round-trip through the router on every keystroke.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [attackType, setAttackType] = useState(() => searchParams.get("type") ?? ALL_TYPES);
+  const [severity, setSeverity] = useState(() => searchParams.get("sev") ?? ALL_SEVERITIES);
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -112,8 +126,24 @@ export default function Logs() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Keep the URL query string in sync so filters/page survive a refresh or share.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (attackType !== ALL_TYPES) params.set("type", attackType);
+    if (severity !== ALL_SEVERITIES) params.set("sev", severity);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, attackType, severity, page]);
+
   const attackTypes = useMemo(
-    () => ["All types", ...Array.from(new Set(logs.map((l) => l.attackType)))],
+    () => [ALL_TYPES, ...Array.from(new Set(logs.map((l) => l.attackType)))],
+    [logs]
+  );
+  const severities = useMemo(
+    () => [ALL_SEVERITIES, ...Array.from(new Set(logs.map((l) => l.severity)))],
     [logs]
   );
 
@@ -122,11 +152,21 @@ export default function Logs() {
       logs.filter((log) => {
         const matchesQuery = [log.id, log.source, log.ip, log.event, log.attackType]
           .join(" ").toLowerCase().includes(query.toLowerCase());
-        const matchesType = attackType === "All types" || log.attackType === attackType;
-        return matchesQuery && matchesType;
+        const matchesType = attackType === ALL_TYPES || log.attackType === attackType;
+        const matchesSeverity = severity === ALL_SEVERITIES || log.severity === severity;
+        return matchesQuery && matchesType && matchesSeverity;
       }),
-    [logs, query, attackType]
+    [logs, query, attackType, severity]
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const paged = filtered.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
+
+  // Any filter/search change invalidates the current page — jump back to page 1.
+  function updateQuery(v: string) { setQuery(v); setPage(1); }
+  function updateAttackType(v: string) { setAttackType(v); setPage(1); }
+  function updateSeverity(v: string) { setSeverity(v); setPage(1); }
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -136,7 +176,7 @@ export default function Logs() {
           <Search size={15} color={t.muted} style={{ position: "absolute", left: 12, top: 11 }} />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => updateQuery(e.target.value)}
             placeholder="Search by ID, source, IP, event, or type…"
             style={{
               width: "100%", background: t.surface2, border: `1px solid ${t.border}`,
@@ -148,16 +188,48 @@ export default function Logs() {
       </Card>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
           <SectionLabel>All logs ({filtered.length})</SectionLabel>
-          <AttackTypeFilter value={attackType} onChange={setAttackType} options={attackTypes} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <FilterDropdown value={attackType} onChange={updateAttackType} options={attackTypes} />
+            <FilterDropdown value={severity} onChange={updateSeverity} options={severities} />
+          </div>
         </div>
         {loading ? (
           <div style={{ color: t.muted, padding: 20, textAlign: "center" }}>Loading…</div>
         ) : logs.length === 0 ? (
           <div style={{ color: t.muted, padding: 20, textAlign: "center" }}>No logs found</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ color: t.muted, padding: 20, textAlign: "center" }}>No logs match these filters</div>
         ) : (
-          <LogTable logs={filtered} />
+          <>
+            <LogTable logs={paged} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }}>
+              <div style={{ fontSize: 11.5, color: t.muted, ...monoFont }}>
+                Page {clampedPage} of {totalPages}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button
+                  icon={ChevronLeft}
+                  variant="ghost"
+                  small
+                  disabled={clampedPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  icon={ChevronRight}
+                  variant="ghost"
+                  small
+                  disabled={clampedPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </Card>
     </div>
