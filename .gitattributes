@@ -1,0 +1,5 @@
+# Shell scripts are bind-mounted straight into Linux containers and executed
+# via their shebang (#!/bin/bash). A CRLF shebang line ("/bin/bash^M: bad
+# interpreter") breaks that on checkout from a Windows client with
+# core.autocrlf=true. Force LF regardless of platform.
+*.sh text eol=lf
