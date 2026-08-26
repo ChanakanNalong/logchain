@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import {
   LayoutDashboard,
   ScrollText,
@@ -236,7 +236,9 @@ export default function App() {
               </div>
             </div>
 
-            <ActivePage />
+            <Suspense fallback={null}>
+              <ActivePage />
+            </Suspense>
           </main>
         </div>
       </div>
