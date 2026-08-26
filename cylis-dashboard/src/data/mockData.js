@@ -52,11 +52,17 @@ export const recentLogs = [
   { id: "LG-88224", ts: "2026-06-30 09:01:18", source: "auth-service", ip: "172.245.55.91", event: "Token replay detected", attackType: "Token Replay", sev: "danger" },
 ];
 
+// Role names + descriptions mirror infra/keycloak/realm-logchain.json.template
+// (realm role definitions) and src/admin/admin.constants.ts (APP_ROLES allowlist)
+// — these five are the only roles the backend will assign.
+// User counts are NOT hardcoded here; Settings.tsx fetches them live from
+// GET /api/v1/admin/users (admin-only) and hides the column if that fails.
 export const rbacRoles = [
-  { role: "Admin", users: 2, perms: "Full access · log delete · chain config" },
-  { role: "Analyst", users: 6, perms: "View logs · verify proofs · export reports" },
-  { role: "Auditor", users: 3, perms: "Read-only · verify proofs · export reports" },
-  { role: "Viewer", users: 11, perms: "Dashboard view only" },
+  { role: "admin", perms: "Full access" },
+  { role: "operator", perms: "Acknowledge and resolve alerts" },
+  { role: "ingestor", perms: "POST logs only (service account)" },
+  { role: "analyst", perms: "View logs, alerts, integrity" },
+  { role: "auditor", perms: "Read compliance reports" },
 ];
 
 export const confusionMatrix = { tp: 412, fp: 11, fn: 319, tn: 8201 };
@@ -79,7 +85,10 @@ export const datasetStats = [
   { l: "Total sequences", v: "575,061" },
   { l: "Anomaly sequences", v: "16,838" },
   { l: "Normal sequences", v: "558,223" },
-  { l: "Unique event types", v: "29" },
+  // TODO: no verified source for this count in the repo — the training/parsing
+  // code that would produce it (e.g. a Drain3 template count) isn't checked in
+  // here. Don't reinstate a guessed number; wire this up once that source exists.
+  { l: "Unique event types", v: "—" },
   { l: "Window size", v: "10" },
   { l: "Source", v: "logpai/loghub" },
 ];
@@ -119,7 +128,9 @@ export const merkleProofSummary = [
 export const alertConfig = [
   { label: "Anomaly score threshold", desc: "Trigger an alert when DeepLog confidence exceeds this value.", value: "0.85" },
   { label: "Failed login burst", desc: "Flag when failed logins from one IP exceed this count in 5 minutes.", value: "5 attempts" },
-  { label: "Notify channel", desc: "Where alerts are delivered.", value: "#soc-alerts (Slack)" },
+  // src/notification/notification.service.ts sends alert emails over SMTP via
+  // nodemailer — there is no Slack integration in the backend.
+  { label: "Notify channel", desc: "Where alerts are delivered.", value: "Email (SMTP / nodemailer)" },
 ];
 
 export const VERIFIED_HASH = "8f3c1a92e0d4b7c6f1a39e02d8c4b1f7e9a6d3c0b2f8e1a4c7d9b3f0e6a2c8d1";
