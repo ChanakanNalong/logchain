@@ -16,6 +16,7 @@ import {
   Earth,
 } from "lucide-react";
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
+import { keycloak } from "@/lib/keycloak";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
@@ -72,7 +73,14 @@ export default function App() {
 
   const theme = mode === "dark" ? darkTheme : lightTheme;
   const isDark = mode === "dark";
-  const active = NAV_ITEMS.find((item) => item.id === activeId) ?? NAV_ITEMS[0];
+
+  // Hiding the link is just a UX shortcut to avoid a dead-end click — the
+  // admin endpoints behind Settings enforce the admin role themselves on
+  // every request, regardless of what's shown in this sidebar.
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => item.id !== "settings" || keycloak.hasRealmRole("admin"),
+  );
+  const active = visibleNavItems.find((item) => item.id === activeId) ?? visibleNavItems[0];
   const ActivePage = active.Page;
 
   return (
@@ -140,7 +148,7 @@ export default function App() {
               <span style={{ fontSize: 10, color: "#64748b", ...monoFont }}>v0.3</span>
             </div>
 
-            {NAV_ITEMS.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive = item.id === activeId;
               return (
                 <button
