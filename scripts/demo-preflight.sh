@@ -21,10 +21,19 @@ fi
 pgrep -f "app.consumer" >/dev/null && ok "detection consumer" || bad "detection ไม่รัน"
 
 echo "── integrity ──"
-docker exec logchain-postgres psql -U logchain -d logchain -tAc \
-  "SELECT status||':'||count(*) FROM batches GROUP BY status" | while read r; do
-  case "$r" in CONFIRMED:*) ok "batches $r";; *) bad "batches $r ← ต้องเป็น CONFIRMED";; esac
-done
+# NOTE: ห้ามใช้ `psql ... | while read` — pipeline รัน while ใน subshell
+# FAIL=1 ที่ bad() ตั้งจะหายไปพร้อม subshell แล้วสรุปผลขึ้น "🎉 พร้อม demo"
+# ทั้งที่มี ❌ ใช้ process substitution ให้ while รันใน shell ตัวเดิมแทน
+BATCH_ROWS=$(docker exec logchain-postgres psql -U logchain -d logchain -tAc \
+  "SELECT status||':'||count(*) FROM batches GROUP BY status")
+if [ -z "$(echo "$BATCH_ROWS" | tr -d '[:space:]')" ]; then
+  bad "ไม่มี batch เลย — ยังไม่เคย seal สักรอบ"
+else
+  while read -r r; do
+    [ -z "$r" ] && continue
+    case "$r" in CONFIRMED:*) ok "batches $r";; *) bad "batches $r ← ต้องเป็น CONFIRMED";; esac
+  done < <(echo "$BATCH_ROWS")
+fi
 
 if [ -n "$TOKEN" ]; then
   echo "── token ──"
@@ -37,4 +46,12 @@ else
   echo "  ⚠️  ไม่ได้ส่ง token มาเช็ค: ./demo-preflight.sh \$TOKEN"
 fi
 
-echo; [ "$FAIL" = 1 ] && echo "⛔ ยังไม่พร้อม — แก้ตามด้านบนก่อน" || echo "🎉 พร้อม demo"
+echo
+if [ "$FAIL" = 1 ]; then
+  echo "⛔ ยังไม่พร้อม — แก้ตามด้านบนก่อน"
+  # PENDING มักเป็นแค่ชั่วคราว: seal ใช้เวลา ~6 วิบน Amoy (sealed_at → confirmed_at)
+  # เจอ PENDING ให้รอสักครู่แล้วรันซ้ำ ก่อนไปไล่หาสาเหตุอื่น
+  exit 1
+fi
+echo "🎉 พร้อม demo"
+exit 0

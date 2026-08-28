@@ -61,10 +61,15 @@ export class IntegrityService {
 
      try {
         // 5. commit root ขึ้น chain
-        const { txHash, blockNumber } = await this.blockchain.storeRoot(batch.id, root);
+        const { txHash, blockNumber, confirmed } = await this.blockchain.storeRoot(batch.id, root);
 
         batch.txHash = txHash;
         batch.blockNumber = blockNumber;
+
+        // tx ส่งแล้วแต่รอ confirm ไม่ทัน (public RPC ช้า) — ไม่ใช่ FAILED และห้ามค้าง PENDING
+        // ปล่อยเป็น UNVERIFIED ให้ verifyAllBatches ตามผลต่อ: tx ลงเมื่อไร -> MATCH -> CONFIRMED
+        if (confirmed === false) return await this.deferConfirmation(batch, pendingLogs, root);
+
         return await this.confirmBatch(batch, pendingLogs, root);
     }   catch (err) {
         // "Root already exists" ไม่ใช่ความล้มเหลว — root ของ batch นี้ถูก anchor ไปแล้ว
@@ -106,6 +111,29 @@ export class IntegrityService {
     await this.mappingRepo.save(mappings);
 
     this.logger.log(`Batch ${batch.id} sealed: ${logs.length} log, root=${root.slice(0, 18)}...`);
+    return batch;
+  }
+
+  /**
+   * tx ขึ้น chain แล้วแต่ยังไม่ confirm ในเวลาที่รอ — ผูก mapping ไว้เหมือน batch ปกติ
+   * แล้วตั้ง UNVERIFIED เพื่อให้ verifyAllBatches recompute root แล้วตามผลเอง
+   *
+   * ต้องเขียน mapping ด้วย ไม่งั้น getLeavesForBatch คืน [] แล้ว verify รอบถัดไป
+   * จะคำนวณ root จาก leaf ว่าง = ไม่มีวันตรงกับที่ anchor ไว้
+   */
+  private async deferConfirmation(batch: Batch, logs: Log[], root: string): Promise<Batch> {
+    batch.status = 'UNVERIFIED';
+    await this.batchesRepo.save(batch);
+
+    const mappings = logs.map(log =>
+      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
+    );
+    await this.mappingRepo.save(mappings);
+
+    this.logger.warn(
+      `Batch ${batch.id} sealed but unconfirmed (tx=${batch.txHash?.slice(0, 12)}...) — ` +
+        'marked UNVERIFIED, next verify round will confirm it',
+    );
     return batch;
   }
 
