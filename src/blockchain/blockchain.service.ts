@@ -12,6 +12,31 @@ const CONTRACT_ABI = [
     'event RootStored(bytes32 indexed batch, bytes32 root, uint256 timestamp)',
 ];
 
+/**
+ * ชนิดของ revert ที่ storeRoot เจอได้ — แยก "ไม่ใช่ความผิดพลาดจริง" ออกจาก error อื่น
+ *
+ * ROOT_EXISTS    = require(roots[id] == 0, "Root already exists") ใน LogIntegrity
+ *                  root ของ batch นี้ถูก anchor ไปแล้ว = งานสำเร็จไปแล้ว ไม่ใช่ FAILED
+ *                  เจอบ่อยบน Amoy เพราะ chain state ไม่ reset เหมือน Hardhat node
+ * NOT_AUTHORIZED = require(msg.sender == owner, "Not authorized")
+ *                  wallet ที่ใช้เซ็นไม่ใช่ owner ของ contract = misconfig ไม่ใช่ปัญหาของ batch
+ * OTHER          = อย่างอื่น (gas, nonce, RPC ล่ม, ...)
+ */
+export type ChainWriteError = 'ROOT_EXISTS' | 'NOT_AUTHORIZED' | 'OTHER';
+
+export function classifyChainError(err: unknown): ChainWriteError {
+    const e = err as any;
+    // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
+    const text = [e?.reason, e?.shortMessage, e?.revert?.args?.[0], e?.message]
+        .filter((v) => typeof v === 'string')
+        .join(' | ')
+        .toLowerCase();
+
+    if (text.includes('root already exists')) return 'ROOT_EXISTS';
+    if (text.includes('not authorized')) return 'NOT_AUTHORIZED';
+    return 'OTHER';
+}
+
 @Injectable()
 export class BlockchainService implements OnModuleInit {
     private readonly logger = new Logger(BlockchainService.name);

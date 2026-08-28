@@ -6,7 +6,7 @@ import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
 import { MerkleService } from './service/merkle.service';
-import { BlockchainService } from '../blockchain/blockchain.service';
+import { BlockchainService, classifyChainError } from '../blockchain/blockchain.service';
 
 const BATCH_SIZE = 100; // กำหนดขนาด batch
 
@@ -65,25 +65,78 @@ export class IntegrityService {
 
         batch.txHash = txHash;
         batch.blockNumber = blockNumber;
-        batch.status = 'CONFIRMED';
-        batch.confirmedAt = new Date();
-        await this.batchesRepo.save(batch);
-
-        // 6. INSERT mapping (ไม่ใช่ UPDATE logs - logs ยัง imutable)
-        const mappings = pendingLogs.map(log =>
-            this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
-        );
-        await this.mappingRepo.save(mappings);
-
-        this.logger.log(`Batch ${batch.id} sealed: ${pendingLogs.length} log, root=${root.slice(0, 18)}...`);
-        return batch;
+        return await this.confirmBatch(batch, pendingLogs, root);
     }   catch (err) {
+        // "Root already exists" ไม่ใช่ความล้มเหลว — root ของ batch นี้ถูก anchor ไปแล้ว
+        // (retry ซ้ำ / tx confirm ทีหลังแล้ว estimateGas ของรอบใหม่ revert)
+        // บน Amoy chain state ไม่ reset เหมือน Hardhat จึงเจอเคสนี้ได้จริง
+        if (classifyChainError(err) === 'ROOT_EXISTS') {
+            return await this.adoptExistingRoot(batch, pendingLogs, root);
+        }
+
+        if (classifyChainError(err) === 'NOT_AUTHORIZED') {
+            // wallet ที่เซ็นไม่ใช่ owner ของ contract — misconfig ระดับ deployment
+            // ทุก batch หลังจากนี้จะพังเหมือนกันจนกว่าจะแก้ key/address
+            this.logger.error(
+                `Batch ${batch.id} rejected by contract: signer is not the contract owner. ` +
+                    'ตรวจว่า BLOCKCHAIN_PRIVATE_KEY ใน Vault ตรงกับ owner ของ CONTRACT_ADDRESS',
+            );
+        }
+
         batch.status = 'FAILED';
         await this.batchesRepo.save(batch);
         this.logger.error(`Batch ${batch.id} failed to commit`, err);
         return batch;
         }
     }
+
+  /**
+   * ปิดงาน batch ที่ anchor สำเร็จ — ตั้ง CONFIRMED + ผูก mapping
+   * (แยกออกมาเพราะทั้ง path ปกติและ path "root อยู่บน chain แล้ว" ใช้ร่วมกัน)
+   */
+  private async confirmBatch(batch: Batch, logs: Log[], root: string): Promise<Batch> {
+    batch.status = 'CONFIRMED';
+    batch.confirmedAt = new Date();
+    await this.batchesRepo.save(batch);
+
+    // INSERT mapping (ไม่ใช่ UPDATE logs - logs ยัง imutable)
+    const mappings = logs.map(log =>
+      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
+    );
+    await this.mappingRepo.save(mappings);
+
+    this.logger.log(`Batch ${batch.id} sealed: ${logs.length} log, root=${root.slice(0, 18)}...`);
+    return batch;
+  }
+
+  /**
+   * storeRoot revert ด้วย "Root already exists" — อ่าน root จริงบน chain มาตัดสิน
+   *   ตรงกับที่เพิ่งคำนวณ  -> anchor สำเร็จอยู่แล้ว ปิดงานเป็น CONFIRMED
+   *   ไม่ตรง               -> มี root คนละตัวใต้ batch id เดียวกัน = ผิดปกติจริง ปล่อยเป็น FAILED
+   */
+  private async adoptExistingRoot(batch: Batch, logs: Log[], root: string): Promise<Batch> {
+    try {
+      const { result, onChainRoot } = await this.blockchain.checkRoot(batch.id, root);
+
+      if (result === 'MATCH') {
+        this.logger.warn(
+          `Batch ${batch.id} root already anchored on chain — treating as confirmed (no new tx)`,
+        );
+        return await this.confirmBatch(batch, logs, root);
+      }
+
+      this.logger.error(
+        `Batch ${batch.id} collides with a different on-chain root ` +
+          `(onChain=${onChainRoot?.slice(0, 18)}... computed=${root.slice(0, 18)}...)`,
+      );
+    } catch (err: any) {
+      this.logger.error(`Batch ${batch.id} — cannot read on-chain root: ${err.message}`);
+    }
+
+    batch.status = 'FAILED';
+    await this.batchesRepo.save(batch);
+    return batch;
+  }
 
     /**
    * Verify batch ที่ CONFIRMED และ UNVERIFIED
@@ -156,6 +209,12 @@ async reanchorUnverified(): Promise<void> {
         `Batch ${batch.id} re-anchored after chain reset (root unchanged) tx=${txHash.slice(0, 12)}...`
       );
     } catch (err: any) {
+      // root โผล่บน chain ระหว่าง checkRoot กับ storeRoot (หรือ tx เก่าเพิ่ง confirm)
+      // = ไม่ต้อง re-anchor แล้ว ไม่ใช่ error — และห้ามตั้ง FAILED
+      if (classifyChainError(err) === 'ROOT_EXISTS') {
+        this.logger.debug(`Batch ${batch.id} already anchored on chain — skip re-anchor`);
+        continue;
+      }
       this.logger.error(`Re-anchor failed for batch ${batch.id}: ${err.message}`);
     }
   }
