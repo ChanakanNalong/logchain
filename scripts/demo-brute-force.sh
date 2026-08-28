@@ -16,5 +16,11 @@ done
 
 echo "→ รอ detection + backend consume (5s)..."
 sleep 5
-echo "→ alert ล่าสุด:"
-curl -s -H "Authorization: Bearer $TOKEN" "$API/alerts" | jq -r '.[0] | "  \(.alertType) | \(.severity) | \(.title)"'
+echo "→ RULE_MATCH ล่าสุด:"
+curl -s -H "Authorization: Bearer $TOKEN" "$API/alerts" \
+  | jq -r '[.[] | select(.alertType == "RULE_MATCH")][0]
+           | if . == null then
+               "  ยังไม่มี RULE_MATCH — รอ detection อีกสักครู่"
+             else
+               "  \(.alertType) | \(.severity) | \(.title)"
+             end'
