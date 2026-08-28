@@ -1,72 +1,54 @@
 #!/usr/bin/env bash
-# start backend + detection ในโหมด mTLS (ใช้ก่อน demo)
+# start backend + detection ในโหมด mTLS สำหรับ demo
+# ใช้ production build ไม่ใช่ watch mode — watch จะ recompile กลางคันถ้าไฟล์ถูกแตะ
+set -uo pipefail
+ROOT=~/Documents/logchain
+DET=~/Documents/logchain-detection
+
 export KAFKA_SSL_ENABLED=true
 export KAFKA_BROKERS=localhost:39092,localhost:39093,localhost:39094
 export KAFKA_BROKER=$KAFKA_BROKERS
 
-BACKEND_LOG=/tmp/logchain-backend.log
-DETECTION_LOG=/tmp/logchain-detection.log
-
-cd ~/Documents/logchain || { echo "❌ ไม่เจอ ~/Documents/logchain"; exit 1; }
-
-echo "── stop ของเก่า ──"
-# nest start fork process ลูก — kill แค่ตัวที่ถือพอร์ตไม่พอ ต้องเก็บ parent ด้วย
+echo "── หยุด process เดิม ──"
 pkill -f "nest start"    2>/dev/null
 pkill -f "node dist/main" 2>/dev/null
 pkill -f "app.consumer"   2>/dev/null
-PIDS=$(lsof -t -i:3000 2>/dev/null)
-[ -n "$PIDS" ] && kill $PIDS 2>/dev/null
+kill $(lsof -t -i:3000 2>/dev/null) 2>/dev/null
 
-# รอจนพอร์ตว่างจริง ไม่งั้น start ต่อแล้วเจอ EADDRINUSE
-for _ in $(seq 1 10); do
-  lsof -t -i:3000 >/dev/null 2>&1 || break
+# รอจนพอร์ต 3000 ว่างจริง — ถ้าไม่รอจะเจอ EADDRINUSE
+for i in $(seq 1 15); do
+  lsof -i:3000 >/dev/null 2>&1 || break
+  [ "$i" = 15 ] && { echo "  ❌ port 3000 ไม่ยอมว่าง — เช็ค: lsof -i:3000"; exit 1; }
   sleep 1
 done
-if lsof -t -i:3000 >/dev/null 2>&1; then
-  echo "❌ port 3000 ยังไม่ว่างหลังรอ 10 วิ — เหลือ pid: $(lsof -t -i:3000 | tr '\n' ' ')"
-  echo "   สั่ง kill -9 เองแล้วรันใหม่"
-  exit 1
-fi
-echo "  ✅ port 3000 ว่าง"
+echo "  ✅ port 3000 ว่างแล้ว"
 
-echo "── build ──"
-# ใช้ production build ไม่ใช่ watch mode — start:dev จะ recompile กลางคัน
-# ถ้ามีใครเผลอแตะไฟล์ตอน demo แล้ว backend จะ restart คาเวที
-npm run build || { echo "❌ build ไม่ผ่าน — ดูข้างบน"; exit 1; }
+echo "── build backend ──"
+( cd "$ROOT" && npm run build ) || { echo "  ❌ build ไม่ผ่าน"; exit 1; }
 
 echo "── start ──"
-nohup node dist/main > "$BACKEND_LOG" 2>&1 &
-BACKEND_PID=$!
-disown "$BACKEND_PID"
-echo "  backend pid=$BACKEND_PID"
+( cd "$ROOT" && nohup node dist/main > /tmp/logchain-backend.log 2>&1 & disown )
+( cd "$DET" && source venv/bin/activate && \
+  nohup python3 -m app.consumer > /tmp/logchain-detection.log 2>&1 & disown )
 
-nohup bash -c 'cd ~/Documents/logchain-detection && source venv/bin/activate && exec python3 -m app.consumer' \
-  > "$DETECTION_LOG" 2>&1 &
-DETECTION_PID=$!
-disown "$DETECTION_PID"
-echo "  detection pid=$DETECTION_PID"
-
-echo "รอ service ขึ้น..."
-for _ in $(seq 1 30); do
+echo "── รอ service ขึ้น ──"
+for i in $(seq 1 30); do
   curl -sf localhost:3000/health >/dev/null 2>&1 && break
-  kill -0 "$BACKEND_PID" 2>/dev/null || break   # backend ตายแล้ว ไม่ต้องรอต่อ
+  [ "$i" = 30 ] && { echo "  ❌ backend ไม่ตอบใน 30 วิ — ดู /tmp/logchain-backend.log"; tail -20 /tmp/logchain-backend.log; exit 1; }
   sleep 1
 done
+echo "  ✅ backend :3000 ตอบแล้ว"
 
-echo "── socket check ──"
-ss -tnp 2>/dev/null | grep -E ":(29092|39092)" | grep -E "node|python" | awk '{print $5, $6}'
-echo "(ต้องเห็นแค่ :39092 — ถ้าเห็น 29092 แปลว่ายังเป็น plaintext)"
-
-echo "── health ──"
-if curl -sf localhost:3000/health >/dev/null 2>&1; then
-  echo "  ✅ backend :3000 พร้อม"
-else
-  echo "  ❌ backend ไม่ตอบ /health — ยังไม่พร้อม demo"
-  echo "     20 บรรทัดท้ายของ $BACKEND_LOG:"
-  tail -20 "$BACKEND_LOG" | sed 's/^/     /'
-  exit 1
-fi
 pgrep -f "app.consumer" >/dev/null && echo "  ✅ detection consumer รันอยู่" \
-  || echo "  ⚠️  detection consumer ไม่ขึ้น — ดู $DETECTION_LOG"
+  || { echo "  ❌ detection ไม่ขึ้น — ดู /tmp/logchain-detection.log"; tail -20 /tmp/logchain-detection.log; }
 
-echo "log: $BACKEND_LOG , $DETECTION_LOG"
+echo
+echo "── socket check (ต้องเห็นแค่ :39092) ──"
+sleep 3
+ss -tnp 2>/dev/null | grep -E ":(29092|39092)" | grep -E "node|python" | awk '{print $5}' | sort -u
+grep -q ":29092" <(ss -tnp 2>/dev/null | grep -E "node|python") \
+  && echo "  ⚠️  เจอ 29092 = ยังเป็น plaintext!" || echo "  ✅ mTLS อย่างเดียว"
+
+echo
+echo "🎉 พร้อม — ต่อด้วย ./scripts/demo-preflight.sh \$TOKEN"
+echo "log: /tmp/logchain-backend.log , /tmp/logchain-detection.log"
