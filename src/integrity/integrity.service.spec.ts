@@ -129,7 +129,7 @@ describe('IntegrityService — Merkle determinism', () => {
       ready: true,
       storeRoot: jest.fn(async (batchId: string, root: string) => {
         onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
-        return { txHash: '0xtx', blockNumber: 1 };
+        return { txHash: '0xtx', blockNumber: 1, confirmed: true };
       }),
       checkRoot: checkRootSpy,
     };

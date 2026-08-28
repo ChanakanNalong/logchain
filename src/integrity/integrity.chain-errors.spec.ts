@@ -51,15 +51,21 @@ describe('IntegrityService — chain write errors', () => {
     // default: anchor สำเร็จตามปกติ — แต่ละ test override ได้
     storeRootImpl = async (batchId, root) => {
       onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
-      return { txHash: '0xtx', blockNumber: 1 };
+      return { txHash: '0xtx', blockNumber: 1, confirmed: true };
     };
 
     const logsRepo = {
       find: jest.fn(async (opts: any = {}) => {
         let rows = [...logsStore];
         const idOp = opts.where?.id;
+        // sealBatch ใช้ Not(In(mappedIds)) เพื่อกัน log ที่ seal ไปแล้ว
+        // getLeavesForBatch ใช้ In(logIds) — mock ต้องรองรับทั้งคู่
         if (idOp && typeof idOp === 'object' && idOp.type === 'in') {
           rows = rows.filter((r) => (idOp.value as string[]).includes(r.id));
+        } else if (idOp && typeof idOp === 'object' && idOp.type === 'not') {
+          // Not(In([...])) — FindOperator ซ้อนกัน โดย .value แบนออกมาเป็น array ให้แล้ว
+          const excluded: string[] = Array.isArray(idOp.value) ? idOp.value : [idOp.value];
+          rows = rows.filter((r) => !excluded.includes(r.id));
         }
         if (opts.take) rows = rows.slice(0, opts.take);
         return rows;
@@ -215,6 +221,78 @@ describe('IntegrityService — chain write errors', () => {
       const batch = await service.sealBatch();
 
       expect(batch!.status).toBe('FAILED');
+    });
+  });
+
+  describe('sealBatch — tx sent but not confirmed in time', () => {
+    // public RPC (publicnode) ช้ากว่า Hardhat มาก — tx.wait() มี timeout แล้ว
+    // ครบเวลาแล้วยังไม่ confirm ต้องไม่ทิ้ง batch ไว้ที่ PENDING และต้องไม่ตั้ง FAILED
+    const unconfirmed = async (batchId: string, root: string) => {
+      // tx ขึ้น chain จริง แค่ยังไม่ถูก mine ตอน wait() หมดเวลา
+      onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+      return { txHash: '0xslowtx', blockNumber: null, confirmed: false };
+    };
+
+    it('parks the batch at UNVERIFIED — never PENDING, never FAILED', async () => {
+      storeRootImpl = unconfirmed;
+
+      const batch = await service.sealBatch();
+
+      expect(batch!.status).toBe('UNVERIFIED');
+      expect(batch!.status).not.toBe('PENDING');
+      expect(batch!.status).not.toBe('FAILED');
+    });
+
+    it('keeps the tx hash so the pending tx stays traceable', async () => {
+      storeRootImpl = unconfirmed;
+
+      const batch = await service.sealBatch();
+
+      expect(batch!.txHash).toBe('0xslowtx');
+      expect(batch!.blockNumber).toBeNull();
+    });
+
+    it('writes mappings so the next verify round recomputes the right root', async () => {
+      storeRootImpl = unconfirmed;
+
+      const batch = await service.sealBatch();
+
+      // ไม่มี mapping = getLeavesForBatch คืน [] = verify ไม่มีวันตรง
+      expect(mappingStore.map((m) => m.logId).sort()).toEqual(['a', 'b']);
+      expect(mappingStore.every((m) => m.batchId === batch!.id)).toBe(true);
+    });
+
+    it('is picked up and confirmed once the tx lands', async () => {
+      storeRootImpl = unconfirmed;
+      const batch = await service.sealBatch();
+      expect(batch!.status).toBe('UNVERIFIED');
+
+      // รอบ verify ถัดไป: tx ลงแล้ว root ตรง -> กลับเป็น CONFIRMED เอง
+      await service.verifyAllBatches();
+
+      expect(batch!.status).toBe('CONFIRMED');
+    });
+
+    it('stays UNVERIFIED — not TAMPERED — while the tx is still missing', async () => {
+      storeRootImpl = async () => ({
+        txHash: '0xslowtx',
+        blockNumber: null,
+        confirmed: false,
+      });
+
+      const batch = await service.sealBatch();
+      await service.verifyAllBatches();
+
+      expect(batch!.status).toBe('UNVERIFIED');
+    });
+
+    it('does not re-seal the same logs on the next cron tick', async () => {
+      storeRootImpl = unconfirmed;
+      await service.sealBatch();
+
+      const before = batchStore.length;
+      expect(await service.sealBatch()).toBeNull(); // logs ถูก map ไปแล้ว
+      expect(batchStore).toHaveLength(before);
     });
   });
 

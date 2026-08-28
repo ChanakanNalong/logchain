@@ -13,6 +13,16 @@ const CONTRACT_ABI = [
 ];
 
 /**
+ * ผลของการส่ง storeRoot ขึ้น chain
+ * confirmed=false = tx ส่งไปแล้วแต่ยังไม่ถูก mine ในเวลาที่รอ (มี txHash ให้ตามต่อได้)
+ */
+export interface StoreRootResult {
+    txHash: string;
+    blockNumber: number | null;
+    confirmed: boolean;
+}
+
+/**
  * ชนิดของ revert ที่ storeRoot เจอได้ — แยก "ไม่ใช่ความผิดพลาดจริง" ออกจาก error อื่น
  *
  * ROOT_EXISTS    = require(roots[id] == 0, "Root already exists") ใน LogIntegrity
@@ -23,6 +33,14 @@ const CONTRACT_ABI = [
  * OTHER          = อย่างอื่น (gas, nonce, RPC ล่ม, ...)
  */
 export type ChainWriteError = 'ROOT_EXISTS' | 'NOT_AUTHORIZED' | 'OTHER';
+
+/**
+ * รอ tx confirm ได้นานสุดเท่าไร (ms) ก่อนจะปล่อยให้ batch ไปรอ verify รอบถัดไป
+ * วัดจริงบน Amoy: seal → confirm ใช้ ~6.2-6.5 วิ (block ~2 วิ) — 120 วิเผื่อไว้เยอะแล้ว
+ * ที่ต้องมีเพดานเพราะ tx.wait() ไม่มี timeout ในตัว ถ้า public RPC ค้าง
+ * cron seal จะค้างตามไปด้วย แล้ว batch จะติด PENDING ตลอดกาล
+ */
+export const DEFAULT_TX_TIMEOUT_MS = 120_000;
 
 export function classifyChainError(err: unknown): ChainWriteError {
     const e = err as any;
@@ -44,6 +62,8 @@ export class BlockchainService implements OnModuleInit {
     private wallet: ethers.NonceManager;
     private contract: ethers.Contract;
     private isReady = false;
+    /** เพดานเวลารอ tx confirm — public RPC ช้ากว่า Hardhat มาก ปล่อยรอไม่มีเพดานไม่ได้ */
+    private txTimeoutMs = DEFAULT_TX_TIMEOUT_MS;
 
     constructor(
       private readonly configService: ConfigService,
@@ -79,8 +99,14 @@ export class BlockchainService implements OnModuleInit {
             // contract instance - ผูก address + ABI + wallet
             this.contract = new ethers.Contract(address, CONTRACT_ABI, this.wallet);
 
+            this.txTimeoutMs =
+                Number(this.configService.get<string>('BLOCKCHAIN_TX_TIMEOUT_MS')) ||
+                DEFAULT_TX_TIMEOUT_MS;
+
             this.isReady = true;
-            this.logger.log(`Blockchain connected: ${rpcUrl} contract=${address}`);
+            this.logger.log(
+                `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms`,
+            );
         } catch (err) {
             this.logger.error('Blockchain init failed', err);
         }
@@ -98,7 +124,7 @@ export class BlockchainService implements OnModuleInit {
    * เก็บ Merkle root ของ batch ขึ้น blockchain
    * @returns transaction hash + block number
    */
-    async storeRoot(batchId: string, merkleRoot: string): Promise<{ txHash: string, blockNumber: number }> {
+    async storeRoot(batchId: string, merkleRoot: string): Promise<StoreRootResult> {
         if (!this.isReady) throw new Error('Blockchain not ready');
 
         const batchBytes = this.toBytes32(batchId);
@@ -107,11 +133,24 @@ export class BlockchainService implements OnModuleInit {
 
         this.logger.log(`Storing root for batch ${batchId}...`);
         const tx = await this.contract.storeRoot(batchBytes, rootBytes);
-        // รอ transaction ถูก mine (confirm) ก่อน
-        const receipt = await tx.wait();
 
-        this.logger.log(`Root stored tx=${receipt.hash} block=${receipt.blockNumber}`);
-        return { txHash: receipt.hash, blockNumber: receipt.blockNumber };
+        // ถึงตรงนี้ tx ถูกส่งขึ้น chain แล้ว — hash ใช้ตามรอยได้เสมอ ต่อให้รอ confirm ไม่ทัน
+        try {
+            // รอ transaction ถูก mine (confirm) ก่อน — มีเพดานเวลา ไม่รอไม่จำกัด
+            const receipt = await tx.wait(1, this.txTimeoutMs);
+            this.logger.log(`Root stored tx=${receipt.hash} block=${receipt.blockNumber}`);
+            return { txHash: receipt.hash, blockNumber: receipt.blockNumber, confirmed: true };
+        } catch (err: any) {
+            if (err?.code !== 'TIMEOUT') throw err;
+
+            // tx ส่งไปแล้วแต่ยังไม่ confirm ในเวลาที่กำหนด — ไม่ใช่ความล้มเหลว
+            // คืน hash ไปให้ caller บันทึก แล้วให้รอบ verify ถัดไปตามผลเอง
+            this.logger.warn(
+                `Root tx=${tx.hash} for batch ${batchId} not confirmed within ${this.txTimeoutMs}ms — ` +
+                    'leaving it for the next verify round',
+            );
+            return { txHash: tx.hash, blockNumber: null, confirmed: false };
+        }
     }
 
     /**
