@@ -147,6 +147,12 @@ export default function Logs() {
     [logs]
   );
 
+  // Filtering and pagination happen client-side on purpose: GET /logs returns
+  // the full set, and current log volume is in the tens of rows, so slicing
+  // in-memory is simpler than a paged/filtered endpoint and costs nothing at
+  // this scale. This is a known trade-off, not an oversight — once volume
+  // grows enough that shipping the full set becomes expensive, move this to
+  // the backend as GET /logs?severity=&page= and drop the in-memory filter.
   const filtered = useMemo(
     () =>
       logs.filter((log) => {
