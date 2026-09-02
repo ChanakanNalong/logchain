@@ -29,6 +29,7 @@ function errorMessage(e: any): string {
 type ConfirmState =
   | { kind: "removeRole"; userId: string; username: string; role: string }
   | { kind: "disableUser"; userId: string; username: string }
+  | { kind: "addAdminRole"; userId: string; username: string }
   | null;
 
 /** Small overlay confirm dialog — ui.tsx has no Dialog component, so this stays local to this page. */
@@ -225,6 +226,10 @@ export default function Settings() {
     if (confirm.kind === "removeRole") {
       await runAction(`${confirm.userId}:role-remove:${confirm.role}`, () =>
         api.delete(`/admin/users/${confirm.userId}/roles/${confirm.role}`),
+      );
+    } else if (confirm.kind === "addAdminRole") {
+      await runAction(`${confirm.userId}:role-add:admin`, () =>
+        api.post(`/admin/users/${confirm.userId}/roles`, { role: "admin" }),
       );
     } else {
       await runAction(`${confirm.userId}:enabled`, () =>
@@ -425,7 +430,11 @@ export default function Settings() {
                                 variant="subtle"
                                 small
                                 disabled={!choice || pending === addKey}
-                                onClick={() => addRole(u.id, choice)}
+                                onClick={() =>
+                                  choice === "admin"
+                                    ? setConfirm({ kind: "addAdminRole", userId: u.id, username: u.username })
+                                    : addRole(u.id, choice)
+                                }
                               >
                                 Add
                               </Button>
@@ -448,6 +457,16 @@ export default function Settings() {
           body={`Remove role "${confirm.role}" from ${confirm.username}?`}
           confirmLabel="Remove"
           busy={pending === `${confirm.userId}:role-remove:${confirm.role}`}
+          onConfirm={confirmAndRun}
+          onCancel={closeConfirm}
+        />
+      )}
+      {confirm?.kind === "addAdminRole" && (
+        <ConfirmDialog
+          title="Grant admin role"
+          body={`Give "${confirm.username}" the admin role? This grants full access — admin can manage every user, role, and setting.`}
+          confirmLabel="Grant admin"
+          busy={pending === `${confirm.userId}:role-add:admin`}
           onConfirm={confirmAndRun}
           onCancel={closeConfirm}
         />
