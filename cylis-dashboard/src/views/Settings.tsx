@@ -234,6 +234,8 @@ export default function Settings() {
     setConfirm(null);
   }
 
+  // Per-role user counts come from GET /api/v1/admin/users (already fetched
+  // above for the Users table), so this stays in sync with loading/forbidden.
   const showUsersColumn = !loading && !forbidden && !sessionExpired && users !== null;
   const userCounts: Record<string, number> = {};
   if (users) {
