@@ -126,8 +126,16 @@ export const merkleProofSummary = [
 ];
 
 export const alertConfig = [
-  { label: "Anomaly score threshold", desc: "Trigger an alert when DeepLog confidence exceeds this value.", value: "0.85" },
-  { label: "Failed login burst", desc: "Flag when failed logins from one IP exceed this count in 5 minutes.", value: "5 attempts" },
+  // DeepLog doesn't score against a threshold — it ranks the next event against
+  // the model's top-g predicted candidates (logchain-detection, not in this repo).
+  // TODO: no verified value for g in this repo — wire this up once that source
+  // is checked in here. Don't reinstate a guessed number (0.85 was wrong: that
+  // was never a real threshold DeepLog uses).
+  { label: "Top-g candidates (DeepLog)", desc: "Flag a sequence when the next event falls outside the model's top-g predicted candidates.", value: "—" },
+  // rule 5710 (brute force) — logchain-detection/rules/security_rules.yaml isn't
+  // checked into this repo, but scripts/demo-brute-force.sh:2,8-15 demonstrates
+  // the real threshold: 6 AUTH_FAILURE logs 1s apart trip the alert after the 5th.
+  { label: "Failed login burst", desc: "Flag when failed logins from one IP exceed this count in 60 seconds (rule 5710).", value: "5 attempts / 60s" },
   // src/notification/notification.service.ts sends alert emails over SMTP via
   // nodemailer — there is no Slack integration in the backend.
   { label: "Notify channel", desc: "Where alerts are delivered.", value: "Email (SMTP / nodemailer)" },
