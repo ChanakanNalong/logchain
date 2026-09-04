@@ -83,8 +83,9 @@ services:
       # realm rendered by keycloak-config into this shared volume
       - keycloak_import:/opt/keycloak/data/import:ro
     ports:
-      # host 8080/8081 ชนกับโปรเจกต์อื่นบนเครื่อง dev — map เป็น 8082 แทน
-      # (container ยัง listen 8080 เหมือนเดิม, ไม่กระทบ service อื่นใน network นี้)
+      # default host port 8080 (container ยัง listen 8080 เหมือนเดิม). ถ้า 8080
+      # บนเครื่อง dev ชนกับโปรเจกต์อื่น ตั้ง KEYCLOAK_HOST_PORT ใน .env เป็นค่าอื่น
+      # แล้วอัปเดต KEYCLOAK_URL ของตัวเองให้ตรงกับพอร์ตที่เปลี่ยนด้วย
       -  "${KEYCLOAK_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
