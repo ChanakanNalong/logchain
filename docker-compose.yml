@@ -1,3 +1,5 @@
+name: logchain
+
 services:
   postgres:
     image: postgres:16-alpine 
@@ -81,7 +83,10 @@ services:
       # realm rendered by keycloak-config into this shared volume
       - keycloak_import:/opt/keycloak/data/import:ro
     ports:
-      - "8080:8080"
+      # default host port 8080 (container ยัง listen 8080 เหมือนเดิม). ถ้า 8080
+      # บนเครื่อง dev ชนกับโปรเจกต์อื่น ตั้ง KEYCLOAK_HOST_PORT ใน .env เป็นค่าอื่น
+      # แล้วอัปเดต KEYCLOAK_URL ของตัวเองให้ตรงกับพอร์ตที่เปลี่ยนด้วย
+      -  "${KEYCLOAK_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -301,7 +306,9 @@ services:
     command: 
       - '--path.rootfs=/host'
     volumes:
-      - /:/host:ro,rslave
+      # rslave ตัดออก — Docker Desktop (Windows/Mac) VM root ไม่รองรับ shared/slave
+      # mount propagation ("path / is mounted on / but it is not a shared or slave mount")
+      - /:/host:ro
     ports:
       - "9100:9100"
     networks:
