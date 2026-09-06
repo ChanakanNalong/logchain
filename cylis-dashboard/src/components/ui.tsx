@@ -82,7 +82,7 @@ export function Badge({ children, tone = "neutral" }: any) {
 }
 
 /** Button — variants: primary | ghost | subtle */
-export function Button({ children, variant = "primary", icon: Icon, onClick, small }: any) {
+export function Button({ children, variant = "primary", icon: Icon, onClick, small, disabled }: any) {
   const t = useTheme();
   const base = {
     display: "inline-flex",
@@ -92,7 +92,8 @@ export function Button({ children, variant = "primary", icon: Icon, onClick, sma
     fontSize: small ? 12.5 : 13.5,
     fontWeight: 600,
     padding: small ? "7px 13px" : "9px 17px",
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.45 : 1,
     border: "1px solid transparent",
     ...sansFont,
   };
@@ -102,7 +103,7 @@ export function Button({ children, variant = "primary", icon: Icon, onClick, sma
     subtle: { background: t.surface2, color: t.text, border: `1px solid ${t.border}` },
   };
   return (
-    <button onClick={onClick} style={{ ...base, ...variants[variant] }}>
+    <button onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant] }}>
       {Icon && <Icon size={small ? 13 : 15} />}
       {children}
     </button>
