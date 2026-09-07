@@ -127,6 +127,11 @@ services:
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
+      # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
+      # (เช่น NestJS consumer ที่รันบน host อยู่แล้ว) auto-create topic ทัน แล้ว
+      # --if-not-exists ของ kafka-init จะไม่แก้ partition count ให้ทีหลัง
+      # default ของ Kafka คือ 1 ซึ่งทำให้ topic ที่แพ้ race มี partition เดียวถาวร
+      KAFKA_CFG_NUM_PARTITIONS: "3"
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
       KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
       KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
@@ -173,6 +178,11 @@ services:
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
+      # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
+      # (เช่น NestJS consumer ที่รันบน host อยู่แล้ว) auto-create topic ทัน แล้ว
+      # --if-not-exists ของ kafka-init จะไม่แก้ partition count ให้ทีหลัง
+      # default ของ Kafka คือ 1 ซึ่งทำให้ topic ที่แพ้ race มี partition เดียวถาวร
+      KAFKA_CFG_NUM_PARTITIONS: "3"
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
       KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
       KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
@@ -221,6 +231,11 @@ services:
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
+      # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
+      # (เช่น NestJS consumer ที่รันบน host อยู่แล้ว) auto-create topic ทัน แล้ว
+      # --if-not-exists ของ kafka-init จะไม่แก้ partition count ให้ทีหลัง
+      # default ของ Kafka คือ 1 ซึ่งทำให้ topic ที่แพ้ race มี partition เดียวถาวร
+      KAFKA_CFG_NUM_PARTITIONS: "3"
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "3"
       KAFKA_CFG_MIN_INSYNC_REPLICAS: "2"
       KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
@@ -240,6 +255,29 @@ services:
       timeout: 25s
       retries: 5
       start_period: 45s
+
+  # ---- Topic provisioning (one-shot) ----
+  # ต้องสร้าง topic ล่วงหน้า ไม่ปล่อยให้ auto-create — auto-create เกิดต่อเมื่อมี client
+  # ต่อติดจริง แต่ consumer ฝั่ง NestJS ยอมแพ้ถาวรหลัง retry 5 ครั้งถ้า broker ยังไม่ขึ้น
+  # ผลคือ alerts.raw/alerts.cde ไม่เกิด และ alert หายเงียบ ๆ ทั้งสองฝั่ง
+  # เหตุผลเต็มอยู่ในหัวไฟล์ create-topics.sh + docs/runbooks/kafka-topics.md
+  kafka-init:
+    image: bitnamilegacy/kafka:3.7.1
+    container_name: logchain-kafka-init
+    # ยิงผ่าน internal listener PLAINTEXT :9092 จากในเน็ตเวิร์ก compose
+    # จะได้ไม่ต้อง mount cert + ตั้ง ssl config ให้ kafka-topics.sh เหมือน external :39092
+    environment:
+      KAFKA_BOOTSTRAP: "kafka-1:9092"
+    depends_on:
+      kafka-1: {condition: service_healthy}
+      kafka-2: {condition: service_healthy}
+      kafka-3: {condition: service_healthy}
+    volumes:
+      - ./infra/kafka/create-topics.sh:/kafka/create-topics.sh:ro
+    entrypoint: ["/bin/bash", "/kafka/create-topics.sh"]
+    restart: "no"
+    networks:
+      - default
 
   # ---- Kafka exporter (metrics for Prometheus) ----
   kafka-exporter:

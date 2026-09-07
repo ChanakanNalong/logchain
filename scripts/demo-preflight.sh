@@ -20,6 +20,21 @@ else
 fi
 pgrep -f "app.consumer" >/dev/null && ok "detection consumer" || bad "detection ไม่รัน"
 
+echo "── kafka topics ──"
+# เคสที่บล็อกนี้จับ: หลัง `docker compose down -v` แล้ว alerts.raw/alerts.cde ไม่ถูกสร้าง
+# detection ยิง alert ออกมาได้ (log ขึ้น 🚨 ALERT) แต่ไม่มี topic ให้ backend subscribe
+# → alert ไม่เคยเข้า DB และไม่มี error โผล่ทั้งสองฝั่ง เหตุผลเต็มอยู่ใน
+# infra/kafka/create-topics.sh
+TOPICS=$(docker exec logchain-kafka-1 kafka-topics.sh \
+  --bootstrap-server localhost:9092 --list 2>/dev/null)
+for t in logs.raw alerts.raw alerts.cde; do
+  if echo "$TOPICS" | grep -qx "$t"; then
+    ok "topic $t"
+  else
+    bad "topic $t หาย — รัน: docker compose up -d kafka-init"
+  fi
+done
+
 echo "── integrity ──"
 # NOTE: ห้ามใช้ `psql ... | while read` — pipeline รัน while ใน subshell
 # FAIL=1 ที่ bad() ตั้งจะหายไปพร้อม subshell แล้วสรุปผลขึ้น "🎉 พร้อม demo"

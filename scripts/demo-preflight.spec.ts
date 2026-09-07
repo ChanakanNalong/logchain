@@ -23,8 +23,11 @@ function bin(dir: string, name: string, body: string) {
 
 type Run = { stdout: string; code: number };
 
-/** รัน demo-preflight.sh โดยให้ psql คืน batchRows ตามที่กำหนด */
-function runPreflight(batchRows: string): Run {
+/** topic ครบตามที่ demo ต้องใช้ — ค่า default ของ runPreflight */
+const ALL_TOPICS = ['logs.raw', 'logs.raw.dlq', 'alerts.raw', 'alerts.cde'].join('\n');
+
+/** รัน demo-preflight.sh โดยให้ psql คืน batchRows และ kafka-topics.sh คืน topics */
+function runPreflight(batchRows: string, topics: string = ALL_TOPICS): Run {
   const work = mkdtempSync(join(tmpdir(), 'preflight-'));
   const stub = join(work, 'bin');
   mkdirSync(stub);
@@ -32,12 +35,18 @@ function runPreflight(batchRows: string): Run {
   // .env ปลอมใน cwd — สคริปต์อ่าน BLOCKCHAIN_RPC_URL จาก ./.env
   writeFileSync(join(work, '.env'), 'BLOCKCHAIN_RPC_URL=http://rpc.test\n');
 
-  // `docker compose ps` -> healthy, `docker exec ... psql` -> batchRows
+  // `docker compose ps` -> healthy
+  // `docker exec ... kafka-topics.sh --list` -> topics
+  // `docker exec ... psql` -> batchRows
   bin(
     stub,
     'docker',
     `#!/usr/bin/env bash\n` +
-      `if [ "$1" = "exec" ]; then cat <<'ROWS'\n${batchRows}\nROWS\n` +
+      `if [ "$1" = "exec" ]; then\n` +
+      `  case "$*" in\n` +
+      `    *kafka-topics.sh*) cat <<'TOPICS'\n${topics}\nTOPICS\n    ;;\n` +
+      `    *) cat <<'ROWS'\n${batchRows}\nROWS\n    ;;\n` +
+      `  esac\n` +
       `else echo "Up (healthy)"; fi\nexit 0\n`,
   );
   bin(stub, 'curl', '#!/usr/bin/env bash\nexit 0\n');
@@ -99,6 +108,70 @@ describe('demo-preflight.sh — batch status gate', () => {
 
     expect(stdout).toContain('❌ ไม่มี batch เลย');
     expect(stdout).toContain('⛔ ยังไม่พร้อม');
+    expect(code).toBe(1);
+  });
+});
+
+/**
+ * เคสจริง: หลัง `docker compose down -v` แล้ว up ใหม่ alerts.raw/alerts.cde ไม่ถูกสร้าง
+ * (มีแค่ logs.raw ที่ producer auto-create ให้) detection ยิง alert ได้ แต่ backend
+ * ไม่มี topic ให้ subscribe → alert ไม่เข้า DB โดยไม่มี error ทั้งสองฝั่ง
+ * kafka-init ใน docker-compose.yml สร้าง topic ให้แล้ว บล็อกนี้กันไม่ให้ regress เงียบ ๆ
+ */
+describe('demo-preflight.sh — kafka topic gate', () => {
+  it('reports ready when every required topic exists', () => {
+    const { stdout, code } = runPreflight('CONFIRMED:3');
+
+    expect(stdout).toContain('✅ topic logs.raw');
+    expect(stdout).toContain('✅ topic alerts.raw');
+    expect(stdout).toContain('✅ topic alerts.cde');
+    expect(stdout).toContain('🎉 พร้อม demo');
+    expect(code).toBe(0);
+  });
+
+  it.each(['alerts.raw', 'alerts.cde', 'logs.raw'])(
+    'blocks when %s is missing',
+    (missing) => {
+      const topics = ALL_TOPICS.split('\n')
+        .filter((t) => t !== missing)
+        .join('\n');
+      const { stdout, code } = runPreflight('CONFIRMED:3', topics);
+
+      expect(stdout).toContain(`❌ topic ${missing} หาย`);
+      expect(stdout).toContain('⛔ ยังไม่พร้อม');
+      expect(stdout).not.toContain('🎉 พร้อม demo');
+      expect(code).toBe(1);
+    },
+  );
+
+  it('blocks on the exact down -v case — only logs.raw auto-created', () => {
+    const { stdout, code } = runPreflight('CONFIRMED:3', 'logs.raw');
+
+    expect(stdout).toContain('✅ topic logs.raw');
+    expect(stdout).toContain('❌ topic alerts.raw หาย');
+    expect(stdout).toContain('❌ topic alerts.cde หาย');
+    expect(code).toBe(1);
+  });
+
+  // logs.raw.dlq ไม่ได้อยู่ใน gate — ต้องไม่ทำให้ผลเปลี่ยนไม่ว่ามีหรือไม่มี
+  it('ignores logs.raw.dlq', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3',
+      'logs.raw\nalerts.raw\nalerts.cde',
+    );
+
+    expect(stdout).toContain('🎉 พร้อม demo');
+    expect(code).toBe(0);
+  });
+
+  // grep -qx ต้อง match ทั้งบรรทัด ไม่ใช่ substring ไม่งั้น topic ชื่อคล้ายกันหลอกผ่านได้
+  it('does not accept a prefix match as the real topic', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3',
+      'logs.raw\nalerts.raw.v2\nalerts.cde',
+    );
+
+    expect(stdout).toContain('❌ topic alerts.raw หาย');
     expect(code).toBe(1);
   });
 });
