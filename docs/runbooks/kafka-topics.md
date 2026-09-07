@@ -23,14 +23,14 @@ listener `:39092` (mTLS) ต้องทำ
 (kafkajs ตั้ง `allowAutoTopicCreation` เป็น true โดย default ตอน subscribe) แต่พึ่งมัน
 อย่างเดียวไม่ได้ เพราะ topic จะเกิดก็ต่อเมื่อ **มี client ต่อติดจริง** เท่านั้น:
 
-1. **`KafkaConsumerService` ยอมแพ้ถาวรถ้า Kafka ยังไม่พร้อม** — retry แค่ 5 ครั้ง
-   (3s + 6s + 9s + 12s ≈ 30 วินาที) แล้ว log `Kafka consumer unavailable — alert
-   persistence disabled` และไม่ลองใหม่อีกเลยจนกว่าจะ restart backend
-   หลัง `docker compose down -v` broker ใช้เวลา boot นานกว่านั้นได้สบาย — backend ที่รัน
-   ค้างบน host อยู่แล้วจึงหมดสิทธิ์ทั้ง subscribe และ auto-create
+1. **`KafkaConsumerService` เคยยอมแพ้ถาวรถ้า Kafka ยังไม่พร้อม** — retry แค่ 5 ครั้ง
+   (~30 วินาที) แล้ว log `Kafka consumer unavailable — alert persistence disabled`
+   และไม่ลองใหม่อีกเลยจนกว่าจะ restart backend หลัง `docker compose down -v` broker
+   ใช้เวลา boot นานกว่านั้นได้สบาย — backend ที่รันค้างบน host จึงหมดสิทธิ์ทั้ง subscribe
+   และ auto-create (**แก้แล้ว** — ดู "สองฝั่งที่เคย fail เงียบ" ข้างล่าง)
 2. **ฝั่ง detection ไม่เช็คผล send** — `app/consumer.py` เรียก `producer.send(...)`
    แบบ fire-and-forget ไม่มี `.get()` / flush ตามหลัง บรรทัด log `🚨 ALERT` จึงขึ้นปกติ
-   ไม่ว่า message จะถึง broker หรือไม่
+   ไม่ว่า message จะถึง broker หรือไม่ (**แก้แล้ว** เช่นกัน)
 
 ผลรวมคือ **alert หายเงียบ ๆ**: detection บอกว่าเจอ, backend ไม่เคยได้รับ, alert ไม่เข้า DB,
 และไม่มี error โผล่ที่ฝั่งไหนเลย — `kafka-init` ตัดปัญหาโดยทำให้ topic มีอยู่ตั้งแต่ก่อนที่
@@ -80,3 +80,38 @@ docker compose logs kafka-init
   (`--alter --partitions 3`) หรือล้าง volume แล้วให้ `kafka-init` สร้างใหม่
 - เพิ่ม partition ได้อย่างเดียว ลดไม่ได้ และการเพิ่มจะเปลี่ยน key→partition mapping
   ของ message ใหม่ (`push_alert` ใช้ `source` เป็น key)
+
+## สองฝั่งที่เคย fail เงียบ (แก้แล้ว)
+
+### api-gateway — `src/kafka/kafka-consumer.service.ts`
+
+- reconnect ไม่มีวันยอมแพ้: exponential backoff 1s → 2s → 4s … ตันที่ 60s
+  ปรับได้ด้วย `KAFKA_RECONNECT_BASE_MS` / `KAFKA_RECONNECT_MAX_MS`
+- log ทุกครั้งที่ retry (`connect failed (attempt N) … ลองใหม่ใน Xs (ไม่ยอมแพ้)`)
+  และทุกครั้งที่ kafkajs restart ให้เอง (`crashed (ครั้งที่ N) … (ไม่ยอมแพ้)`)
+- ฟัง `GROUP_JOIN` / `DISCONNECT` เพื่อให้สถานะตรงกับความจริง — ตอน kafkajs restart
+  ให้เองมันไม่ผ่าน connect loop ของเรา ถ้าไม่ดัก `connected` จะค้าง false ทั้งที่ consume ได้แล้ว
+- `GET /health` คืนสถานะให้ตรวจได้:
+
+```json
+{ "status": "ok",
+  "kafkaConsumer": { "connected": true, "lastError": null,
+                     "lastConnectedAt": "…", "reconnectAttempts": 0 } }
+```
+
+`/health` คืน 200 เสมอถ้า process ยังอยู่ (ingest ยังทำงานได้แม้ consumer หลุด)
+คนเรียกต้องดู `kafkaConsumer.connected` เอง — `demo-preflight.sh` gate ที่ field นี้
+
+### detection — `app/consumer.py`
+
+`push_alert()` แยก log เป็นสองเหตุการณ์ และ return `bool`:
+
+```
+🚨 DETECTED [RULE_MATCH]: host - Privilege escalation attempt          ← WARNING
+✅ PUBLISHED → alerts.raw[0]@0 [RULE_MATCH]: host - …                  ← INFO
+❌ PUBLISH FAILED → alerts.raw (KafkaError: …) — alert นี้ไม่ถึง backend  ← ERROR
+```
+
+`producer.send(...).get(timeout=KAFKA_PUBLISH_TIMEOUT)` (default 10 วิ) บล็อกจนกว่า
+broker จะ ack จริง และเพิ่ม metric `consumer_alert_publish_failures_total{topic=...}`
+ตอนล้มเหลว — ส่วนต่างระหว่าง "detect เจอ" กับ "ส่งสำเร็จ" จึงเห็นได้จาก Grafana

@@ -24,10 +24,23 @@ function bin(dir: string, name: string, body: string) {
 type Run = { stdout: string; code: number };
 
 /** topic ครบตามที่ demo ต้องใช้ — ค่า default ของ runPreflight */
-const ALL_TOPICS = ['logs.raw', 'logs.raw.dlq', 'alerts.raw', 'alerts.cde'].join('\n');
+const ALL_TOPICS = [
+  'logs.raw',
+  'logs.raw.dlq',
+  'alerts.raw',
+  'alerts.cde',
+].join('\n');
 
-/** รัน demo-preflight.sh โดยให้ psql คืน batchRows และ kafka-topics.sh คืน topics */
-function runPreflight(batchRows: string, topics: string = ALL_TOPICS): Run {
+/** ค่า default ของ GET /health — consumer ต่อ Kafka ติดอยู่ */
+const HEALTH_OK =
+  '{"status":"ok","kafkaConsumer":{"connected":true,"lastError":null}}';
+
+/** รัน demo-preflight.sh โดยคุมผลของ psql / kafka-topics.sh / GET /health */
+function runPreflight(
+  batchRows: string,
+  topics: string = ALL_TOPICS,
+  health: string = HEALTH_OK,
+): Run {
   const work = mkdtempSync(join(tmpdir(), 'preflight-'));
   const stub = join(work, 'bin');
   mkdirSync(stub);
@@ -49,7 +62,15 @@ function runPreflight(batchRows: string, topics: string = ALL_TOPICS): Run {
       `  esac\n` +
       `else echo "Up (healthy)"; fi\nexit 0\n`,
   );
-  bin(stub, 'curl', '#!/usr/bin/env bash\nexit 0\n');
+  // curl ถูกใช้ 3 ที่: /health, frontend :3003, RPC — มีแต่ /health ที่ต้องคืนเนื้อ
+  bin(
+    stub,
+    'curl',
+    `#!/usr/bin/env bash\n` +
+      `case "$*" in\n` +
+      `  *localhost:3000/health*) cat <<'HEALTH'\n${health}\nHEALTH\n  ;;\n` +
+      `esac\nexit 0\n`,
+  );
   bin(stub, 'pgrep', '#!/usr/bin/env bash\nexit 0\n');
 
   try {
@@ -172,6 +193,52 @@ describe('demo-preflight.sh — kafka topic gate', () => {
     );
 
     expect(stdout).toContain('❌ topic alerts.raw หาย');
+    expect(code).toBe(1);
+  });
+});
+
+/**
+ * KafkaConsumerService เคย retry 5 ครั้งแล้วยอมแพ้ถาวร (log "alert persistence disabled")
+ * backend จึงยังตอบ /health เป็น 200 ทั้งที่ไม่ได้ฟัง alerts.raw/alerts.cde อยู่เลย
+ * gate นี้จับเคสนั้น — ของเดิม preflight เห็นแค่ว่า :3000 ตอบก็ผ่านแล้ว
+ */
+describe('demo-preflight.sh — kafka consumer gate', () => {
+  const healthWith = (connected: boolean, lastError: string | null = null) =>
+    JSON.stringify({ status: 'ok', kafkaConsumer: { connected, lastError } });
+
+  it('reports ready when the consumer is connected', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3',
+      ALL_TOPICS,
+      healthWith(true),
+    );
+
+    expect(stdout).toContain('✅ alert consumer เชื่อมต่อ Kafka อยู่');
+    expect(stdout).toContain('🎉 พร้อม demo');
+    expect(code).toBe(0);
+  });
+
+  it('blocks when the backend is up but not consuming alerts', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3',
+      ALL_TOPICS,
+      healthWith(false, 'ECONNREFUSED'),
+    );
+
+    expect(stdout).toContain('✅ backend :3000'); // process ยังอยู่ — เดิมผ่านแค่นี้
+    expect(stdout).toContain('❌ alert consumer ไม่ได้ต่อ Kafka');
+    expect(stdout).toContain('⛔ ยังไม่พร้อม');
+    expect(code).toBe(1);
+  });
+
+  it('blocks when /health has no kafkaConsumer field at all', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3',
+      ALL_TOPICS,
+      '{"status":"ok"}',
+    );
+
+    expect(stdout).toContain('❌ อ่านสถานะ kafkaConsumer จาก /health ไม่ได้');
     expect(code).toBe(1);
   });
 });
