@@ -58,6 +58,11 @@ npm run start:dev
 > init container `keycloak-config` จะ render `infra/keycloak/realm-logchain.json.template`
 > (แทนค่า `${...}` จาก `.env`) ลง shared volume ก่อน Keycloak เริ่มทำงาน.
 
+> **หมายเหตุ:** Kafka topic (`logs.raw`, `logs.raw.dlq`, `alerts.raw`, `alerts.cde`) ถูกสร้าง
+> โดย init container `kafka-init` หลัง broker ทั้ง 3 ตัว healthy — ไม่ต้องสร้างเองหลัง
+> `docker compose down -v` ไม่ควรพึ่ง auto-create เพราะ alert จะหายเงียบ ๆ ถ้า topic ไม่มี
+> ดู [docs/runbooks/kafka-topics.md](docs/runbooks/kafka-topics.md)
+
 ### Scripts
 
 | Script | หน้าที่ |
@@ -168,6 +173,7 @@ src/
  ├─ audit/ alerts/ metrics/ health/ vault/
 infra/
  ├─ keycloak/     realm-logchain.json.template
+ ├─ kafka/        create-topics.sh, gen-certs.sh
  └─ postgres/init/ 00-keycloak-db.sh
 scripts/          ingest-log.sh, harden-master-admin.sh, deploy-contract.mjs
 docs/             pci-req8-hardening-summary.html
