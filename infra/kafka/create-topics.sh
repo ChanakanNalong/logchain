@@ -4,12 +4,13 @@
 # ทำไมต้องมีไฟล์นี้:
 #   auto.create.topics.enable=true สร้าง topic ให้ก็จริง แต่สร้างเฉพาะตอนมี client
 #   ต่อติดแล้วขอ metadata เท่านั้น ซึ่งพึ่งไม่ได้กับ alerts.raw / alerts.cde:
-#     - KafkaConsumerService (NestJS) retry ตอน boot แค่ 5 ครั้ง (~30 วิ) แล้วยอมแพ้ถาวร
-#       หลัง `compose down -v` broker boot ช้ากว่านั้นได้ → backend ที่ค้างอยู่บน host
-#       ไม่ได้ subscribe และไม่ได้ auto-create อะไรเลย
-#     - ฝั่ง detection ใช้ producer.send() แบบ fire-and-forget ไม่มีใครเช็คผล
-#       เลย log "🚨 ALERT" ออกมาปกติทั้งที่ message ไม่เคยถึง broker
-#   ผลรวมคือ alert หายเงียบ ๆ ไม่มี error ให้ตามที่ฝั่งไหนเลย
+#     - KafkaConsumerService (NestJS) เคย retry ตอน boot แค่ 5 ครั้ง (~30 วิ) แล้วยอมแพ้
+#       ถาวร หลัง `compose down -v` broker boot ช้ากว่านั้นได้ → backend ที่ค้างอยู่บน host
+#       ไม่ได้ subscribe และไม่ได้ auto-create อะไรเลย (แก้แล้ว: reconnect ไม่ยอมแพ้)
+#     - ฝั่ง detection เคยใช้ producer.send() แบบ fire-and-forget ไม่มีใครเช็คผล
+#       เลย log "🚨 ALERT" ออกมาปกติทั้งที่ message ไม่เคยถึง broker (แก้แล้วเช่นกัน)
+#   ทั้งสองอย่างแก้ที่ต้นทางไปแล้ว แต่ topic ที่มีอยู่ก่อนใครก็ยังจำเป็น เพราะ consumer
+#   subscribe ตั้งแต่ boot และ CDE routing เลือก topic ตายตัวไม่ผ่าน auto-create
 #
 #   ดู docs/runbooks/kafka-topics.md สำหรับเคสเต็ม
 set -eu

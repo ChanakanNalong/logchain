@@ -8,7 +8,14 @@ echo "── services ──"
 for c in postgres keycloak vault kafka-1; do
   docker compose ps "$c" 2>/dev/null | grep -q "healthy\|Up" && ok "$c" || bad "$c ไม่ขึ้น"
 done
-curl -sf localhost:3000/health >/dev/null && ok "backend :3000" || bad "backend ไม่ตอบ"
+HEALTH=$(curl -sf localhost:3000/health) && ok "backend :3000" || bad "backend ไม่ตอบ"
+# /health คืน 200 เสมอถ้า process ยังอยู่ — สถานะ Kafka consumer อยู่ในเนื้อ JSON
+# ต้องเช็คแยก ไม่งั้น backend ที่ขึ้นแต่ไม่ได้ฟัง alert จะผ่าน preflight ไปเฉย ๆ
+case "$HEALTH" in
+  *'"connected":true'*)  ok "alert consumer เชื่อมต่อ Kafka อยู่" ;;
+  *'"connected":false'*) bad "alert consumer ไม่ได้ต่อ Kafka — alert จะไม่เข้า DB" ;;
+  *)                     bad "อ่านสถานะ kafkaConsumer จาก /health ไม่ได้" ;;
+esac
 curl -sf localhost:3003 >/dev/null && ok "frontend :3003" || bad "frontend ไม่ตอบ"
 RPC=$(grep -E '^BLOCKCHAIN_RPC_URL=' .env | cut -d= -f2- | tr -d '\r')
 if [ -z "$RPC" ]; then

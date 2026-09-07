@@ -4,8 +4,9 @@ import { KafkaConsumerService } from './kafka-consumer.service';
 import { AlertsModule } from '../alerts/alerts.module';
 
 @Module({
-  imports: [AlertsModule],  // KafkaConsumerService ใช้ AlertsService
+  imports: [AlertsModule], // KafkaConsumerService ใช้ AlertsService
   providers: [KafkaProducerService, KafkaConsumerService],
-  exports: [KafkaProducerService],
+  // export KafkaConsumerService ให้ HealthController อ่านสถานะ connection ได้
+  exports: [KafkaProducerService, KafkaConsumerService],
 })
 export class KafkaModule {}
