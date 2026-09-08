@@ -91,9 +91,33 @@ export class BlockchainService implements OnModuleInit {
             );
         }
 
+        // ethers ไม่ validate address ตอน new Contract() — ถ้าไม่ใช่ hex address
+        // มันจะตีเป็น ENS name แล้วไป resolve ตอนเรียก function ครั้งแรก
+        // Amoy ไม่รองรับ ENS → reject หลุดออกมาจาก cron เป็น unhandled rejection
+        // แล้ว process ตายทีหลัง boot ไปแล้ว (หลักเดียวกับ BLOCKCHAIN_RPC_URL)
+        if (!ethers.isAddress(address)) {
+            throw new Error(
+                `CONTRACT_ADDRESS is not a valid address: "${address}" ` +
+                    '(expected 0x + 40 hex chars)',
+            );
+        }
+
         try {
             // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
-            this.provider = new ethers.JsonRpcProvider(rpcUrl);
+            //
+            // ต้องล็อค network ไว้ (staticNetwork) ไม่งั้น ethers จะ re-detect เอง
+            // เบื้องหลังทุกครั้งที่ RPC ตอบช้า/พลาด แล้ว error จาก retry loop นั้น
+            // ไม่ผูกกับ promise ที่เรา await -> หลุดเป็น uncaught exception ฆ่าทั้ง
+            // process (เจอจริงบน public RPC: "failed to detect network ... TIMEOUT")
+            // ล็อคแล้ว RPC พลาดจะ reject ในสาย await ปกติ ให้ try/catch ของ
+            // sealPendingLogs จัดการ: batch เป็น FAILED แล้วรอบ cron ถัดไป retry
+            const probe = new ethers.JsonRpcProvider(rpcUrl);
+            const network = await probe.getNetwork();
+            probe.destroy();
+
+            this.provider = new ethers.JsonRpcProvider(rpcUrl, network, {
+                staticNetwork: network,
+            });
             // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
             this.wallet = new ethers.NonceManager(new ethers.Wallet(pk, this.provider));
             // contract instance - ผูก address + ABI + wallet
