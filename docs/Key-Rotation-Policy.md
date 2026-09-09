@@ -57,7 +57,18 @@ secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain
 
 ---
 
-## 4. Rotation Log
+## 4. Rotation in Practice
+
+rotate deployment key จริงก่อนส่งมอบ — contract เดิมถูกแทนที่ด้วย deployment ใหม่
+ที่ใช้คีย์ที่ไม่เคยเปิดเผย (contract ปัจจุบัน:
+`0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`, ตรวจสอบได้ที่ amoy.polygonscan.com)
+
+**บทเรียน:** secret ที่มีหลายแหล่ง (`.env` + Vault) ต้อง sync ให้ครบทุกที่
+ถ้าแก้แค่ที่เดียว ระบบจะพังเงียบ ๆ ตอน cache หมดอายุ — เจอจริง 2 ครั้ง
+
+---
+
+## 5. Rotation Log
 
 | Date | Secret Rotated | Rotated By | Notes |
 |------|----------------|------------|-------|
@@ -65,7 +76,7 @@ secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain
 
 ---
 
-## 5. Compliance References
+## 6. Compliance References
 - **ISO 27001 A.10.1.2** — Key management policy
 - **PCI DSS Req 3.6** — Cryptographic key lifecycle
 - **PCI DSS Req 3.5** — Protect keys against disclosure/misuse
