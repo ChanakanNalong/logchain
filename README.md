@@ -11,7 +11,7 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 - **Ingestion + PII masking** — mask PII ก่อน hash เสมอ (PCI DSS Req 3); PAN ไม่เคยเข้า hash function
 - **Integrity (M2)** — Merkle batch + per-log proof + tamper detection, anchor `merkleRoot` ลง blockchain
 - **Streaming** — ส่ง log ไป Kafka (KRaft mode) ให้ detection service วิเคราะห์
-- **AuthN/AuthZ** — Keycloak OIDC/JWT (RS256 + JWKS), RBAC ผ่าน realm roles + `RolesGuard`
+- **AuthN/AuthZ** — Keycloak OIDC/JWT (RS256 + JWKS), RBAC 5 roles (`admin` / `operator` / `ingestor` / `analyst` / `auditor`) ผ่าน realm roles + `RolesGuard`
 - **Observability** — Prometheus metrics, health checks, Swagger (`@ApiTags`)
 - **PCI Req 8 hardening** — ดูหัวข้อ [Authentication & PCI DSS Req 8](#authentication--pci-dss-req-8) ด้านล่าง
 
@@ -23,7 +23,7 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 | Database | PostgreSQL 16 + TypeORM |
 | Messaging | Kafka 3.7 (KRaft, ไม่มี Zookeeper) |
 | Identity | Keycloak 24 (OIDC/JWT) |
-| Blockchain | ethers v6 (Hardhat local node) |
+| Blockchain | ethers v6 (Polygon Amoy testnet) |
 | Metrics/Docs | Prometheus, Swagger |
 
 ---
@@ -32,7 +32,7 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 
 - Node.js + npm
 - Docker + Docker Compose
-- (สำหรับ blockchain) Hardhat local node
+- (สำหรับ blockchain) Polygon Amoy testnet — contract `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD` (ตรวจสอบได้ที่ amoy.polygonscan.com)
 
 ## Setup & Run
 
@@ -79,6 +79,7 @@ npm run start:dev
 | `GET` | `/health` | — | Health check |
 
 ทุก endpoint ของ logs/integrity ป้องกันด้วย `AuthGuard('jwt')` + `RolesGuard` (Bearer token).
+ระบบมี 5 roles: `admin` / `operator` / `ingestor` / `analyst` / `auditor` — หน้า Reports ผูกกับ role `auditor`.
 
 ---
 
