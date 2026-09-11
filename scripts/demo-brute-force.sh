@@ -5,11 +5,11 @@ set -euo pipefail
 TOKEN="${1:-${TOKEN:-}}"
 API="${API:-http://localhost:3000/api/v1}"
 
-echo "→ ยิง 6 login-fail จาก 203.0.113.66..."
+echo "→ ยิง 6 login-fail จาก 203.0.113.77..."
 for i in $(seq 1 6); do
   curl -s -o /dev/null -w "  log $i → %{http_code}\n" -X POST \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    -d '{"source":"web-server-01","sourceIp":"203.0.113.66","eventType":"AUTH_FAILURE","severity":"WARNING","message":"authentication failed for user admin - wrong password"}' \
+    -d '{"source":"web-server-01","sourceIp":"203.0.113.77","eventType":"AUTH_FAILURE","severity":"WARNING","message":"authentication failed for user jdoe - invalid credentials"}' \
     "$API/logs"
   sleep 1
 done
