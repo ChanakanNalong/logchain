@@ -9,7 +9,7 @@ echo "→ ยิง 6 login-fail จาก 203.0.113.77..."
 for i in $(seq 1 6); do
   curl -s -o /dev/null -w "  log $i → %{http_code}\n" -X POST \
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-    -d '{"source":"web-server-01","sourceIp":"203.0.113.77","eventType":"AUTH_FAILURE","severity":"WARNING","message":"authentication failed for user jdoe - invalid credentials"}' \
+    -d "{\"source\":\"web-server-01\",\"sourceIp\":\"203.0.113.77\",\"eventType\":\"AUTH_FAILURE\",\"severity\":\"WARNING\",\"message\":\"authentication failed for user jdoe - invalid credentials session $(openssl rand -hex 4)\"}" \
     "$API/logs"
   sleep 1
 done

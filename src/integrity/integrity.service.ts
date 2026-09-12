@@ -7,6 +7,7 @@ import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
 import { MerkleService } from './service/merkle.service';
 import { BlockchainService, classifyChainError } from '../blockchain/blockchain.service';
+import { isRawHashIntact } from '../logs/services/log-hash';
 
 const BATCH_SIZE = 100; // กำหนดขนาด batch
 
@@ -182,13 +183,18 @@ export class IntegrityService {
     });
 
     for (const batch of batches) {
-      const leaves = await this.getLeavesForBatch(batch.id);
-      const { root } = this.merkle.buildTree(leaves);
+      const logs = await this.getLogsForBatch(batch.id);
+      const { root } = this.merkle.buildTree(logs.map(l => l.rawHash));
       const { result, onChainRoot } = await this.blockchain.checkRoot(batch.id, root);
 
-      if (result === 'MISMATCH') {
-        // root อยู่บน chain แต่ไม่ตรง = ข้อมูลถูกแก้ไขจริง
-        await this.raiseTamperAlert(batch, root, onChainRoot);
+      // root ตรวจได้แค่ว่า raw_hash ยังเป็นชุดเดิมไหม — ไม่ได้ตรวจว่า "เนื้อ log ยังตรงกับ hash ของตัวเอง"
+      // คนที่เข้าถึง DB ได้อาจแก้ severity/sourceIp ทิ้ง raw_hash ไว้เหมือนเดิม แล้ว root ยังตรง
+      // จึงต้อง recompute hash จาก field ของ row เทียบกับ raw_hash ที่ผูกไว้ตอน insert ด้วย
+      const modified = logs.filter(l => !isRawHashIntact(l));
+
+      if (result === 'MISMATCH' || modified.length > 0) {
+        // ข้อมูลถูกแก้ไขจริง — root ไม่ตรง chain หรือ row ไม่ตรง hash ของตัวเอง
+        await this.raiseTamperAlert(batch, root, onChainRoot, modified);
         batch.status = 'TAMPERED';
         await this.batchesRepo.save(batch);
       } else if (result === 'MISSING') {
@@ -249,17 +255,22 @@ async reanchorUnverified(): Promise<void> {
 }
 
   /**
-   * helper — ดึง rawHash ของ logs ใน batch (เรียงตามลำดับเดิม)
+   * helper — ดึง logs ใน batch (เรียงตามลำดับเดิมที่ใช้ตอน seal)
+   * leaf ของ Merkle tree = rawHash ของแต่ละ log ตามลำดับนี้
    */
-  private async getLeavesForBatch(batchId: string): Promise<string[]> {
+  private async getLogsForBatch(batchId: string): Promise<Log[]> {
     const mappings = await this.mappingRepo.find({ where: { batchId } });
     const logIds = mappings.map(m => m.logId);
     if (logIds.length === 0) return [];
 
-    const logs = await this.logsRepo.find({
+    return this.logsRepo.find({
       where: { id: In(logIds) },
       order: { createdAt: 'ASC', id: 'ASC' },   // ต้องตรงกับ sealBatch
     });
+  }
+
+  private async getLeavesForBatch(batchId: string): Promise<string[]> {
+    const logs = await this.getLogsForBatch(batchId);
     return logs.map(l => l.rawHash);
   }
 
@@ -267,6 +278,7 @@ async reanchorUnverified(): Promise<void> {
     batch: Batch,
     recomputedRoot: string,
     onChainRoot: string,
+    modifiedLogs: Log[] = [],
   ): Promise<void> {
     const existing = await this.alertsRepo.findOne({
       where: { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED' },
@@ -286,8 +298,11 @@ async reanchorUnverified(): Promise<void> {
           recomputedRoot,
           onChainRoot,
           txHash: batch.txHash,
+          modifiedLogIds: modifiedLogs.map(l => l.id),
           message:
-            'On-chain root exists but does not match the recomputed root — log data was modified after sealing',
+            modifiedLogs.length > 0
+              ? `${modifiedLogs.length} log(s) no longer match their own raw_hash — row data was modified after sealing`
+              : 'On-chain root exists but does not match the recomputed root — log data was modified after sealing',
         },
         status: 'OPEN',
       }),
