@@ -8,6 +8,7 @@ import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
+import { computeRawHash } from '../logs/services/log-hash';
 
 /**
  * บน Hardhat local node chain state หายทุกครั้งที่ restart — root ไม่เคยชนกัน
@@ -17,6 +18,22 @@ import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
  *
  * เคสนั้น root อยู่บน chain ครบแล้ว = งานสำเร็จ ห้ามกลายเป็น batch FAILED
  */
+
+/** log row ที่ rawHash ตรงกับเนื้อของตัวเอง — verify recompute hash จาก row ด้วย */
+function makeLog(id: string, createdAt: Date) {
+  const row = {
+    id,
+    source: 'unit-test',
+    sourceIp: null,
+    eventType: 'AUTH_FAILURE',
+    severity: 'INFO',
+    message: `log ${id}`,
+    classification: 'INTERNAL',
+    cdeScope: false,
+    createdAt,
+  };
+  return { ...row, rawHash: computeRawHash(row) };
+}
 
 /** error ทรงเดียวกับที่ ethers v6 โยนออกมาเวลา require() revert */
 function revertError(reason: string) {
@@ -40,10 +57,7 @@ describe('IntegrityService — chain write errors', () => {
 
   beforeEach(async () => {
     const t = new Date('2026-08-28T21:00:00.000Z');
-    logsStore = [
-      { id: 'a', rawHash: 'aa'.repeat(32), createdAt: t },
-      { id: 'b', rawHash: 'bb'.repeat(32), createdAt: t },
-    ];
+    logsStore = [makeLog('a', t), makeLog('b', t)];
     mappingStore = [];
     batchStore = [];
     onChain = new Map();

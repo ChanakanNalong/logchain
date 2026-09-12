@@ -222,6 +222,60 @@ describe('Integrity Integration', () => {
     return rows[0];
   };
 
+  /** POST /logs แล้วคืน id ที่บันทึกจริง */
+  const ingest = async (body: Record<string, unknown>): Promise<string> => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/logs')
+      .send({
+        source: TEST_SOURCE,
+        eventType: 'AUTH_FAILURE',
+        severity: 'WARNING',
+        classification: 'INTERNAL',
+        ...body,
+      })
+      .expect(201);
+    logIds.push(res.body.id);
+    return res.body.id;
+  };
+
+  /**
+   * จำลอง "DB ถูกยึด" — ปิด trigger ที่บล็อก UPDATE ชั่วคราวแล้วแก้ row ตรงๆ
+   * (ทางเดียวที่จะแก้ logs ได้ ถ้าไม่ปิด trigger จะได้ IMMUTABLE_LOG)
+   */
+  const tamperRow = async (sql: string, params: unknown[]) => {
+    await dataSource.query('ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update');
+    try {
+      await dataSource.query(sql, params);
+    } finally {
+      await dataSource.query('ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update');
+    }
+  };
+
+  const tamperAlertFor = async (id: string) =>
+    dataSource.query(
+      "SELECT severity, detail FROM alerts WHERE batch_id = $1 AND alert_type = 'INTEGRITY_TAMPERED'",
+      [id],
+    );
+
+  /** seal batch ใหม่ที่มี log ตัวนี้อยู่ แล้วยืนยันว่า verify ผ่านก่อนถูกแก้ */
+  const sealAndConfirm = async (logId: string): Promise<string> => {
+    const batch = await integrity.sealBatch();
+    expect(batch).not.toBeNull();
+    createdBatchIds.push(batch!.id);
+    expect(batch!.status).toBe('CONFIRMED');
+
+    const mapped = await dataSource.query(
+      'SELECT COUNT(*)::int AS c FROM log_batch_mapping WHERE batch_id = $1 AND log_id = $2',
+      [batch!.id, logId],
+    );
+    expect(mapped[0].c).toBe(1);
+
+    await integrity.verifyAllBatches();
+    expect((await getBatch(batch!.id)).status).toBe('CONFIRMED');
+    expect(await tamperAlertFor(batch!.id)).toHaveLength(0);
+    return batch!.id;
+  };
+
   // 1
   it('ingests 3 logs via POST /logs', async () => {
     const messages = [
@@ -364,5 +418,49 @@ describe('Integrity Integration', () => {
     expect(alerts[0].severity).toBe('CRITICAL');
     expect(alerts[0].source).toBe('INTEGRITY');
     expect(alerts[0].status).toBe('OPEN');
+  });
+
+  // 8 — root ยังตรง chain ทุกประการ (raw_hash ไม่ถูกแตะ) แต่ severity ถูกบิด
+  it('detects severity tampering on a sealed log', async () => {
+    const logId = await ingest({
+      severity: 'CRITICAL',
+      message: 'Ransomware process spawned on payment host',
+    });
+    const tamperedBatchId = await sealAndConfirm(logId);
+
+    // CRITICAL -> INFO: กลบเหตุการณ์โดยไม่แตะ raw_hash
+    await tamperRow('UPDATE logs SET severity = $2 WHERE id = $1', [logId, 'INFO']);
+    expect(
+      (await dataSource.query('SELECT severity FROM logs WHERE id = $1', [logId]))[0].severity,
+    ).toBe('INFO');
+
+    await integrity.verifyAllBatches();
+
+    expect((await getBatch(tamperedBatchId)).status).toBe('TAMPERED');
+
+    const alerts = await tamperAlertFor(tamperedBatchId);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('CRITICAL');
+    expect(alerts[0].detail.modifiedLogIds).toContain(logId);
+  });
+
+  // 9
+  it('detects sourceIp tampering on a sealed log', async () => {
+    const logId = await ingest({
+      sourceIp: '203.0.113.77',
+      message: 'Brute force burst blocked at the edge',
+    });
+    const tamperedBatchId = await sealAndConfirm(logId);
+
+    // เปลี่ยน IP ผู้โจมตีไปชี้เครื่องอื่น
+    await tamperRow('UPDATE logs SET source_id = $2 WHERE id = $1', [logId, '198.51.100.4']);
+
+    await integrity.verifyAllBatches();
+
+    expect((await getBatch(tamperedBatchId)).status).toBe('TAMPERED');
+
+    const alerts = await tamperAlertFor(tamperedBatchId);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].detail.modifiedLogIds).toContain(logId);
   });
 });

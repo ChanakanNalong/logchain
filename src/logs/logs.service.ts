@@ -1,12 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from 'typeorm';
-import { createHash } from "crypto";
+import { randomUUID } from "crypto";
 import { Log } from "./entities/log.entity";
 import { CreateLogDto } from './dto/create-log.dto';
 import { KafkaProducerService } from '../kafka/kafka-producer.service';
 import { PiiMaskingService } from "./services/pii-masking.service";
 import { MetricsService } from '../metrics/metrics.service';
+import { computeRawHash, normalizeIp } from './services/log-hash';
 
 @Injectable()
 export class LogService {
@@ -29,19 +30,31 @@ export class LogService {
         const { masked, hadPii } = this.pii.mask(dto.message);
         if (hadPii) this.metrics.incrementPiiMasked();
 
-        // Step 2: hash ข้อความที่ mask แล้วเท่านั้น
-        const rawHash = createHash('sha256')
-            .update(JSON.stringify({
-                source: dto.source,
-                eventType: dto.eventType,
-                message: masked,
-            }))
-            .digest('hex');
+        // Step 2: กำหนด id + createdAt เองก่อน hash
+        // ตาราง logs มี trigger trg_logs_no_update บล็อก UPDATE → เขียน rawHash
+        // กลับหลัง insert ไม่ได้ ต้องได้ค่าทุก field ครบก่อนแล้ว insert ครั้งเดียว
+        const id = randomUUID();
+        const createdAt = new Date();
+        const sourceIp = normalizeIp(dto.sourceIp);
 
-        // Step 3: บันทึกลง PostgreSQL
-        const log = this.repo.create({
+        // Step 3: hash ครอบทุก field ที่เป็นหลักฐาน (message = ข้อความที่ mask แล้วเท่านั้น)
+        const rawHash = computeRawHash({
+            id,
             source: dto.source,
-            sourceIp: dto.sourceIp ?? null,
+            sourceIp,
+            eventType: dto.eventType,
+            severity: dto.severity,
+            message: masked,
+            classification: dto.classification,
+            cdeScope: dto.cdeScope ?? false,
+            createdAt,
+        });
+
+        // Step 4: บันทึกลง PostgreSQL (insert ครั้งเดียว — ไม่มี UPDATE ตามหลัง)
+        const saved = this.repo.create({
+            id,
+            source: dto.source,
+            sourceIp,
             eventType: dto.eventType,
             severity: dto.severity,
             message: masked,
@@ -49,10 +62,11 @@ export class LogService {
             classification: dto.classification,
             cdeScope: dto.cdeScope ?? false,
             retentionDays: dto.retentionDays ?? 365,
+            createdAt,
         });
-        const saved = await this.repo.save(log);
+        await this.repo.insert(saved);
 
-        // Step 4: ส่งไป Kafka เพื่อให้ Detection service วิเคราะห์
+        // Step 5: ส่งไป Kafka เพื่อให้ Detection service วิเคราะห์
         await this.kafka.publishLog({
             id: saved.id,
             source: saved.source,

@@ -8,6 +8,23 @@ import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
+import { computeRawHash } from '../logs/services/log-hash';
+
+/** log row ที่ rawHash ตรงกับเนื้อของตัวเอง — verify recompute hash จาก row ด้วย */
+function makeLog(id: string, createdAt: Date) {
+  const row = {
+    id,
+    source: 'unit-test',
+    sourceIp: null,
+    eventType: 'AUTH_FAILURE',
+    severity: 'INFO',
+    message: `log ${id}`,
+    classification: 'INTERNAL',
+    cdeScope: false,
+    createdAt,
+  };
+  return { ...row, rawHash: computeRawHash(row) };
+}
 
 /**
  * Stable multi-key sort that mimics TypeORM's `order` option.
@@ -35,6 +52,7 @@ describe('IntegrityService — Merkle determinism', () => {
   let batchStore: any[];
   let onChain: Map<string, string>;
   let checkRootSpy: jest.Mock;
+  let alertSaves: any[];
 
   beforeEach(async () => {
     // Same createdAt on every log, so the tie-break decides ordering.
@@ -42,15 +60,11 @@ describe('IntegrityService — Merkle determinism', () => {
     // createdAt-only sort would pair {a,c},{b,d} while the { createdAt, id }
     // sort pairs {a,b},{c,d} — a genuinely different Merkle tree.
     const t = new Date('2026-07-22T00:00:00.000Z');
-    logsStore = [
-      { id: 'a', rawHash: 'aa'.repeat(32), createdAt: t },
-      { id: 'c', rawHash: 'cc'.repeat(32), createdAt: t },
-      { id: 'b', rawHash: 'bb'.repeat(32), createdAt: t },
-      { id: 'd', rawHash: 'dd'.repeat(32), createdAt: t },
-    ];
+    logsStore = [makeLog('a', t), makeLog('c', t), makeLog('b', t), makeLog('d', t)];
     mappingStore = [];
     batchStore = [];
     onChain = new Map();
+    alertSaves = [];
 
     const logsRepo = {
       find: jest.fn(async (opts: any = {}) => {
@@ -112,7 +126,10 @@ describe('IntegrityService — Merkle determinism', () => {
     const alertsRepo = {
       findOne: jest.fn(async () => null),
       create: jest.fn((dto: any) => dto),
-      save: jest.fn(async (dto: any) => dto),
+      save: jest.fn(async (dto: any) => {
+        alertSaves.push(dto);
+        return dto;
+      }),
     };
 
     checkRootSpy = jest.fn(async (batchId: string, root: string) => {
@@ -173,6 +190,24 @@ describe('IntegrityService — Merkle determinism', () => {
       checkRootSpy.mock.results.map((r) => r.value),
     );
     expect(results.every((r) => r.result === 'MATCH')).toBe(true);
+  });
+
+  it('detects a row whose content no longer matches its own rawHash', async () => {
+    const batch = await service.sealBatch();
+    expect(batch!.status).toBe('CONFIRMED');
+
+    // จำลอง DB ถูกยึด: แก้ severity ทิ้ง raw_hash ไว้เหมือนเดิม
+    // root ที่ recompute จาก raw_hash ยังตรง chain — ต้องจับได้จาก rehash ของ row
+    const victim = logsStore.find((l) => l.id === 'b');
+    victim.severity = 'INFO';
+    victim.message = 'nothing happened here';
+
+    await service.verifyAllBatches();
+
+    expect(batch!.status).toBe('TAMPERED');
+    expect(alertSaves).toHaveLength(1);
+    expect(alertSaves[0].alertType).toBe('INTEGRITY_TAMPERED');
+    expect(alertSaves[0].detail.modifiedLogIds).toEqual(['b']);
   });
 
   it('produces a root determined by { createdAt, id } order, not insertion order', async () => {
