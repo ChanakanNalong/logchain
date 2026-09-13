@@ -23,6 +23,28 @@ Contract ที่ใช้ anchor: `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`
 
 ---
 
+## Hash Coverage — ขอบเขตของหลักฐานที่ถูกป้องกัน
+
+`raw_hash` ของแต่ละ log คำนวณด้วย SHA-256 ครอบ **ทุก field ที่เป็นหลักฐาน**:
+
+| Field | เหตุผลที่ต้องอยู่ใน hash |
+|---|---|
+| `id` | แยก log แต่ละรายการออกจากกัน แม้เนื้อหาเหมือนกัน |
+| `source` | ระบบต้นทางที่ส่ง log |
+| `sourceIp` | IP ต้นทาง — ป้องกันการปกปิดผู้กระทำ |
+| `eventType` | ประเภทเหตุการณ์ |
+| `severity` | ระดับความรุนแรง — ป้องกันการลดระดับเพื่อซ่อนเหตุการณ์ |
+| `message` | เนื้อหา log **หลังผ่าน PII masking แล้วเท่านั้น** |
+| `classification` | ชั้นความลับของข้อมูล |
+| `cdeScope` | อยู่ในขอบเขต Cardholder Data Environment หรือไม่ |
+| `createdAt` | เวลาเกิดเหตุ — ป้องกันการบิดเบือน timeline |
+
+**ผลของการครอบทุก field:** การแก้ไข metadata ใด ๆ ในฐานข้อมูล เช่น เปลี่ยน IP ต้นทาง ลดระดับ severity จาก CRITICAL เป็น INFO หรือแก้ timestamp จะทำให้ Merkle root ที่คำนวณใหม่ไม่ตรงกับที่บันทึกไว้บน blockchain และถูกตรวจพบเป็นสถานะ **TAMPERED** โดยอัตโนมัติ
+
+**PCI-DSS:** หมายเลขบัตร (PAN) ถูก mask **ก่อน** เข้า hash function เสมอ — PAN จริงไม่เคยถูก hash และไม่เคยถูกบันทึกลงฐานข้อมูล (Req. 3.4)
+
+---
+
 ## Custody Transfer Record
 
 | Transfer # | From | To | Date | Authorized By | Notes |
