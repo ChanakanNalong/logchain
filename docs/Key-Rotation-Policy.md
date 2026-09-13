@@ -73,6 +73,8 @@ rotate deployment key จริงก่อนส่งมอบ — contract �
 | Date | Secret Rotated | Rotated By | Notes |
 |------|----------------|------------|-------|
 | ______ | (initial) | ______ | Vault production mode setup |
+| 2026-08-18 | Keycloak `logchain-admin-svc` client secret | Chanakan | Regenerate → sync Vault + `.env` → restart backend; verified `GET /admin/users` = 200 |
+| 2026-09-06 | Blockchain deployment key | Chanakan | คีย์เดิมเคยแสดงเป็น plaintext ระหว่างพัฒนา → wallet ใหม่ + redeploy contract `0xE2502FC1…` + re-seal batch |
 
 ---
 
