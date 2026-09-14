@@ -42,7 +42,7 @@ const PAGE_TITLES = {
   ml: "ML Detection — DeepLog",
   dataset: "Dataset — HDFS_v1",
   verify: "Integrity verification",
-  reports: "Incident reports",
+  reports: "",
   settings: "Alerts & access",
 };
 
@@ -200,9 +200,11 @@ export default function App() {
                 >
                   LogChain · {active.label}
                 </div>
-                <h1 style={{ margin: "3px 0 0", fontSize: 24, fontWeight: 700, letterSpacing: "-0.015em", ...sansFont }}>
+                {PAGE_TITLES[activeId] && (
+                  <h1 style={{ margin: "3px 0 0", fontSize: 24, fontWeight: 700, letterSpacing: "-0.015em", ...sansFont }}>
                   {PAGE_TITLES[activeId]}
                 </h1>
+                  )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
