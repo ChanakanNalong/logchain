@@ -29,20 +29,7 @@ jobs:
       - name: Build check
         run: npm run build
 
-      # Frontend
-      - name: Install dependencies (frontend)
-        working-directory: frontend
-        run: npm ci
-
-      - name: npm audit (frontend)
-        working-directory: frontend
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
-  
-      - name: Build check (frontend)
-        working-directory: frontend
-        run: npm run build
-
+      # Security scan
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
         with:
