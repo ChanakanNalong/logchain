@@ -164,6 +164,25 @@ describe('StatsService', () => {
     expect(result.sealedLogs).toBe(200);
   });
 
+  // batch ที่ anchor ไม่สำเร็จไม่ใช่หลักฐานว่าข้อมูลถูกแก้ ถ้านับใน total
+  // dashboard จะขึ้น integrity ต่ำกว่า 100% ทั้งที่ tampered = 0
+  it('keeps integrity at 100% when a batch only FAILED to anchor', async () => {
+    batchQb._results = [
+      [
+        { status: 'CONFIRMED', count: '3', log_count: '13' },
+        { status: 'FAILED', count: '1', log_count: '1' },
+      ],
+    ];
+    logsQb._results = [[]];
+
+    const result = await service.getOverview();
+
+    expect(result.batches.total).toBe(3); // FAILED ไม่อยู่ในตัวหาร
+    expect(result.integrityRate).toBe(100);
+    expect(result.batches.tampered).toBe(0);
+    expect(result.batches.byStatus.FAILED).toBe(1); // แต่ยังเห็นว่ามี 1 ใบ
+  });
+
   it('returns all 24 hourly buckets including empty hours', async () => {
     batchQb._results = [[]];
     logsRepo.query.mockResolvedValue(
@@ -174,6 +193,21 @@ describe('StatsService', () => {
     const result = await service.getOverview();
     expect(result.traffic).toHaveLength(24);
     expect(result.traffic.every((b) => b.total === 0)).toBe(true);
+  });
+
+  // เทสอื่นๆ mock logsRepo.query ให้คืน row ที่มี field `total` อยู่แล้ว จึงไม่เคย
+  // แตะ SQL จริง — บั๊กที่ลืม `AS total` เลยหลุดผ่านมาได้ (Postgres ตั้งชื่อคอลัมน์
+  // ว่า "count" แล้ว row.total = undefined -> กราฟ 24h เป็นศูนย์ทั้งแถบ)
+  // เทสนี้เลยตรวจตัว SQL ตรงๆ ว่ายัง alias เป็น total อยู่
+  it('aliases the hourly COUNT as "total" so row.total is not undefined', async () => {
+    batchQb._results = [[]];
+    logsRepo.query.mockResolvedValue([]);
+    logsQb._results = [[]];
+
+    await service.getOverview();
+
+    const sql: string = logsRepo.query.mock.calls[0][0];
+    expect(sql).toMatch(/COUNT\(l\.id\)\s+AS\s+total/i);
   });
 
   it('maps anomaly type to numbers and excludes integrity alert', async () => {

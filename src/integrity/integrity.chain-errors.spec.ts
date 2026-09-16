@@ -123,6 +123,7 @@ describe('IntegrityService — chain write errors', () => {
       findOne: jest.fn(async () => null),
       create: jest.fn((dto: any) => dto),
       save: jest.fn(async (dto: any) => dto),
+      update: jest.fn(async () => ({ affected: 0 })),
     };
 
     const blockchain = {

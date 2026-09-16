@@ -80,9 +80,14 @@ export class StatsService {
     for (const row of rows) {
       const count = parseInt(row.count, 10) || 0;
       byStatus[row.status] = count;
-      total += count;
       // batch FAILED ตั้ง status แล้ว return ก่อนใส่ mapping — log_count มีแต่ไม่มี log ผูกจริง
+      // จึงต้องกันออกจากทั้ง sealedLogs และ total:
+      // total เป็นตัวหารของ integrityRate ถ้านับ FAILED ด้วย แค่ anchor พลาด
+      // (RPC ล่ม / gas ไม่พอ) ก็ทำให้ integrity ตกทั้งที่ไม่มีอะไรถูกแก้เลย
+      // -> dashboard จะขึ้น "integrity 75%" คู่กับ "0 tampered" ซึ่งขัดกันเอง
+      // ยังคง FAILED ไว้ใน byStatus เพื่อให้เห็นว่า anchor พลาดกี่ใบ
       if (row.status !== 'FAILED') {
+        total += count;
         sealedLogs += parseInt(row.log_count, 10) || 0;
       }
     }
@@ -95,17 +100,31 @@ export class StatsService {
     };
   }
 
-  /** จำนวน log ต่อชั่วโมงย้อนหลัง 24 ชม. — ชั่วโมงที่ไม่มี log จะไม่มีแถว */
+  /**
+   * จำนวน log ต่อชั่วโมงย้อนหลัง 24 ชม.
+   * generate_series + LEFT JOIN => ได้ครบ 24 แถวเสมอ ชั่วโมงที่ไม่มี log จะเป็น 0
+   * (ไม่ใช่ "ไม่มีแถว") กราฟฝั่ง dashboard จึงไม่ขาดช่วง
+   *
+   * COUNT(l.id) ต้องมี `AS total` — ไม่งั้น Postgres ตั้งชื่อคอลัมน์ว่า "count"
+   * แล้ว row.total เป็น undefined -> parseInt(undefined) = NaN -> ตกไปเป็น 0 ทุกชั่วโมง
+   * (กราฟ 24h จะแบนเป็นศูนย์ทั้งแถบทั้งที่มี log จริง)
+   *
+   * bucket เป็น **UTC** แบบบังคับด้วย `AT TIME ZONE 'UTC'` ไม่ปล่อยตาม session
+   * timezone ของ DB — ฝั่ง dashboard ติดป้าย "last 24h (UTC)" ไว้ ถ้าใครตั้ง TZ
+   * ใหม่แล้ว bucket เลื่อนตาม ป้ายนั้นจะกลายเป็นคำโกหกทันที
+   * (หมายเหตุ: นาฬิกาบนหัวแอปเป็น ICT = UTC+7 คนละโซนกับกราฟนี้โดยตั้งใจ)
+   */
   private async getTrafficLast24h() {
     const rows = await this.logsRepo.query(`
       SELECT to_char(hours.h, 'HH24:00') AS h,
-              COUNT(l.id)
+              COUNT(l.id) AS total
       FROM generate_series(
-              date_trunc('hour', now() - interval '23 hours'),
-              date_trunc('hour', now()),
+              date_trunc('hour', (now() AT TIME ZONE 'UTC') - interval '23 hours'),
+              date_trunc('hour', (now() AT TIME ZONE 'UTC')),
               interval '1 hour'
           ) AS hours(h)
-      LEFT JOIN logs l ON date_trunc('hour', l.created_at) = hours.h
+      LEFT JOIN logs l
+             ON date_trunc('hour', l.created_at AT TIME ZONE 'UTC') = hours.h
       GROUP BY hours.h
       ORDER BY hours.h ASC;
     `);

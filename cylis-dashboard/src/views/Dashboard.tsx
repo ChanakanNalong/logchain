@@ -124,6 +124,10 @@ export default function Dashboard() {
   const kpis = buildKpis(overview);
   const traffic = overview.traffic ?? [];
   const topSources = overview.topSources ?? [];
+  // /stats/overview builds the 24h series with generate_series + LEFT JOIN, so it
+  // always returns 24 buckets — an empty day comes back as 24 zeros, not as [].
+  // Checking length alone would render a blank chart instead of saying why.
+  const hasTraffic = traffic.some((b) => b.total > 0);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -149,14 +153,14 @@ export default function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <SectionLabel>Log volume — last 24h</SectionLabel>
+            <SectionLabel>Log volume — last 24h (UTC)</SectionLabel>
             <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: t.muted, ...sansFont, fontWeight: 500 }}>
               <span style={{ width: 7, height: 7, borderRadius: 3, background: t.blue2, boxShadow: `0 0 6px ${t.blue2}` }} />
               Events per hour
             </span>
           </div>
           <div style={{ height: 230, marginTop: 18 }}>
-            {traffic.length === 0 ? (
+            {!hasTraffic ? (
               placeholder("No logs ingested in the last 24 hours")
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -206,6 +210,7 @@ export default function Dashboard() {
                     }}
                     labelStyle={{ color: t.text, ...sansFont, fontWeight: 600 }}
                     formatter={(val, name) => [val, name === "total" ? "Events" : name]}
+                    labelFormatter={(h) => `${h} UTC`}
                   />
                   <Bar dataKey="total" shape={(props) => <PillBar {...props} fill="url(#pillGrad)" />} filter="url(#pillGlow)" />
                 </BarChart>

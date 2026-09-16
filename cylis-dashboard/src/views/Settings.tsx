@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Lock, X, Plus, Power, RefreshCw, LogIn } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Badge, Button, Th, Td } from "@/components/ui";
-import { alertConfig, rbacRoles } from "@/data/mockData";
+import { alertConfig, rbacRoles } from "@/data/referenceData";
 import { api } from "@/lib/api";
 import { keycloak } from "@/lib/keycloak";
 

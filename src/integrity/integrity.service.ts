@@ -207,11 +207,19 @@ export class IntegrityService {
           batch.status = 'UNVERIFIED';
           await this.batchesRepo.save(batch);
         }
-      } else if (batch.status !== 'CONFIRMED') {
-        // เคย unverifiable แต่ตอนนี้ verify ผ่าน → กลับเป็น CONFIRMED
-        this.logger.log(`Batch ${batch.id} re-verified (${batch.status} → CONFIRMED)`);
-        batch.status = 'CONFIRMED';
-        await this.batchesRepo.save(batch);
+      } else {
+        // verify ผ่าน (root ตรง chain + ทุก row ตรง raw_hash ของตัวเอง)
+        if (batch.status !== 'CONFIRMED') {
+          // เคย unverifiable/tampered แต่ตอนนี้ verify ผ่าน → กลับเป็น CONFIRMED
+          this.logger.log(`Batch ${batch.id} re-verified (${batch.status} → CONFIRMED)`);
+          batch.status = 'CONFIRMED';
+          await this.batchesRepo.save(batch);
+        }
+        // ปิด alert เก่าที่ยังค้างอยู่เสมอ ไม่ใช่เฉพาะตอนเพิ่งเปลี่ยน status —
+        // batch ที่เคย TAMPERED แล้วถูกแก้กลับจะกลายเป็น CONFIRMED ตั้งแต่รอบก่อน
+        // ทำให้เงื่อนไขด้านบนไม่เข้า และ alert ค้าง OPEN อยู่บน batch ที่ CONFIRMED
+        // (dashboard เลยโชว์ integrity 100% พร้อม tamper alert ที่ไม่มีวันหาย)
+        await this.resolveTamperAlerts(batch);
       }
     }
   }
@@ -274,14 +282,30 @@ async reanchorUnverified(): Promise<void> {
     return logs.map(l => l.rawHash);
   }
 
+  /** ปิด INTEGRITY_TAMPERED ที่ยังค้างของ batch ที่ verify ผ่านแล้ว */
+  private async resolveTamperAlerts(batch: Batch): Promise<void> {
+    const { affected } = await this.alertsRepo.update(
+      { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED', status: 'OPEN' },
+      { status: 'RESOLVED' },
+    );
+    if (affected) {
+      this.logger.log(
+        `Batch ${batch.id} verified clean — resolved ${affected} stale INTEGRITY_TAMPERED alert(s)`,
+      );
+    }
+  }
+
   private async raiseTamperAlert(
     batch: Batch,
     recomputedRoot: string,
     onChainRoot: string,
     modifiedLogs: Log[] = [],
   ): Promise<void> {
+    // ต้องกรอง status: 'OPEN' ด้วย — ถ้าเช็คแค่ batchId+alertType ตัว alert ที่ถูก
+    // resolve ไปแล้วจะบล็อกการแจ้งเตือนรอบใหม่ตลอดไป แปลว่า batch ที่เคยถูกแก้
+    // แล้วแก้ซ้ำอีกครั้งจะเงียบสนิท
     const existing = await this.alertsRepo.findOne({
-      where: { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED' },
+      where: { batchId: batch.id, alertType: 'INTEGRITY_TAMPERED', status: 'OPEN' },
     });
     if (existing) return;
 

@@ -26,9 +26,9 @@ export default function LogTable({ logs }: any) {
               <Td>{r.event}</Td>
               <Td style={{ color: t.muted }}>{r.attackType}</Td>
               <Td>
-                <Badge tone={r.sev}>
-                  {r.sev === "danger" ? "high" : r.sev === "warn" ? "med" : "low"}
-                </Badge>
+                {/* show the severity the backend actually stored (CRITICAL / WARNING /
+                    INFO / …); `sev` only picks the colour, it is not the label */}
+                <Badge tone={r.sev}>{r.severity ?? "—"}</Badge>
               </Td>
             </tr>
           ))}

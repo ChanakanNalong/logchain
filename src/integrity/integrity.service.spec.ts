@@ -124,11 +124,29 @@ describe('IntegrityService — Merkle determinism', () => {
     };
 
     const alertsRepo = {
-      findOne: jest.fn(async () => null),
+      // dedup ต้องเห็น alert ที่เคยบันทึกไว้จริง ไม่ใช่คืน null ตลอด
+      findOne: jest.fn(async ({ where }: any) =>
+        alertSaves.find(
+          (a: any) =>
+            a.batchId === where.batchId &&
+            a.alertType === where.alertType &&
+            (where.status === undefined || a.status === where.status),
+        ) ?? null,
+      ),
       create: jest.fn((dto: any) => dto),
       save: jest.fn(async (dto: any) => {
         alertSaves.push(dto);
         return dto;
+      }),
+      update: jest.fn(async (where: any, patch: any) => {
+        const hit = alertSaves.filter(
+          (a: any) =>
+            a.batchId === where.batchId &&
+            a.alertType === where.alertType &&
+            (where.status === undefined || a.status === where.status),
+        );
+        hit.forEach((a: any) => Object.assign(a, patch));
+        return { affected: hit.length };
       }),
     };
 
@@ -208,6 +226,38 @@ describe('IntegrityService — Merkle determinism', () => {
     expect(alertSaves).toHaveLength(1);
     expect(alertSaves[0].alertType).toBe('INTEGRITY_TAMPERED');
     expect(alertSaves[0].detail.modifiedLogIds).toEqual(['b']);
+  });
+
+  it('closes the tamper alert once the batch verifies clean again, and re-alerts on a second tamper', async () => {
+    const batch = await service.sealBatch();
+    const victim = logsStore.find((l) => l.id === 'b');
+    const original = { severity: victim.severity, message: victim.message };
+
+    // 1) แก้ row -> ต้องจับได้ + เปิด alert
+    victim.severity = 'INFO';
+    victim.message = 'nothing happened here';
+    await service.verifyAllBatches();
+    expect(batch!.status).toBe('TAMPERED');
+    expect(alertSaves).toHaveLength(1);
+    expect(alertSaves[0].status).toBe('OPEN');
+
+    // 2) แก้กลับให้ตรง hash เดิม -> batch กลับเป็น CONFIRMED และ alert ต้องถูกปิด
+    victim.severity = original.severity;
+    victim.message = original.message;
+    await service.verifyAllBatches();
+    expect(batch!.status).toBe('CONFIRMED');
+    expect(alertSaves[0].status).toBe('RESOLVED');
+
+    // รอบถัดไปที่ยัง clean อยู่ ต้องไม่เปิด alert ใหม่
+    await service.verifyAllBatches();
+    expect(alertSaves).toHaveLength(1);
+
+    // 3) โดนแก้ซ้ำอีกรอบ -> ต้องได้ alert ใบใหม่ ไม่ถูก dedup ของใบเก่าที่ปิดไปแล้วกลืน
+    victim.message = 'tampered again';
+    await service.verifyAllBatches();
+    expect(batch!.status).toBe('TAMPERED');
+    expect(alertSaves).toHaveLength(2);
+    expect(alertSaves[1].status).toBe('OPEN');
   });
 
   it('produces a root determined by { createdAt, id } order, not insertion order', async () => {

@@ -3,26 +3,51 @@ import { Target, TrendingUp, Activity, Brain } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Badge, Th, Td } from "@/components/ui";
 import { api } from "@/lib/api";
+import { DEEPLOG_TOP_G, DEEPLOG_WINDOW_SIZE } from "@/data/referenceData";
 
 /**
  * Offline benchmark result — DeepLog trained on HDFS_v1 (seed=42).
  * These numbers are baked into the build on purpose: they describe the model's
  * evaluation run, NOT anything the running system has measured. Section 3 below
  * is the only part of this page that reflects live runtime state.
+ *
+ * Reproduced on 2026-09-14 by running `python detect.py` in the sibling
+ * `logchain-detection` checkout (CUDA, SEED=42, g=TOP_K_G=8):
+ *
+ *      g |     TP     FP     FN       TN | precision  Recall      F1
+ *      8 |   9488    258   7350   446321 |    0.9735  0.5635  0.7138
+ *
+ * The counts reconcile exactly with the labelled test set:
+ *   TP+FN = 9488+7350 = 16,838 abnormal blocks  (data/test_abnormal.txt)
+ *   FP+TN =  258+446321 = 446,579 normal blocks (data/test_normal.txt)
+ *
+ * g=8 is genuinely the best of the CANDIDATES_G detect.py sweeps:
+ *      9 |   9271    189   7567   446390 |    0.9800  0.5506  0.7051
+ *     10 |   9058    139   7780   446440 |    0.9849  0.5379  0.6958
+ *
+ * The "Key insight" box below is from an ablation over the same model/seed,
+ * flipping only the short-sequence branch (detect.py:60):
+ *   short-seq => anomaly : TP=9488 FP=258 FN=7350  F1=0.7138
+ *   short-seq => normal  : TP=3297 FP=258 FN=13541 F1=0.3233
+ * It works because 6,191/16,838 abnormal blocks are shorter than WINDOW_SIZE+1
+ * while 0/446,579 normal blocks are — free true positives, zero extra false
+ * positives. (The page used to claim 0.35; the measured value is 0.3233.)
  */
 const TRAINING = {
   dataset: "HDFS_v1",
   f1: "0.7138",
   precision: "0.9735",
   recall: "0.5635",
-  confusion: { tp: 412, fp: 11, fn: 319, tn: 8201 },
+  confusion: { tp: 9488, fp: 258, fn: 7350, tn: 446321 },
+  topG: DEEPLOG_TOP_G,
+  windowSize: DEEPLOG_WINDOW_SIZE,
 };
 
 const metricCards = [
   { l: "F1 Score", v: TRAINING.f1, sub: `seed=42, ${TRAINING.dataset}`, icon: TrendingUp, tone: "good" },
   { l: "Precision", v: TRAINING.precision, sub: "TP/(TP+FP)", icon: Target, tone: "blue" },
   { l: "Recall", v: TRAINING.recall, sub: "TP/(TP+FN)", icon: Activity, tone: "warn" },
-  { l: "Model", v: "DeepLog", sub: "LSTM · window=10", icon: Brain, tone: "cyan" },
+  { l: "Model", v: "DeepLog", sub: `LSTM · window=${DEEPLOG_WINDOW_SIZE} · top-${DEEPLOG_TOP_G}`, icon: Brain, tone: "cyan" },
 ];
 
 /**
@@ -77,7 +102,13 @@ const DETECTION_CAPABILITY = [
     group: "Machine learning",
     kind: "ml",
     tone: "cyan",
-    rules: [{ id: "DeepLog", desc: "Sequence anomaly detection (LSTM)", severity: "ML" }],
+    rules: [
+      {
+        id: "DeepLog",
+        desc: `Sequence anomaly detection (LSTM, window=${DEEPLOG_WINDOW_SIZE}, next event outside top-${DEEPLOG_TOP_G})`,
+        severity: "ML",
+      },
+    ],
   },
 ];
 
@@ -190,8 +221,14 @@ export default function MLDetection() {
           </div>
           <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 9 }}>
             <div style={{ fontSize: 11, color: t.muted, ...sansFont }}>
-              Key insight — เปลี่ยน <span style={{ color: t.cyan, ...monoFont }}>short_sequence=True</span> ทำให้ F1 จาก{" "}
-              <span style={{ color: t.danger }}>0.35</span> → <span style={{ color: t.good }}>0.71</span>
+              Key insight — นับ sequence ที่สั้นกว่า window (
+              <span style={{ color: t.cyan, ...monoFont }}>len &lt; {TRAINING.windowSize + 1}</span>) เป็น anomaly
+              ทำให้ F1 จาก <span style={{ color: t.danger }}>0.3233</span> →{" "}
+              <span style={{ color: t.good }}>0.7138</span>
+              <div style={{ marginTop: 4 }}>
+                เพราะ block ที่สั้นเป็น anomaly <b>6,191 จาก 16,838</b> ตัว แต่ฝั่ง normal{" "}
+                <b>0 จาก 446,579</b> ตัว — กฎนี้เลยได้ TP ฟรีโดยไม่เพิ่ม FP เลย (FP คงที่ 258 ทั้งสองแบบ)
+              </div>
             </div>
           </div>
         </div>

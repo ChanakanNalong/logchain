@@ -1,10 +1,24 @@
 /** Shared shaping of `GET /logs` rows into what LogTable renders. */
 
+/**
+ * Map a backend severity to a Badge colour.
+ *
+ * The only values the API can store are the CreateLogDto enum
+ * (src/logs/dto/create-log.dto.ts): DEBUG | INFO | WARNING | ERROR | CRITICAL.
+ * ERROR has to land on "danger" — it used to fall through to "good" and render
+ * an error-level log green. HIGH/MEDIUM are deliberately gone: they were never
+ * backend values, only labels from the old mock rows.
+ */
 export function toTone(sev: string): string {
-  const s = (sev ?? "").toUpperCase();
-  if (s === "CRITICAL" || s === "HIGH") return "danger";
-  if (s === "WARNING" || s === "MEDIUM") return "warn";
-  return "good";
+  switch ((sev ?? "").toUpperCase()) {
+    case "CRITICAL":
+    case "ERROR":
+      return "danger";
+    case "WARNING":
+      return "warn";
+    default: // DEBUG | INFO | anything unrecognised
+      return "good";
+  }
 }
 
 export function mapLog(l: any) {

@@ -8,7 +8,7 @@ export class IntegritySchedule {
 
     constructor(private readonly integrity: IntegrityService) {}
 
-    // seal batch ทุก 30 นาที
+    // seal batch ทุก 1 นาที (CronExpression.EVERY_MINUTE)
     @Cron(CronExpression.EVERY_MINUTE)
     async handleSealBatch() {
         try {
