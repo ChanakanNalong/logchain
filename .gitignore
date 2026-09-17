@@ -72,3 +72,6 @@ infra/kafka/certs/
 .env.bak*
 .env*.bak
 .secrets/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
