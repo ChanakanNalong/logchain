@@ -22,7 +22,9 @@ export class RetentionService {
   async runRetention() {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
-    this.logger.log(`Running retention: deleting records before ${cutoff.toISOString()}`);
+    this.logger.log(
+      `Running retention: deleting records before ${cutoff.toISOString()}`,
+    );
 
     const deletedAlerts = await this.alertRepo.delete({
       createdAt: LessThan(cutoff),

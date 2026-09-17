@@ -1,44 +1,47 @@
 import {
-    Entity, PrimaryGeneratedColumn, Column,
-    CreateDateColumn, Index,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('logs')
 export class Log {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
-    
-    @Index()
-    @Column({ length: 128 })
-    source: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column({ name: 'source_id', type: 'inet', nullable: true })
-    sourceIp: string | null;
+  @Index()
+  @Column({ length: 128 })
+  source: string;
 
-    @Column({ name: 'event_type', length: 64 })
-    eventType: string;
+  @Column({ name: 'source_id', type: 'inet', nullable: true })
+  sourceIp: string | null;
 
-    @Index()
-    @Column({ length:16, default: 'INFO' })
-    severity: string;
+  @Column({ name: 'event_type', length: 64 })
+  eventType: string;
 
-    @Column({ type: 'text' })
-    message: string;
+  @Index()
+  @Column({ length: 16, default: 'INFO' })
+  severity: string;
 
-    @Column({ name: 'raw_hash', type: 'char', length: 64 })
-    rawHash: string;
+  @Column({ type: 'text' })
+  message: string;
 
-    @Column({ length: 16, default: 'INTERNAL' })
-    classification: string;
+  @Column({ name: 'raw_hash', type: 'char', length: 64 })
+  rawHash: string;
 
-    @Column({ name: 'retention_days', default: 365 })
-    retentionDays: number;
+  @Column({ length: 16, default: 'INTERNAL' })
+  classification: string;
 
-    @Index()
-    @Column({ name: 'cde_scope', default: false })
-    cdeScope: boolean;
+  @Column({ name: 'retention_days', default: 365 })
+  retentionDays: number;
 
-    @Index()
-    @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-    createdAt: Date;
+  @Index()
+  @Column({ name: 'cde_scope', default: false })
+  cdeScope: boolean;
+
+  @Index()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
 }

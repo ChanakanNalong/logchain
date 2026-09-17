@@ -65,7 +65,11 @@ export class VaultService implements OnModuleInit {
     await this.fetchAllSecrets();
   }
 
-  private async loginWithRetry(roleId: string, secretId: string, maxAttempts: number) {
+  private async loginWithRetry(
+    roleId: string,
+    secretId: string,
+    maxAttempts: number,
+  ) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const result = await this.client.approleLogin({
@@ -73,12 +77,18 @@ export class VaultService implements OnModuleInit {
           secret_id: secretId,
         });
         this.client.token = result.auth.client_token;
-        this.logger.log(`Vault login OK (attempt ${attempt}, ttl=${result.auth.lease_duration}s)`);
+        this.logger.log(
+          `Vault login OK (attempt ${attempt}, ttl=${result.auth.lease_duration}s)`,
+        );
         return;
       } catch (err: any) {
-        this.logger.warn(`Vault login failed (attempt ${attempt}/${maxAttempts}): ${err.message}`);
+        this.logger.warn(
+          `Vault login failed (attempt ${attempt}/${maxAttempts}): ${err.message}`,
+        );
         if (attempt === maxAttempts) {
-          throw new Error(`Vault login failed after ${maxAttempts} attempts - app cannot start`);
+          throw new Error(
+            `Vault login failed after ${maxAttempts} attempts - app cannot start`,
+          );
         }
         await new Promise((r) => setTimeout(r, 2000 * attempt));
       }
@@ -116,15 +126,21 @@ export class VaultService implements OnModuleInit {
         },
       };
 
-      this.logger.log('Vault secrets loaded (database, keycloak, blockchain, notification)');
+      this.logger.log(
+        'Vault secrets loaded (database, keycloak, blockchain, notification)',
+      );
     } catch (err: any) {
-      throw new Error(`Vault secret fetch failed - app cannot start: ${err.message}`);
+      throw new Error(
+        `Vault secret fetch failed - app cannot start: ${err.message}`,
+      );
     }
   }
 
   get(): LogChainSecrets {
     if (!this.secrets) {
-      throw new Error('Vault secrets not loaded - VaultService.onModuleInit did not complete');
+      throw new Error(
+        'Vault secrets not loaded - VaultService.onModuleInit did not complete',
+      );
     }
     return this.secrets;
   }

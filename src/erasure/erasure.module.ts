@@ -8,7 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([AuditAccess]),
-    AuthModule,  // RolesGuard + JwtStrategy
+    AuthModule, // RolesGuard + JwtStrategy
   ],
   controllers: [ErasureController],
   providers: [ErasureService],

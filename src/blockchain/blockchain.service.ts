@@ -1,15 +1,15 @@
-import { Injectable,Logger, OnModuleInit } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { ethers } from "ethers";
-import { VaultService } from "../vault/vault.service";
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ethers } from 'ethers';
+import { VaultService } from '../vault/vault.service';
 
 // ABI แบบ minimal — แค่ 3 function ที่ใช้จริง
 // รูปแบบนี้เรียก "Human-Readable ABI" ของ ethers
 const CONTRACT_ABI = [
-    'function storeRoot(bytes32 batch, bytes32 root) external',
-    'function verifyRoot(bytes32 batch, bytes32 root) external view returns (bool)',
-    'function getRoot(bytes32 batch) external view returns (bytes32 root, uint256 timestamp)',
-    'event RootStored(bytes32 indexed batch, bytes32 root, uint256 timestamp)',
+  'function storeRoot(bytes32 batch, bytes32 root) external',
+  'function verifyRoot(bytes32 batch, bytes32 root) external view returns (bool)',
+  'function getRoot(bytes32 batch) external view returns (bytes32 root, uint256 timestamp)',
+  'event RootStored(bytes32 indexed batch, bytes32 root, uint256 timestamp)',
 ];
 
 /**
@@ -17,9 +17,9 @@ const CONTRACT_ABI = [
  * confirmed=false = tx ส่งไปแล้วแต่ยังไม่ถูก mine ในเวลาที่รอ (มี txHash ให้ตามต่อได้)
  */
 export interface StoreRootResult {
-    txHash: string;
-    blockNumber: number | null;
-    confirmed: boolean;
+  txHash: string;
+  blockNumber: number | null;
+  confirmed: boolean;
 }
 
 /**
@@ -43,100 +43,102 @@ export type ChainWriteError = 'ROOT_EXISTS' | 'NOT_AUTHORIZED' | 'OTHER';
 export const DEFAULT_TX_TIMEOUT_MS = 120_000;
 
 export function classifyChainError(err: unknown): ChainWriteError {
-    const e = err as any;
-    // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
-    const text = [e?.reason, e?.shortMessage, e?.revert?.args?.[0], e?.message]
-        .filter((v) => typeof v === 'string')
-        .join(' | ')
-        .toLowerCase();
+  const e = err as any;
+  // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
+  const text = [e?.reason, e?.shortMessage, e?.revert?.args?.[0], e?.message]
+    .filter((v) => typeof v === 'string')
+    .join(' | ')
+    .toLowerCase();
 
-    if (text.includes('root already exists')) return 'ROOT_EXISTS';
-    if (text.includes('not authorized')) return 'NOT_AUTHORIZED';
-    return 'OTHER';
+  if (text.includes('root already exists')) return 'ROOT_EXISTS';
+  if (text.includes('not authorized')) return 'NOT_AUTHORIZED';
+  return 'OTHER';
 }
 
 @Injectable()
 export class BlockchainService implements OnModuleInit {
-    private readonly logger = new Logger(BlockchainService.name);
-    private provider: ethers.JsonRpcProvider;
-    private wallet: ethers.NonceManager;
-    private contract: ethers.Contract;
-    private isReady = false;
-    /** เพดานเวลารอ tx confirm — public RPC ช้ากว่า Hardhat มาก ปล่อยรอไม่มีเพดานไม่ได้ */
-    private txTimeoutMs = DEFAULT_TX_TIMEOUT_MS;
+  private readonly logger = new Logger(BlockchainService.name);
+  private provider: ethers.JsonRpcProvider;
+  private wallet: ethers.NonceManager;
+  private contract: ethers.Contract;
+  private isReady = false;
+  /** เพดานเวลารอ tx confirm — public RPC ช้ากว่า Hardhat มาก ปล่อยรอไม่มีเพดานไม่ได้ */
+  private txTimeoutMs = DEFAULT_TX_TIMEOUT_MS;
 
-    constructor(
-      private readonly configService: ConfigService,
-      private readonly vaultService: VaultService,
-    ) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly vaultService: VaultService,
+  ) {}
 
-    async onModuleInit() {
-        // private key มาจาก Vault ไม่ใช่ .env แล้ว
-        const pk = this.vaultService.get().blockchain.privateKey;
-        const address = this.configService.get<string>('CONTRACT_ADDRESS');
+  async onModuleInit() {
+    // private key มาจาก Vault ไม่ใช่ .env แล้ว
+    const pk = this.vaultService.get().blockchain.privateKey;
+    const address = this.configService.get<string>('CONTRACT_ADDRESS');
 
-        if (!pk || !address) {
-            this.logger.warn('Blockchain config missing - integrity disabled');
-            return;
-        }
+    if (!pk || !address) {
+      this.logger.warn('Blockchain config missing - integrity disabled');
+      return;
+    }
 
-        // มี key + contract แล้ว = ตั้งใจเปิด integrity — RPC หายคือ misconfig
-        // fail ตอน boot ดีกว่า fallback ไป 127.0.0.1:8545 เงียบ ๆ
-        // แล้วนึกว่า anchor ขึ้น Amoy อยู่ (หลักเดียวกับ buildKafkaSsl)
-        const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL');
-        if (!rpcUrl) {
-            throw new Error(
-                'BLOCKCHAIN_RPC_URL is required when CONTRACT_ADDRESS is set ' +
-                    '(e.g. https://polygon-amoy-bor-rpc.publicnode.com)',
-            );
-        }
+    // มี key + contract แล้ว = ตั้งใจเปิด integrity — RPC หายคือ misconfig
+    // fail ตอน boot ดีกว่า fallback ไป 127.0.0.1:8545 เงียบ ๆ
+    // แล้วนึกว่า anchor ขึ้น Amoy อยู่ (หลักเดียวกับ buildKafkaSsl)
+    const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL');
+    if (!rpcUrl) {
+      throw new Error(
+        'BLOCKCHAIN_RPC_URL is required when CONTRACT_ADDRESS is set ' +
+          '(e.g. https://polygon-amoy-bor-rpc.publicnode.com)',
+      );
+    }
 
-        // ethers ไม่ validate address ตอน new Contract() — ถ้าไม่ใช่ hex address
-        // มันจะตีเป็น ENS name แล้วไป resolve ตอนเรียก function ครั้งแรก
-        // Amoy ไม่รองรับ ENS → reject หลุดออกมาจาก cron เป็น unhandled rejection
-        // แล้ว process ตายทีหลัง boot ไปแล้ว (หลักเดียวกับ BLOCKCHAIN_RPC_URL)
-        if (!ethers.isAddress(address)) {
-            throw new Error(
-                `CONTRACT_ADDRESS is not a valid address: "${address}" ` +
-                    '(expected 0x + 40 hex chars)',
-            );
-        }
+    // ethers ไม่ validate address ตอน new Contract() — ถ้าไม่ใช่ hex address
+    // มันจะตีเป็น ENS name แล้วไป resolve ตอนเรียก function ครั้งแรก
+    // Amoy ไม่รองรับ ENS → reject หลุดออกมาจาก cron เป็น unhandled rejection
+    // แล้ว process ตายทีหลัง boot ไปแล้ว (หลักเดียวกับ BLOCKCHAIN_RPC_URL)
+    if (!ethers.isAddress(address)) {
+      throw new Error(
+        `CONTRACT_ADDRESS is not a valid address: "${String(address)}" ` +
+          '(expected 0x + 40 hex chars)',
+      );
+    }
 
-        try {
-            // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
-            //
-            // ต้องล็อค network ไว้ (staticNetwork) ไม่งั้น ethers จะ re-detect เอง
-            // เบื้องหลังทุกครั้งที่ RPC ตอบช้า/พลาด แล้ว error จาก retry loop นั้น
-            // ไม่ผูกกับ promise ที่เรา await -> หลุดเป็น uncaught exception ฆ่าทั้ง
-            // process (เจอจริงบน public RPC: "failed to detect network ... TIMEOUT")
-            // ล็อคแล้ว RPC พลาดจะ reject ในสาย await ปกติ ให้ try/catch ของ
-            // sealPendingLogs จัดการ: batch เป็น FAILED แล้วรอบ cron ถัดไป retry
-            const probe = new ethers.JsonRpcProvider(rpcUrl);
-            const network = await probe.getNetwork();
-            probe.destroy();
+    try {
+      // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
+      //
+      // ต้องล็อค network ไว้ (staticNetwork) ไม่งั้น ethers จะ re-detect เอง
+      // เบื้องหลังทุกครั้งที่ RPC ตอบช้า/พลาด แล้ว error จาก retry loop นั้น
+      // ไม่ผูกกับ promise ที่เรา await -> หลุดเป็น uncaught exception ฆ่าทั้ง
+      // process (เจอจริงบน public RPC: "failed to detect network ... TIMEOUT")
+      // ล็อคแล้ว RPC พลาดจะ reject ในสาย await ปกติ ให้ try/catch ของ
+      // sealPendingLogs จัดการ: batch เป็น FAILED แล้วรอบ cron ถัดไป retry
+      const probe = new ethers.JsonRpcProvider(rpcUrl);
+      const network = await probe.getNetwork();
+      probe.destroy();
 
-            this.provider = new ethers.JsonRpcProvider(rpcUrl, network, {
-                staticNetwork: network,
-            });
-            // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
-            this.wallet = new ethers.NonceManager(new ethers.Wallet(pk, this.provider));
-            // contract instance - ผูก address + ABI + wallet
-            this.contract = new ethers.Contract(address, CONTRACT_ABI, this.wallet);
+      this.provider = new ethers.JsonRpcProvider(rpcUrl, network, {
+        staticNetwork: network,
+      });
+      // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
+      this.wallet = new ethers.NonceManager(
+        new ethers.Wallet(pk, this.provider),
+      );
+      // contract instance - ผูก address + ABI + wallet
+      this.contract = new ethers.Contract(address, CONTRACT_ABI, this.wallet);
 
-            this.txTimeoutMs =
-                Number(this.configService.get<string>('BLOCKCHAIN_TX_TIMEOUT_MS')) ||
-                DEFAULT_TX_TIMEOUT_MS;
+      this.txTimeoutMs =
+        Number(this.configService.get<string>('BLOCKCHAIN_TX_TIMEOUT_MS')) ||
+        DEFAULT_TX_TIMEOUT_MS;
 
-            this.isReady = true;
-            this.logger.log(
-                `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms`,
-            );
-        } catch (err) {
-            this.logger.error('Blockchain init failed', err);
-        }
-}
+      this.isReady = true;
+      this.logger.log(
+        `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms`,
+      );
+    } catch (err) {
+      this.logger.error('Blockchain init failed', err);
+    }
+  }
 
-/**
+  /**
    * แปลง string เป็น bytes32 (รูปแบบที่ contract ต้องการ)
    * ใช้ keccak256 hash ของ string
    */
@@ -144,40 +146,51 @@ export class BlockchainService implements OnModuleInit {
     return ethers.id(value); // ethers.id() = keccak256(utf8Bytes(value))
   }
 
-  /**   
+  /**
    * เก็บ Merkle root ของ batch ขึ้น blockchain
    * @returns transaction hash + block number
    */
-    async storeRoot(batchId: string, merkleRoot: string): Promise<StoreRootResult> {
-        if (!this.isReady) throw new Error('Blockchain not ready');
+  async storeRoot(
+    batchId: string,
+    merkleRoot: string,
+  ): Promise<StoreRootResult> {
+    if (!this.isReady) throw new Error('Blockchain not ready');
 
-        const batchBytes = this.toBytes32(batchId);
-        // merkleRoot จาก merkletreejs เป็น '0x...' อยู่แล้ว ใช้ตรงๆ ได้
-        const rootBytes = merkleRoot.startsWith('0x') ? merkleRoot : '0x' + merkleRoot;
+    const batchBytes = this.toBytes32(batchId);
+    // merkleRoot จาก merkletreejs เป็น '0x...' อยู่แล้ว ใช้ตรงๆ ได้
+    const rootBytes = merkleRoot.startsWith('0x')
+      ? merkleRoot
+      : '0x' + merkleRoot;
 
-        this.logger.log(`Storing root for batch ${batchId}...`);
-        const tx = await this.contract.storeRoot(batchBytes, rootBytes);
+    this.logger.log(`Storing root for batch ${batchId}...`);
+    const tx = await this.contract.storeRoot(batchBytes, rootBytes);
 
-        // ถึงตรงนี้ tx ถูกส่งขึ้น chain แล้ว — hash ใช้ตามรอยได้เสมอ ต่อให้รอ confirm ไม่ทัน
-        try {
-            // รอ transaction ถูก mine (confirm) ก่อน — มีเพดานเวลา ไม่รอไม่จำกัด
-            const receipt = await tx.wait(1, this.txTimeoutMs);
-            this.logger.log(`Root stored tx=${receipt.hash} block=${receipt.blockNumber}`);
-            return { txHash: receipt.hash, blockNumber: receipt.blockNumber, confirmed: true };
-        } catch (err: any) {
-            if (err?.code !== 'TIMEOUT') throw err;
+    // ถึงตรงนี้ tx ถูกส่งขึ้น chain แล้ว — hash ใช้ตามรอยได้เสมอ ต่อให้รอ confirm ไม่ทัน
+    try {
+      // รอ transaction ถูก mine (confirm) ก่อน — มีเพดานเวลา ไม่รอไม่จำกัด
+      const receipt = await tx.wait(1, this.txTimeoutMs);
+      this.logger.log(
+        `Root stored tx=${receipt.hash} block=${receipt.blockNumber}`,
+      );
+      return {
+        txHash: receipt.hash,
+        blockNumber: receipt.blockNumber,
+        confirmed: true,
+      };
+    } catch (err: any) {
+      if (err?.code !== 'TIMEOUT') throw err;
 
-            // tx ส่งไปแล้วแต่ยังไม่ confirm ในเวลาที่กำหนด — ไม่ใช่ความล้มเหลว
-            // คืน hash ไปให้ caller บันทึก แล้วให้รอบ verify ถัดไปตามผลเอง
-            this.logger.warn(
-                `Root tx=${tx.hash} for batch ${batchId} not confirmed within ${this.txTimeoutMs}ms — ` +
-                    'leaving it for the next verify round',
-            );
-            return { txHash: tx.hash, blockNumber: null, confirmed: false };
-        }
+      // tx ส่งไปแล้วแต่ยังไม่ confirm ในเวลาที่กำหนด — ไม่ใช่ความล้มเหลว
+      // คืน hash ไปให้ caller บันทึก แล้วให้รอบ verify ถัดไปตามผลเอง
+      this.logger.warn(
+        `Root tx=${tx.hash} for batch ${batchId} not confirmed within ${this.txTimeoutMs}ms — ` +
+          'leaving it for the next verify round',
+      );
+      return { txHash: tx.hash, blockNumber: null, confirmed: false };
     }
+  }
 
-    /**
+  /**
    * verify ว่า root ที่เก็บไว้ตรงกับที่ส่งมาไหม
    * ถ้าไม่ตรง = ข้อมูลถูก tamper
    */
@@ -185,15 +198,17 @@ export class BlockchainService implements OnModuleInit {
     if (!this.isReady) throw new Error('Blockchain not ready');
 
     const batchBytes = this.toBytes32(batchId);
-    const rootBytes = merkleRoot.startsWith('0x') ? merkleRoot : '0x' + merkleRoot;
+    const rootBytes = merkleRoot.startsWith('0x')
+      ? merkleRoot
+      : '0x' + merkleRoot;
 
     return this.contract.verifyRoot(batchBytes, rootBytes);
   }
 
-   /**
+  /**
    * ดึง root + timestamp ที่เก็บไว้บน chain
    */
-  async getRoot(batchId: string): Promise<{ root: string, timestamp: number }> {
+  async getRoot(batchId: string): Promise<{ root: string; timestamp: number }> {
     if (!this.isReady) throw new Error('Blockchain not ready');
 
     const batchBytes = this.toBytes32(batchId);
@@ -203,7 +218,7 @@ export class BlockchainService implements OnModuleInit {
 
   /**
    * ตรวจสถานะ root บน chain - แยก "ไม่มีบน chain" ออกจาก "มีแต่ไม่ตรง"
-   * 
+   *
    * MATCH    = root ตรง -> integrity ผ่าน
    * MISSING  = ไม่มี root ของ batch นี้บน chain (tx หาย / chain / ยังไม่ confirm)
    *          -> verify ไม่ได้ ไม่ใช่หลักฐานว่าถูกแก้ไข
@@ -212,11 +227,16 @@ export class BlockchainService implements OnModuleInit {
   async checkRoot(
     batchId: string,
     merkleRooT: string,
-  ): Promise<{ result: 'MATCH' | 'MISSING' | 'MISMATCH'; onChainRoot: string }> {
+  ): Promise<{
+    result: 'MATCH' | 'MISSING' | 'MISMATCH';
+    onChainRoot: string;
+  }> {
     if (!this.isReady) throw new Error('Blockchain not ready');
 
     const { root: onChainRoot } = await this.getRoot(batchId);
-    const expected = (merkleRooT.startsWith('0x') ? merkleRooT : '0x' + merkleRooT).toLowerCase();
+    const expected = (
+      merkleRooT.startsWith('0x') ? merkleRooT : '0x' + merkleRooT
+    ).toLowerCase();
 
     // bytes32 ที่ไม่เคยถูกเซ็ต จะเป็น 0x000...0
     if (/^0x0+$/.test(onChainRoot)) {
@@ -229,6 +249,6 @@ export class BlockchainService implements OnModuleInit {
   }
 
   get ready(): boolean {
-    return this.isReady
+    return this.isReady;
   }
 }

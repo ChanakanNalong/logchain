@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+# push ติด ๆ กันบน branch เดียวกัน ให้ยกเลิกรอบเก่าทิ้ง ไม่ต้องรอคิว
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — unit tests + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # lint:ci ไม่มี --fix (ต่างจาก npm run lint) — CI ต้องรายงาน ไม่ใช่แก้ไฟล์ทิ้ง
+      # --max-warnings 668 คือเพดานหนี้ปัจจุบัน: error ใหม่ล้มทันที ส่วน warning
+      # กลุ่ม no-unsafe-* เพิ่มไม่ได้อีก ถ้าไล่ใส่ type จนลดลงได้ ให้ลดตัวเลขนี้ตาม
+      - name: Lint
+        run: npm run lint:ci
+      # jest ตัวนี้ rootDir=src จึงเป็น unit ล้วน ไม่ต้องมี Postgres/Vault
+      - run: npm test
+      - run: npm run build
+
+  frontend:
+    name: Dashboard — typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: cylis-dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: cylis-dashboard/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        # ค่า NEXT_PUBLIC_* ถูกฝังตอน build — ใส่ค่าหลอกให้ build ผ่าน
+        # ไม่ได้ deploy จาก artifact นี้ ตัวเลขจริงมาจาก .env.local ตอน build ใช้งานจริง
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3000/api/v1
+          NEXT_PUBLIC_KEYCLOAK_URL: http://localhost:8080
+          NEXT_PUBLIC_KEYCLOAK_REALM: logchain
+          NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: logchain-frontend
+
+  integration:
+    name: Integration — Postgres + Vault
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+
+      - name: Write a throwaway .env
+        # ค่าทั้งหมดสุ่มใหม่ทุกรอบและตายไปพร้อม runner — ไม่มีอะไรผูกกับของจริง
+        # Keycloak/Kafka/chain ไม่ได้ถูกยกขึ้น เพราะเทสชุดนี้ override provider
+        # ของ Kafka ไว้หมดแล้ว และ guard ก็ถูก override เช่นกัน
+        run: |
+          rand() { openssl rand -hex 16; }
+          cat > .env <<EOF
+          NODE_ENV=test
+          PORT=3000
+          DB_HOST=localhost
+          DB_PORT=5433
+          DATABASE_URL=postgresql://logchain:$(rand)@localhost:5433/logchain
+          POSTGRES_PASSWORD=$(rand)
+          KC_DB_PASSWORD=$(rand)
+          REPLICATION_PASSWORD=$(rand)
+          KEYCLOAK_URL=http://localhost:8080
+          KEYCLOAK_REALM=logchain
+          KEYCLOAK_ADMIN=admin
+          KEYCLOAK_ADMIN_PASSWORD=$(rand)
+          KEYCLOAK_ADMIN_USER_PASSWORD=$(rand)
+          LOGCHAIN_CLIENT_SECRET=$(rand)
+          LOGCHAIN_INGESTOR_SECRET=$(rand)
+          LOGCHAIN_ADMIN_CLIENT_SECRET=$(rand)
+          GRAFANA_ADMIN_PASSWORD=$(rand)
+          BLOCKCHAIN_PRIVATE_KEY=0x$(openssl rand -hex 32)
+          VAULT_ADDR=http://localhost:8200
+          ALLOWED_ORIGINS=http://localhost:3003
+          INTEGRITY_AUTO_REANCHOR=false
+          EOF
+          # CONTRACT_ADDRESS ตั้งใจไม่ใส่ — BlockchainService จะข้าม init ทั้งก้อน
+          # เทสที่ต้องใช้ chain override provider เป็นตัวปลอมอยู่แล้ว
+
+      - name: Start Postgres + Vault
+        run: |
+          docker compose up -d postgres vault vault-unseal
+          for c in logchain-postgres logchain-vault; do
+            timeout 180 bash -c "until [ \"\$(docker inspect -f '{{.State.Health.Status}}' $c 2>/dev/null)\" = healthy ]; do sleep 3; done"
+            echo "✓ $c healthy"
+          done
+
+      - name: Seed Vault (AppRole + secrets)
+        run: |
+          docker compose up vault-init
+          # role_id/secret_id ออกใหม่ทุกครั้งที่ init — ต่อท้าย .env ให้ VaultService หยิบไปใช้
+          docker compose logs --no-log-prefix vault-init \
+            | grep -E '^VAULT_(NESTJS|DETECTION)_(ROLE|SECRET)_ID=' >> .env
+          grep -c '^VAULT_' .env
+
+      - name: Integration + e2e tests
+        run: npx jest --config test/jest-e2e.json
+
+      - name: Container logs (เฉพาะตอนพัง)
+        if: failure()
+        run: docker compose logs --tail 80 postgres vault vault-unseal vault-init
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

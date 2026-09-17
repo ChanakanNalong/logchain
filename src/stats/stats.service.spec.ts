@@ -44,10 +44,10 @@ describe('StatsService', () => {
       query: jest.fn().mockResolvedValue([]),
     };
     const batchesRepo = { createQueryBuilder: jest.fn(() => batchQb) };
-    alertsRepo = { 
+    alertsRepo = {
       count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(() => alertsQb),
-     };
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -107,7 +107,9 @@ describe('StatsService', () => {
     expect(result.sealedLogs).toBe(950);
     expect(result.integrityRate).toBe(70); // 7/10
     expect(result.openAlerts).toBe(4);
-    expect(alertsRepo.count).toHaveBeenCalledWith({ where: { status: 'OPEN' } });
+    expect(alertsRepo.count).toHaveBeenCalledWith({
+      where: { status: 'OPEN' },
+    });
   });
 
   it('rounds integrityRate to a whole percent', async () => {
@@ -219,23 +221,43 @@ describe('StatsService', () => {
     logsQb._results = [[]];
     alertsQb._results = [
       [
-        { type: 'RULE_MATCH', severity: 'CRITICAL', source: 'web-server-01', count: '3' },
-        { type: 'ML_ANOMALY', severity: 'INFO', source: 'web-server-01', count: '1' },
+        {
+          type: 'RULE_MATCH',
+          severity: 'CRITICAL',
+          source: 'web-server-01',
+          count: '3',
+        },
+        {
+          type: 'ML_ANOMALY',
+          severity: 'INFO',
+          source: 'web-server-01',
+          count: '1',
+        },
       ],
     ];
 
     const result = await service.getOverview();
-    
+
     expect(result.anomalyTypes).toEqual([
-      { type: 'RULE_MATCH', severity: 'CRITICAL', source: 'web-server-01', count: 3 },
-      { type: 'ML_ANOMALY', severity: 'INFO', source: 'web-server-01', count: 1 }
+      {
+        type: 'RULE_MATCH',
+        severity: 'CRITICAL',
+        source: 'web-server-01',
+        count: 3,
+      },
+      {
+        type: 'ML_ANOMALY',
+        severity: 'INFO',
+        source: 'web-server-01',
+        count: 1,
+      },
     ]);
     // integrity alert ต้องถูกกรองที่ SQL - ยืนยันว่ามี where กันไว้จริง
     expect(alertsQb.where).toHaveBeenCalledWith(
       expect.stringContaining('source'),
-      expect.objectContaining({ integritySource: 'INTEGRITY'}),
-    )
-  })
+      expect.objectContaining({ integritySource: 'INTEGRITY' }),
+    );
+  });
   // ---- ช่วงเวลาของกราฟ (1H / 6H / 24H / 7D / 30D / 6M / 12M / All) ----
 
   it('defaults to the 24h range with hourly buckets', async () => {

@@ -89,6 +89,20 @@ describe('Alerts Integration', () => {
     expect(second.id).toBe(first.id);
   });
 
+  // resolve เดิมใช้ findOneOrFail -> EntityNotFoundError -> AllExceptionsFilter ตีเป็น 500
+  // ทั้งที่เป็น input ผิด หน้า Alerts จะได้แยก "ไม่เจอ" ออกจาก "ระบบพัง"
+  it('PATCH /alerts/:id/resolve ตอบ 404 เมื่อไม่มี alert นั้น', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/v1/alerts/00000000-0000-4000-8000-000000000000/resolve')
+      .expect(404);
+  });
+
+  it('PATCH /alerts/:id/resolve ตอบ 400 เมื่อ id ไม่ใช่ UUID', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/v1/alerts/not-a-uuid/resolve')
+      .expect(400);
+  });
+
   it('PATCH /alerts/:id/resolve should resolve alert', async () => {
     const created = await alertsService.createOrDedup({
       alertType: 'PORTSCAN',

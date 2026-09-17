@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VaultService } from './vault/vault.service';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -22,17 +22,11 @@ import { BlockchainModule } from './blockchain/blockchain.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { Log } from './logs/entities/log.entity';
-import { Batch } from './logs/entities/batch.entity';
-import { Alert } from './alerts/entities/alert.entity';
-import { AuditAccess } from './audit/entities/audit-access.entity';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IntegrityModule } from './integrity/integrity.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { StatsModule } from './stats/stats.module';
 import { AdminModule } from './admin/admin.module';
-import { LogBatchMapping } from './logs/entities/log-batch-mapping.entity';
-
 
 @Module({
   imports: [

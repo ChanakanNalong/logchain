@@ -22,6 +22,7 @@ import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
 import Dataset from "@/views/Dataset";
 import Verify from "@/views/Verify";
+import Alerts from "@/views/Alerts";
 import Reports from "@/views/Reports";
 import Settings from "@/views/Settings";
 import { sansFont, monoFont } from "@/theme";
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { id: "ml", label: "ML Detection", icon: Brain, Page: MLDetection },
   { id: "dataset", label: "Dataset", icon: Database, Page: Dataset },
   { id: "verify", label: "Verify", icon: ShieldCheck, Page: Verify },
+  { id: "alerts", label: "Alerts", icon: Bell, Page: Alerts },
   { id: "reports", label: "Reports", icon: FileBarChart2, Page: Reports },
   { id: "settings", label: "Settings", icon: SettingsIcon, Page: Settings },
 ];
@@ -42,6 +44,7 @@ const PAGE_TITLES = {
   ml: "ML Detection — DeepLog",
   dataset: "Dataset — HDFS_v1",
   verify: "Integrity verification",
+  alerts: "Alert triage",
   reports: "",
   settings: "Alerts & access",
 };
@@ -242,7 +245,16 @@ export default function App() {
                     </>
                   )}
                 </button>
-                <Bell size={16} color={theme.muted} />
+                {/* กระดิ่งเดิมเป็นไอคอนเฉยๆ — ต่อให้พาไปหน้า Alerts จะได้ไม่ตายอยู่บนหัว */}
+                <button
+                  type="button"
+                  onClick={() => setActiveId("alerts")}
+                  title="Alert triage"
+                  aria-label="Alert triage"
+                  style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
+                >
+                  <Bell size={16} color={activeId === "alerts" ? theme.blue2 : theme.muted} />
+                </button>
               </div>
             </div>
 

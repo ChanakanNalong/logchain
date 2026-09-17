@@ -45,14 +45,20 @@ const fakeBlockchain = {
   },
 
   async verifyRoot(batchId: string, merkleRoot: string) {
-    return (chainMap.get(batchId.toLowerCase()) ?? ZERO_ROOT) === normalizeRoot(merkleRoot);
+    return (
+      (chainMap.get(batchId.toLowerCase()) ?? ZERO_ROOT) ===
+      normalizeRoot(merkleRoot)
+    );
   },
 
   /** เลียนแบบ logic จริงของ BlockchainService.checkRoot */
   async checkRoot(
     batchId: string,
     merkleRoot: string,
-  ): Promise<{ result: 'MATCH' | 'MISSING' | 'MISMATCH'; onChainRoot: string }> {
+  ): Promise<{
+    result: 'MATCH' | 'MISSING' | 'MISMATCH';
+    onChainRoot: string;
+  }> {
     const onChainRoot = chainMap.get(batchId.toLowerCase()) ?? ZERO_ROOT;
     if (/^0x0+$/.test(onChainRoot)) {
       return { result: 'MISSING', onChainRoot };
@@ -138,9 +144,10 @@ describe('Integrity Integration', () => {
     preExistingBatches = await dataSource.query(
       'SELECT id, status, tx_hash, block_number FROM batches',
     );
-    const roots: Array<{ id: string; merkle_root: string }> = await dataSource.query(
-      "SELECT id, merkle_root FROM batches WHERE status <> 'FAILED' AND status <> 'PENDING'",
-    );
+    const roots: Array<{ id: string; merkle_root: string }> =
+      await dataSource.query(
+        "SELECT id, merkle_root FROM batches WHERE status <> 'FAILED' AND status <> 'PENDING'",
+      );
     for (const b of roots) {
       chainMap.set(b.id.toLowerCase(), normalizeRoot(b.merkle_root));
     }
@@ -165,10 +172,11 @@ describe('Integrity Integration', () => {
 
       let triggerDisabled = false;
       try {
-        await dataSource.query('ALTER TABLE logs DISABLE TRIGGER trg_logs_no_delete');
+        await dataSource.query(
+          'ALTER TABLE logs DISABLE TRIGGER trg_logs_no_delete',
+        );
         triggerDisabled = true;
       } catch (err: any) {
-        // eslint-disable-next-line no-console
         console.warn(
           `[integrity.integration] cannot disable trg_logs_no_delete (${err.message}) — skip deleting logs`,
         );
@@ -176,31 +184,43 @@ describe('Integrity Integration', () => {
 
       if (createdBatchIds.length > 0) {
         // ลบตามลำดับ FK: mapping -> alerts -> batches
-        await dataSource.query('DELETE FROM log_batch_mapping WHERE batch_id = ANY($1)', [
+        await dataSource.query(
+          'DELETE FROM log_batch_mapping WHERE batch_id = ANY($1)',
+          [createdBatchIds],
+        );
+        await dataSource.query('DELETE FROM alerts WHERE batch_id = ANY($1)', [
           createdBatchIds,
         ]);
-        await dataSource.query('DELETE FROM alerts WHERE batch_id = ANY($1)', [createdBatchIds]);
-        await dataSource.query('DELETE FROM batches WHERE id = ANY($1)', [createdBatchIds]);
+        await dataSource.query('DELETE FROM batches WHERE id = ANY($1)', [
+          createdBatchIds,
+        ]);
       }
 
       if (logIds.length > 0) {
-        await dataSource.query('DELETE FROM alerts WHERE log_id = ANY($1)', [logIds]);
+        await dataSource.query('DELETE FROM alerts WHERE log_id = ANY($1)', [
+          logIds,
+        ]);
       }
 
       if (triggerDisabled) {
         try {
-          await dataSource.query('DELETE FROM logs WHERE source = $1', [TEST_SOURCE]);
+          await dataSource.query('DELETE FROM logs WHERE source = $1', [
+            TEST_SOURCE,
+          ]);
         } finally {
-          await dataSource.query('ALTER TABLE logs ENABLE TRIGGER trg_logs_no_delete');
+          await dataSource.query(
+            'ALTER TABLE logs ENABLE TRIGGER trg_logs_no_delete',
+          );
         }
       }
     } catch (err: any) {
       // afterAll ต้องไม่ throw — ไม่งั้น suite แดงทั้งที่เทสผ่าน
-      // eslint-disable-next-line no-console
+
       console.warn(`[integrity.integration] cleanup failed: ${err.message}`);
     } finally {
       if (process.env.INTEGRITY_AUTO_REANCHOR !== prevAutoReanchor) {
-        if (prevAutoReanchor === undefined) delete process.env.INTEGRITY_AUTO_REANCHOR;
+        if (prevAutoReanchor === undefined)
+          delete process.env.INTEGRITY_AUTO_REANCHOR;
         else process.env.INTEGRITY_AUTO_REANCHOR = prevAutoReanchor;
       }
       await app.close();
@@ -243,11 +263,15 @@ describe('Integrity Integration', () => {
    * (ทางเดียวที่จะแก้ logs ได้ ถ้าไม่ปิด trigger จะได้ IMMUTABLE_LOG)
    */
   const tamperRow = async (sql: string, params: unknown[]) => {
-    await dataSource.query('ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update');
+    await dataSource.query(
+      'ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update',
+    );
     try {
       await dataSource.query(sql, params);
     } finally {
-      await dataSource.query('ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update');
+      await dataSource.query(
+        'ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update',
+      );
     }
   };
 
@@ -418,14 +442,18 @@ describe('Integrity Integration', () => {
     await integrity.reanchorUnverified();
 
     // re-anchor ต้องใช้ root เดิมจาก DB ไม่ใช่ recompute
-    expect(chainMap.get(batchId.toLowerCase())).toBe(normalizeRoot(sealedMerkleRoot));
+    expect(chainMap.get(batchId.toLowerCase())).toBe(
+      normalizeRoot(sealedMerkleRoot),
+    );
 
     await integrity.verifyAllBatches();
 
     const batch = await getBatch(batchId);
     expect(batch.status).toBe('CONFIRMED');
     expect(batch.merkle_root).toBe(sealedMerkleRoot);
-    expect(chainMap.get(batchId.toLowerCase())).toBe(normalizeRoot(batch.merkle_root));
+    expect(chainMap.get(batchId.toLowerCase())).toBe(
+      normalizeRoot(batch.merkle_root),
+    );
   });
 
   // 7
@@ -456,9 +484,16 @@ describe('Integrity Integration', () => {
     const tamperedBatchId = await sealAndConfirm(logId);
 
     // CRITICAL -> INFO: กลบเหตุการณ์โดยไม่แตะ raw_hash
-    await tamperRow('UPDATE logs SET severity = $2 WHERE id = $1', [logId, 'INFO']);
+    await tamperRow('UPDATE logs SET severity = $2 WHERE id = $1', [
+      logId,
+      'INFO',
+    ]);
     expect(
-      (await dataSource.query('SELECT severity FROM logs WHERE id = $1', [logId]))[0].severity,
+      (
+        await dataSource.query('SELECT severity FROM logs WHERE id = $1', [
+          logId,
+        ])
+      )[0].severity,
     ).toBe('INFO');
 
     await integrity.verifyAllBatches();
@@ -480,7 +515,10 @@ describe('Integrity Integration', () => {
     const tamperedBatchId = await sealAndConfirm(logId);
 
     // เปลี่ยน IP ผู้โจมตีไปชี้เครื่องอื่น
-    await tamperRow('UPDATE logs SET source_id = $2 WHERE id = $1', [logId, '198.51.100.4']);
+    await tamperRow('UPDATE logs SET source_id = $2 WHERE id = $1', [
+      logId,
+      '198.51.100.4',
+    ]);
 
     await integrity.verifyAllBatches();
 

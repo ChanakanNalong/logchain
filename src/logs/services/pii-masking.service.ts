@@ -1,4 +1,3 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 
 /**
@@ -14,7 +13,7 @@ import { Injectable, Logger } from '@nestjs/common';
  */
 @Injectable()
 export class PiiMaskingService {
-  private readonly logger = new Logger(PiiMaskingService.name)
+  private readonly logger = new Logger(PiiMaskingService.name);
 
   // rules — แต่ละ rule มี regex สำหรับจับ PII และ replacement สำหรับแทนที่
   private readonly rules = [

@@ -15,7 +15,10 @@ interface KeycloakJwtPayload {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(config: ConfigService) {
-    const keycloakUrl = config.get<string>('KEYCLOAK_URL', 'http://localhost:8080');
+    const keycloakUrl = config.get<string>(
+      'KEYCLOAK_URL',
+      'http://localhost:8080',
+    );
     const realm = config.get<string>('KEYCLOAK_REALM', 'logchain');
     const issuer = `${keycloakUrl}/realms/${realm}`;
 

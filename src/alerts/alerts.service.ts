@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Alert } from './entities/alert.entity';
@@ -7,7 +7,7 @@ import { NotificationService } from '../notification/notification.service';
 @Injectable()
 export class AlertsService {
   private readonly logger = new Logger(AlertsService.name);
-  
+
   constructor(
     @InjectRepository(Alert)
     private alertRepo: Repository<Alert>,
@@ -67,7 +67,11 @@ export class AlertsService {
   }
 
   async resolve(id: string): Promise<Alert> {
-    const alert = await this.alertRepo.findOneOrFail({ where: { id } });
+    // findOneOrFail โยน EntityNotFoundError ซึ่ง AllExceptionsFilter แปลงเป็น 500
+    // ทั้งที่เป็นเรื่อง input ผิด — หน้า Alerts จะได้แยก "ไม่เจอ" ออกจาก "ระบบพัง"
+    const alert = await this.alertRepo.findOne({ where: { id } });
+    if (!alert) throw new NotFoundException('Alert not found');
+
     alert.status = 'RESOLVED';
     return this.alertRepo.save(alert);
   }

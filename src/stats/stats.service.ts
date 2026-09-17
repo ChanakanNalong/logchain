@@ -15,7 +15,12 @@ import {
 } from './traffic-ranges';
 
 /** Batch statuses seeded so the shape stays stable on an empty database. */
-const BATCH_STATUSES = ['CONFIRMED', 'UNVERIFIED', 'TAMPERED', 'PENDING'] as const;
+const BATCH_STATUSES = [
+  'CONFIRMED',
+  'UNVERIFIED',
+  'TAMPERED',
+  'PENDING',
+] as const;
 
 export interface TrafficPoint {
   /** ต้นชั่วโมง/ต้นวัน ฯลฯ ของ bucket เป็น ISO UTC — ให้ frontend เรียงหรือ format เองได้ */
@@ -45,7 +50,12 @@ export interface StatsOverview {
   openAlerts: number;
   traffic: { h: string; total: number }[];
   topSources: { ip: string; hits: number }[];
-  anomalyTypes: { type: string; severity: string; source: string; count: number }[];
+  anomalyTypes: {
+    type: string;
+    severity: string;
+    source: string;
+    count: number;
+  }[];
 }
 
 @Injectable()
@@ -57,14 +67,15 @@ export class StatsService {
   ) {}
 
   async getOverview(): Promise<StatsOverview> {
-    const [totalLogs, batches, openAlerts, traffic, topSources, anomalyTypes] = await Promise.all([
-      this.logsRepo.count(),
-      this.getBatchStats(),
-      this.alertsRepo.count({ where: { status: 'OPEN' } }),
-      this.getTraffic(DEFAULT_TRAFFIC_RANGE),
-      this.getTopSources(),
-      this.getAnomalyTypes(),
-    ]);
+    const [totalLogs, batches, openAlerts, traffic, topSources, anomalyTypes] =
+      await Promise.all([
+        this.logsRepo.count(),
+        this.getBatchStats(),
+        this.alertsRepo.count({ where: { status: 'OPEN' } }),
+        this.getTraffic(DEFAULT_TRAFFIC_RANGE),
+        this.getTopSources(),
+        this.getAnomalyTypes(),
+      ]);
 
     return {
       totalLogs,
@@ -76,9 +87,10 @@ export class StatsService {
         byStatus: batches.byStatus,
       },
       // ยังไม่มี batch เลย -> 0 (อย่าให้กลายเป็น NaN จากการหารด้วยศูนย์)
-      integrityRate: batches.total === 0
-        ? 0
-        : Math.round((batches.confirmed / batches.total) * 100),
+      integrityRate:
+        batches.total === 0
+          ? 0
+          : Math.round((batches.confirmed / batches.total) * 100),
       openAlerts,
       // overview ยังคงสัญญาเดิมไว้ ({ h, total } 24 ชั่วโมง) — หน้า dashboard ที่เลือก
       // ช่วงเวลาได้ย้ายไปเรียก /stats/traffic แทนแล้ว
@@ -266,11 +278,15 @@ export class StatsService {
       .limit(5)
       .getRawMany();
 
-    return rows.map((row) => ({ ip: row.ip, hits: parseInt(row.hits, 10) || 0 }));
+    return rows.map((row) => ({
+      ip: row.ip,
+      hits: parseInt(row.hits, 10) || 0,
+    }));
   }
 
   private async getAnomalyTypes() {
-    const rows = await this.alertsRepo.createQueryBuilder('a')
+    const rows = await this.alertsRepo
+      .createQueryBuilder('a')
       .select('a.alertType', 'type')
       .addSelect('a.severity', 'severity')
       .addSelect('a.source', 'source')
@@ -281,8 +297,11 @@ export class StatsService {
       .addGroupBy('a.source')
       .orderBy('count', 'DESC')
       .getRawMany();
-    return rows.map(r => ({
-      type: r.type, severity: r.severity, source: r.source, count: +r.count,
+    return rows.map((r) => ({
+      type: r.type,
+      severity: r.severity,
+      source: r.source,
+      count: +r.count,
     }));
   }
 }
