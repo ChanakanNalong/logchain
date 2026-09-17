@@ -4,9 +4,33 @@ import { Repository } from 'typeorm';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
+import {
+  BUCKETS,
+  BucketKey,
+  DEFAULT_TRAFFIC_RANGE,
+  MAX_BUCKETS,
+  RANGE_SPECS,
+  TrafficRange,
+  pickBucketForSpan,
+} from './traffic-ranges';
 
 /** Batch statuses seeded so the shape stays stable on an empty database. */
 const BATCH_STATUSES = ['CONFIRMED', 'UNVERIFIED', 'TAMPERED', 'PENDING'] as const;
+
+export interface TrafficPoint {
+  /** ต้นชั่วโมง/ต้นวัน ฯลฯ ของ bucket เป็น ISO UTC — ให้ frontend เรียงหรือ format เองได้ */
+  t: string;
+  /** ป้ายแกน X ที่ format มาแล้วตามความกว้างของ bucket */
+  label: string;
+  total: number;
+}
+
+export interface TrafficSeries {
+  range: TrafficRange;
+  /** คำเรียก bucket สำหรับป้าย "Events per …" เช่น hour, day, week */
+  bucket: string;
+  points: TrafficPoint[];
+}
 
 export interface StatsOverview {
   totalLogs: number;
@@ -37,7 +61,7 @@ export class StatsService {
       this.logsRepo.count(),
       this.getBatchStats(),
       this.alertsRepo.count({ where: { status: 'OPEN' } }),
-      this.getTrafficLast24h(),
+      this.getTraffic(DEFAULT_TRAFFIC_RANGE),
       this.getTopSources(),
       this.getAnomalyTypes(),
     ]);
@@ -56,7 +80,9 @@ export class StatsService {
         ? 0
         : Math.round((batches.confirmed / batches.total) * 100),
       openAlerts,
-      traffic,
+      // overview ยังคงสัญญาเดิมไว้ ({ h, total } 24 ชั่วโมง) — หน้า dashboard ที่เลือก
+      // ช่วงเวลาได้ย้ายไปเรียก /stats/traffic แทนแล้ว
+      traffic: traffic.points.map((p) => ({ h: p.label, total: p.total })),
       topSources,
       anomalyTypes,
     };
@@ -101,34 +127,127 @@ export class StatsService {
   }
 
   /**
-   * จำนวน log ต่อชั่วโมงย้อนหลัง 24 ชม.
-   * generate_series + LEFT JOIN => ได้ครบ 24 แถวเสมอ ชั่วโมงที่ไม่มี log จะเป็น 0
+   * ซีรีส์จำนวน log ต่อ bucket ของช่วงเวลาที่เลือก (ค่าตั้งต้น 24h)
+   *
+   * generate_series + LEFT JOIN => ได้ครบทุก bucket เสมอ ช่วงที่ไม่มี log จะเป็น 0
    * (ไม่ใช่ "ไม่มีแถว") กราฟฝั่ง dashboard จึงไม่ขาดช่วง
    *
-   * COUNT(l.id) ต้องมี `AS total` — ไม่งั้น Postgres ตั้งชื่อคอลัมน์ว่า "count"
-   * แล้ว row.total เป็น undefined -> parseInt(undefined) = NaN -> ตกไปเป็น 0 ทุกชั่วโมง
-   * (กราฟ 24h จะแบนเป็นศูนย์ทั้งแถบทั้งที่มี log จริง)
-   *
    * bucket เป็น **UTC** แบบบังคับด้วย `AT TIME ZONE 'UTC'` ไม่ปล่อยตาม session
-   * timezone ของ DB — ฝั่ง dashboard ติดป้าย "last 24h (UTC)" ไว้ ถ้าใครตั้ง TZ
-   * ใหม่แล้ว bucket เลื่อนตาม ป้ายนั้นจะกลายเป็นคำโกหกทันที
+   * timezone ของ DB — ฝั่ง dashboard ติดป้าย "(UTC)" ไว้ ถ้าใครตั้ง TZ ใหม่แล้ว
+   * bucket เลื่อนตาม ป้ายนั้นจะกลายเป็นคำโกหกทันที
    * (หมายเหตุ: นาฬิกาบนหัวแอปเป็น ICT = UTC+7 คนละโซนกับกราฟนี้โดยตั้งใจ)
    */
-  private async getTrafficLast24h() {
-    const rows = await this.logsRepo.query(`
-      SELECT to_char(hours.h, 'HH24:00') AS h,
-              COUNT(l.id) AS total
+  async getTraffic(
+    range: TrafficRange = DEFAULT_TRAFFIC_RANGE,
+  ): Promise<TrafficSeries> {
+    const plan =
+      range === 'all' ? await this.planAllRange() : RANGE_SPECS[range];
+    // 'all' บน DB ที่ยังไม่มี log สักแถว — ไม่มีจุดเริ่ม จึงไม่มีอะไรให้ plot
+    if (!plan) {
+      return {
+        range,
+        bucket: BUCKETS[RANGE_SPECS['24h'].bucket].name,
+        points: [],
+      };
+    }
+
+    const spec = BUCKETS[plan.bucket];
+    const label = spec.labelFormat;
+    const rows: any[] = spec.truncUnit
+      ? await this.logsRepo.query(
+          `
+      SELECT to_char(b.bucket, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS t,
+             to_char(b.bucket, $3) AS label,
+             COUNT(l.id) AS total
       FROM generate_series(
-              date_trunc('hour', (now() AT TIME ZONE 'UTC') - interval '23 hours'),
-              date_trunc('hour', (now() AT TIME ZONE 'UTC')),
-              interval '1 hour'
-          ) AS hours(h)
+             date_trunc($1::text, (now() AT TIME ZONE 'UTC')) - $2::interval,
+             date_trunc($1::text, (now() AT TIME ZONE 'UTC')),
+             $4::interval
+           ) AS b(bucket)
       LEFT JOIN logs l
-             ON date_trunc('hour', l.created_at AT TIME ZONE 'UTC') = hours.h
-      GROUP BY hours.h
-      ORDER BY hours.h ASC;
-    `);
-    return rows.map((row: any) => ({ h: row.h, total: parseInt(row.total, 10) || 0 }));
+             ON date_trunc($1::text, l.created_at AT TIME ZONE 'UTC') = b.bucket
+      GROUP BY b.bucket
+      ORDER BY b.bucket ASC;
+    `,
+          [
+            spec.truncUnit,
+            `${plan.points - 1} ${spec.truncUnit}s`,
+            label,
+            spec.step,
+          ],
+        )
+      : await this.logsRepo.query(
+          `
+      SELECT to_char(b.bucket, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS t,
+             to_char(b.bucket, $3) AS label,
+             COUNT(l.id) AS total
+      FROM generate_series(
+             date_bin($1::interval, (now() AT TIME ZONE 'UTC') - $2::interval, $4::timestamp),
+             date_bin($1::interval, (now() AT TIME ZONE 'UTC'), $4::timestamp),
+             $1::interval
+           ) AS b(bucket)
+      LEFT JOIN logs l
+             ON date_bin($1::interval, l.created_at AT TIME ZONE 'UTC', $4::timestamp) = b.bucket
+      GROUP BY b.bucket
+      ORDER BY b.bucket ASC;
+    `,
+          [
+            spec.step,
+            `${(plan.points - 1) * spec.seconds} seconds`,
+            label,
+            spec.origin,
+          ],
+        );
+
+    return {
+      range,
+      bucket: spec.name,
+      // COUNT(l.id) ต้องมี `AS total` — ไม่งั้น Postgres ตั้งชื่อคอลัมน์ว่า "count"
+      // แล้ว row.total เป็น undefined -> parseInt(undefined) = NaN -> ตกไปเป็น 0 ทุก bucket
+      // (กราฟจะแบนเป็นศูนย์ทั้งแถบทั้งที่มี log จริง)
+      points: rows.map((row) => ({
+        t: row.t,
+        label: row.label,
+        total: parseInt(row.total, 10) || 0,
+      })),
+    };
+  }
+
+  /**
+   * 'all' ไม่มีความกว้างตายตัว — เลือก bucket จากอายุของ log ที่เก่าที่สุด
+   * แล้วนับจำนวน bucket ที่ต้องใช้คลุมถึงปัจจุบัน (ไม่เกิน MAX_BUCKETS)
+   */
+  private async planAllRange(): Promise<{
+    bucket: BucketKey;
+    points: number;
+  } | null> {
+    // ดึงเป็น timestamptz ตรงๆ (ไม่ใส่ AT TIME ZONE) — driver จะ parse ได้เป็นเวลาจริง
+    // ถ้าแปลงเป็น timestamp เปล่าก่อน driver จะอ่านเป็นเวลาท้องถิ่นแล้วเพี้ยนไปตาม TZ ของ API
+    const [row] = await this.logsRepo.query(
+      `SELECT min(created_at) AS first FROM logs;`,
+    );
+    if (!row?.first) return null;
+
+    const first = new Date(row.first);
+    const now = new Date();
+    const spanMs = Math.max(0, now.getTime() - first.getTime());
+    const bucket = pickBucketForSpan(spanMs);
+    const spec = BUCKETS[bucket];
+
+    let points: number;
+    if (spec.truncUnit === 'year') {
+      points = now.getUTCFullYear() - first.getUTCFullYear() + 1;
+    } else if (spec.truncUnit === 'month') {
+      points =
+        (now.getUTCFullYear() - first.getUTCFullYear()) * 12 +
+        (now.getUTCMonth() - first.getUTCMonth()) +
+        1;
+    } else {
+      // +1 เผื่อ bucket ที่ log แรกตกอยู่: bucket เรียงบน grid คงที่ ถ้า log แรกอยู่
+      // ท้าย bucket (เช่น 10:59 กับตอนนี้ 11:01) span จะสั้นกว่าจำนวน bucket จริง
+      points = Math.ceil(spanMs / 1000 / spec.seconds) + 1;
+    }
+    return { bucket, points: Math.min(Math.max(points, 1), MAX_BUCKETS) };
   }
 
   /**

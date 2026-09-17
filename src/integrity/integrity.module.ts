@@ -8,6 +8,7 @@ import { MerkleService } from "./service/merkle.service";
 import { IntegrityService } from "./integrity.service";
 import { IntegritySchedule } from "./integrity.scheduler";
 import { IntegrityController } from "./integrity.controller";
+import { BatchesController } from "./batches.controller";
 import { BlockchainModule } from "../blockchain/blockchain.module";
 import { AuthModule } from "../auth/auth.module";
 
@@ -17,7 +18,7 @@ import { AuthModule } from "../auth/auth.module";
         BlockchainModule, AuthModule,
     ],
     providers: [MerkleService, IntegrityService, IntegritySchedule],
-    controllers: [IntegrityController],
+    controllers: [IntegrityController, BatchesController],
     exports: [IntegrityService],
 })
 export class IntegrityModule {}

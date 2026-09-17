@@ -127,8 +127,8 @@ describe('StatsService', () => {
   it('maps traffic buckets and top sources to numbers', async () => {
     batchQb._results = [[]];
     logsRepo.query.mockResolvedValue([
-      { h: '08:00', total: '12' },
-      { h: '09:00', total: '30' },
+      { t: '2026-09-17T08:00:00Z', label: '08:00', total: '12' },
+      { t: '2026-09-17T09:00:00Z', label: '09:00', total: '30' },
     ]);
     logsQb._results = [
       [
@@ -186,7 +186,11 @@ describe('StatsService', () => {
   it('returns all 24 hourly buckets including empty hours', async () => {
     batchQb._results = [[]];
     logsRepo.query.mockResolvedValue(
-      Array.from({ length: 24 }, (_, i) => ({ h: `${String(i).padStart(2, '0')}:00`, total: '0' })),
+      Array.from({ length: 24 }, (_, i) => ({
+        t: `2026-09-17T${String(i).padStart(2, '0')}:00:00Z`,
+        label: `${String(i).padStart(2, '0')}:00`,
+        total: '0',
+      })),
     );
     logsQb._results = [[]];
 
@@ -232,4 +236,84 @@ describe('StatsService', () => {
       expect.objectContaining({ integritySource: 'INTEGRITY'}),
     )
   })
+  // ---- ช่วงเวลาของกราฟ (1H / 6H / 24H / 7D / 30D / 6M / 12M / All) ----
+
+  it('defaults to the 24h range with hourly buckets', async () => {
+    logsRepo.query.mockResolvedValue([]);
+
+    const series = await service.getTraffic();
+
+    expect(series.range).toBe('24h');
+    expect(series.bucket).toBe('hour');
+    const [, params] = logsRepo.query.mock.calls[0];
+    expect(params[0]).toBe('1 hour');
+    // 24 จุด = ย้อนหลัง 23 ช่วง (จุดสุดท้ายคือชั่วโมงปัจจุบัน)
+    expect(params[1]).toBe(`${23 * 3600} seconds`);
+  });
+
+  it('bins the 1h range into 5-minute buckets', async () => {
+    logsRepo.query.mockResolvedValue([]);
+
+    const series = await service.getTraffic('1h');
+
+    const [sql, params] = logsRepo.query.mock.calls[0];
+    expect(sql).toMatch(/date_bin/);
+    expect(params[0]).toBe('5 minutes');
+    expect(params[1]).toBe(`${11 * 300} seconds`);
+    expect(series.bucket).toBe('5 min');
+  });
+
+  // date_bin รับ interval ที่มีเดือน/ปีไม่ได้ (Postgres โยน error ทันที)
+  // ช่วง 12M จึงต้องตกไปใช้ date_trunc แทน
+  it('uses date_trunc, not date_bin, for the 12m range', async () => {
+    logsRepo.query.mockResolvedValue([]);
+
+    const series = await service.getTraffic('12m');
+
+    const [sql, params] = logsRepo.query.mock.calls[0];
+    expect(sql).toMatch(/date_trunc/);
+    expect(sql).not.toMatch(/date_bin/);
+    expect(params[0]).toBe('month');
+    expect(params[1]).toBe('11 months');
+    expect(series.bucket).toBe('month');
+  });
+
+  it('returns an empty series for "all" when there are no logs at all', async () => {
+    logsRepo.query.mockResolvedValue([{ first: null }]);
+
+    const series = await service.getTraffic('all');
+
+    expect(series.points).toEqual([]);
+    // ไม่มีจุดเริ่ม -> ต้องไม่ยิง query ซีรีส์ต่อ (generate_series จะไม่มีขอบเขต)
+    expect(logsRepo.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('picks a bucket wide enough for the whole history on "all"', async () => {
+    const firstLog = new Date(Date.now() - 400 * 24 * 3600 * 1000); // ~13 เดือนก่อน
+    logsRepo.query
+      .mockResolvedValueOnce([{ first: firstLog.toISOString() }])
+      .mockResolvedValueOnce([]);
+
+    const series = await service.getTraffic('all');
+
+    // 400 วันด้วย bucket รายวันจะเกิน MAX_BUCKETS -> ต้องขยับขึ้นไปเป็นราย "สัปดาห์"
+    expect(series.bucket).toBe('week');
+    expect(series.range).toBe('all');
+    const [, params] = logsRepo.query.mock.calls[1];
+    expect(params[0]).toBe('7 days');
+  });
+
+  it('maps traffic points to numbers and keeps the bucket timestamp', async () => {
+    logsRepo.query.mockResolvedValue([
+      { t: '2026-09-17T08:00:00Z', label: '08:00', total: '12' },
+      { t: '2026-09-17T09:00:00Z', label: '09:00', total: null },
+    ]);
+
+    const series = await service.getTraffic('24h');
+
+    expect(series.points).toEqual([
+      { t: '2026-09-17T08:00:00Z', label: '08:00', total: 12 },
+      { t: '2026-09-17T09:00:00Z', label: '09:00', total: 0 },
+    ]);
+  });
 });

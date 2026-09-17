@@ -356,6 +356,33 @@ describe('Integrity Integration', () => {
     expect(res.body.batch.merkleRoot).toBe(sealedMerkleRoot);
   });
 
+  // 3b
+  // ตาราง Logs บน dashboard โชว์ id แค่ 8 ตัวแรก ถ้า copy ตัวนั้นมา verify
+  // ต้องได้ 400 พร้อมบอกว่าให้ใช้ UUID เต็ม — ไม่ใช่ปล่อยลงไปถึง query แล้ว
+  // Postgres โยน "invalid input syntax for type uuid" กลายเป็น 500
+  it('GET /logs/:id/proof rejects a shortened id with 400, not 500', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/logs/${logIds[0].slice(0, 8)}/proof`)
+      .expect(400);
+
+    expect(res.body.message).toMatch(/full UUID/i);
+  });
+
+  // 3c
+  it('GET /batches lists the sealed batch with its anchor status', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/batches')
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    const sealed = res.body.find((b: any) => b.id === batchId);
+    expect(sealed).toBeDefined();
+    expect(sealed.merkleRoot).toBe(sealedMerkleRoot);
+    expect(sealed.status).toBe('CONFIRMED');
+    expect(sealed.logCount).toBeGreaterThanOrEqual(3);
+    expect(sealed.txHash).not.toBeNull();
+  });
+
   // 4
   it('verifyAllBatches is idempotent — batch stays CONFIRMED', async () => {
     await integrity.verifyAllBatches();

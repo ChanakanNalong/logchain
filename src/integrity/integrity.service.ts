@@ -337,6 +337,28 @@ async reanchorUnverified(): Promise<void> {
 
 
   /**
+   * batch ล่าสุดเรียงตามเวลา seal — ใช้บนหน้า Verify เพื่อให้เห็นว่ามีอะไรถูก
+   * ผูกขึ้น chain ไปแล้วบ้าง โดยไม่ต้องมี log id ในมือก่อน
+   */
+  async listBatches(limit = 10) {
+    const batches = await this.batchesRepo.find({
+      order: { sealedAt: 'DESC' },
+      take: limit,
+    });
+
+    return batches.map((batch) => ({
+      id: batch.id,
+      merkleRoot: batch.merkleRoot,
+      txHash: batch.txHash,
+      blockNumber: batch.blockNumber,
+      status: batch.status,
+      logCount: batch.logCount,
+      sealedAt: batch.sealedAt,
+      confirmedAt: batch.confirmedAt,
+    }));
+  }
+
+  /**
    * สร้าง Merkle proof สำหรับ log ตัวเดียว
    */
   async getProofForLog(logId: string) {
