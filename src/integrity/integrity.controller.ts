@@ -38,7 +38,7 @@ export class IntegrityController {
 
   /**
    *  POST /api/v1/logs/seal-now
-   *  สั่ง seal batch ทันที (ปกติ cron ทำทุก 30 นาที) - ใช้ตอน demo
+   *  สั่ง seal batch ทันที (ปกติ cron ทำทุก 1 นาที) - ใช้ตอน demo
    */
 
   @Post('seal-now')

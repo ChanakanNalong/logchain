@@ -117,6 +117,40 @@ describe('demo-preflight.sh — batch status gate', () => {
     },
   );
 
+  /**
+   * FAILED ที่ไม่มี log ผูก (SQL คืนมาเป็น FAILED_EMPTY) = anchor ล้มก่อนใส่ mapping
+   * log ในใบนั้นยัง pending อยู่ seal cron รอบถัดไปรับไปทำต่อแล้ว ใบที่ล้มเป็นซากเปล่า
+   * ของเดิมนับเป็น ❌ → preflight ติด ⛔ ถาวรเพราะ batch ที่ล้มไปเมื่อไหร่ก็ไม่รู้
+   */
+  it('warns — not blocks — on a FAILED batch holding no logs', () => {
+    const { stdout, code } = runPreflight('CONFIRMED:3\nFAILED_EMPTY:1');
+
+    expect(stdout).toContain('⚠️  batches FAILED:1');
+    expect(stdout).not.toContain('❌ batches');
+    expect(stdout).toContain('🎉 พร้อม demo');
+    expect(code).toBe(0);
+  });
+
+  it('still blocks on a FAILED batch that does hold logs', () => {
+    const { stdout, code } = runPreflight(
+      'CONFIRMED:3\nFAILED_EMPTY:1\nFAILED:1',
+    );
+
+    expect(stdout).toContain('⚠️  batches FAILED:1');
+    expect(stdout).toContain('❌ batches FAILED:1 ← ต้องเป็น CONFIRMED');
+    expect(stdout).toContain('⛔ ยังไม่พร้อม');
+    expect(code).toBe(1);
+  });
+
+  // ซาก FAILED_EMPTY ล้วน ๆ = ยังไม่เคย anchor ติดสักใบ ไม่มีของให้ demo
+  it('blocks when the only batches are empty FAILED leftovers', () => {
+    const { stdout, code } = runPreflight('FAILED_EMPTY:2');
+
+    expect(stdout).toContain('❌ ไม่มี batch CONFIRMED สักใบ');
+    expect(stdout).toContain('⛔ ยังไม่พร้อม');
+    expect(code).toBe(1);
+  });
+
   it('blocks when a non-CONFIRMED row is the only batch', () => {
     const { stdout, code } = runPreflight('PENDING:1');
 

@@ -46,9 +46,13 @@ jobs:
         run: ./scripts/check-tracked-secrets.sh
 
       # สแกนเฉพาะไฟล์ใน tree ไม่ไล่ทั้ง history — คอมมิตแรกสุดมี README ของ NestJS
-      # ที่ติด badge `token=abc123def456` มาด้วย เป็น false positive ที่ลบย้อนหลังไม่ได้
-      # (ถ้าอยากสแกน history ต้องใส่ fingerprint ลง .gitleaksignore ซึ่งจะเพี้ยนทุกครั้ง
-      #  ที่ rewrite history — แลกไม่คุ้ม ไฟล์ที่หลุดจริงยังไงก็ต้องอยู่ใน tree ตอน push)
+      # ที่ติด CI badge ซึ่งมีพารามิเตอร์หน้าตาเหมือน token ติดมาด้วย เป็น false
+      # positive ที่ลบย้อนหลังไม่ได้ (จะสแกน history ต้องใส่ fingerprint ลง
+      # .gitleaksignore ซึ่งเพี้ยนทุกครั้งที่ rewrite history — แลกไม่คุ้ม และไฟล์ที่
+      # หลุดจริงยังไงก็ต้องโผล่อยู่ใน tree ตอน push อยู่แล้ว)
+      #
+      # หมายเหตุ: อย่าเขียนค่าตัวอย่างที่หน้าตาเหมือน secret ลงในคอมเมนต์ไฟล์นี้
+      # gitleaks สแกนไฟล์ workflow ด้วย และเคยจับคอมเมนต์ของตัวเองจน CI แดงมาแล้ว
       - name: gitleaks (blocking)
         run: |
           docker run --rm -v "$PWD":/scan:ro zricethezav/gitleaks:latest \
