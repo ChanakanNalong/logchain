@@ -8,13 +8,9 @@ import { KafkaModule } from '../kafka/kafka.module';
 import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
-    imports: [
-        TypeOrmModule.forFeature([Log]),
-        KafkaModule,
-        MetricsModule,
-    ],
-    controllers: [LogsController],
-    providers: [LogService, PiiMaskingService],
-    exports: [LogService],
+  imports: [TypeOrmModule.forFeature([Log]), KafkaModule, MetricsModule],
+  controllers: [LogsController],
+  providers: [LogService, PiiMaskingService],
+  exports: [LogService],
 })
 export class LogsModule {}

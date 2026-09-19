@@ -16,7 +16,9 @@ export class NotificationService implements OnModuleInit {
     const smtp = this.vault.get().notification;
 
     if (!smtp || !smtp.host || !smtp.user) {
-      this.logger.warn('Notification disabled — SMTP not configured in Vault (host/user empty)');
+      this.logger.warn(
+        'Notification disabled — SMTP not configured in Vault (host/user empty)',
+      );
       return;
     }
 
@@ -32,7 +34,9 @@ export class NotificationService implements OnModuleInit {
     this.mailFrom = smtp.user;
     this.mailTo = smtp.to || smtp.user;
 
-    this.logger.log(`NotificationService ready (SMTP ${smtp.host}:${smtp.port})`);
+    this.logger.log(
+      `NotificationService ready (SMTP ${smtp.host}:${smtp.port})`,
+    );
   }
 
   async sendAlertEmail(severity: string, title: string, detail: string) {

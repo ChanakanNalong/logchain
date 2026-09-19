@@ -10,17 +10,21 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
 
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   // log error เต็มๆ ลง console (debug ง่ายขึ้น)
   app.useGlobalFilters(new AllExceptionsFilter());
 
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3001'],
+    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
+      'http://localhost:3001',
+    ],
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Authorization', 'Content-Type'],
     credentials: true,
@@ -33,11 +37,11 @@ async function bootstrap() {
       .addBearerAuth()
       .build();
     SwaggerModule.setup(
-      'api/docs', 
-      app, 
+      'api/docs',
+      app,
       SwaggerModule.createDocument(app, config),
     );
-    
+
     logger.log('Swagger: http://localhost:3000/api/docs');
   }
 

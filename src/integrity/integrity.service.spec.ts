@@ -1,6 +1,5 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In } from 'typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
@@ -60,7 +59,12 @@ describe('IntegrityService — Merkle determinism', () => {
     // createdAt-only sort would pair {a,c},{b,d} while the { createdAt, id }
     // sort pairs {a,b},{c,d} — a genuinely different Merkle tree.
     const t = new Date('2026-07-22T00:00:00.000Z');
-    logsStore = [makeLog('a', t), makeLog('c', t), makeLog('b', t), makeLog('d', t)];
+    logsStore = [
+      makeLog('a', t),
+      makeLog('c', t),
+      makeLog('b', t),
+      makeLog('d', t),
+    ];
     mappingStore = [];
     batchStore = [];
     onChain = new Map();
@@ -79,8 +83,8 @@ describe('IntegrityService — Merkle determinism', () => {
         if (opts.take) rows = rows.slice(0, opts.take);
         return rows;
       }),
-      findOneBy: jest.fn(async ({ id }: any) =>
-        logsStore.find((l) => l.id === id) ?? null,
+      findOneBy: jest.fn(
+        async ({ id }: any) => logsStore.find((l) => l.id === id) ?? null,
       ),
     };
 
@@ -93,13 +97,15 @@ describe('IntegrityService — Merkle determinism', () => {
         }
         return rows;
       }),
-      findOneBy: jest.fn(async ({ logId }: any) =>
-        mappingStore.find((m) => m.logId === logId) ?? null,
+      findOneBy: jest.fn(
+        async ({ logId }: any) =>
+          mappingStore.find((m) => m.logId === logId) ?? null,
       ),
       create: jest.fn((dto: any) => ({ ...dto })),
       save: jest.fn(async (val: any) => {
         const arr = Array.isArray(val) ? val : [val];
-        for (const m of arr) mappingStore.push({ mappedAt: mappingSeq++, ...m });
+        for (const m of arr)
+          mappingStore.push({ mappedAt: mappingSeq++, ...m });
         return val;
       }),
     };
@@ -118,20 +124,21 @@ describe('IntegrityService — Merkle determinism', () => {
           clauses.some((c: any) => !c?.status || c.status === b.status),
         );
       }),
-      findOneBy: jest.fn(async ({ id }: any) =>
-        batchStore.find((b) => b.id === id) ?? null,
+      findOneBy: jest.fn(
+        async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
       ),
     };
 
     const alertsRepo = {
       // dedup ต้องเห็น alert ที่เคยบันทึกไว้จริง ไม่ใช่คืน null ตลอด
-      findOne: jest.fn(async ({ where }: any) =>
-        alertSaves.find(
-          (a: any) =>
-            a.batchId === where.batchId &&
-            a.alertType === where.alertType &&
-            (where.status === undefined || a.status === where.status),
-        ) ?? null,
+      findOne: jest.fn(
+        async ({ where }: any) =>
+          alertSaves.find(
+            (a: any) =>
+              a.batchId === where.batchId &&
+              a.alertType === where.alertType &&
+              (where.status === undefined || a.status === where.status),
+          ) ?? null,
       ),
       create: jest.fn((dto: any) => dto),
       save: jest.fn(async (dto: any) => {
@@ -152,7 +159,9 @@ describe('IntegrityService — Merkle determinism', () => {
 
     checkRootSpy = jest.fn(async (batchId: string, root: string) => {
       const stored = onChain.get(batchId);
-      const expected = (root.startsWith('0x') ? root : '0x' + root).toLowerCase();
+      const expected = (
+        root.startsWith('0x') ? root : '0x' + root
+      ).toLowerCase();
       if (!stored) return { result: 'MISSING', onChainRoot: '0x0' };
       return {
         result: stored.toLowerCase() === expected ? 'MATCH' : 'MISMATCH',

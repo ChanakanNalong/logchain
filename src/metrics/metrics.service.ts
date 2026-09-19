@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Counter, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
+import {
+  Counter,
+  Histogram,
+  Registry,
+  collectDefaultMetrics,
+} from 'prom-client';
 
 @Injectable()
 export class MetricsService {
@@ -30,10 +35,20 @@ export class MetricsService {
     });
   }
 
-  incrementLogsIngested(severity: string) { this.logsTotal.inc({ severity }); }
-  recordIngestDuration(ms: number)        { this.ingestHist.observe(ms); }
-  incrementPiiMasked()                    { this.piiCounter.inc(); }
+  incrementLogsIngested(severity: string) {
+    this.logsTotal.inc({ severity });
+  }
+  recordIngestDuration(ms: number) {
+    this.ingestHist.observe(ms);
+  }
+  incrementPiiMasked() {
+    this.piiCounter.inc();
+  }
 
-  async getMetrics() { return this.registry.metrics(); }
-  getContentType()   { return this.registry.contentType; }
+  async getMetrics() {
+    return this.registry.metrics();
+  }
+  getContentType() {
+    return this.registry.contentType;
+  }
 }

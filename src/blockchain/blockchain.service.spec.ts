@@ -7,16 +7,24 @@ import { classifyChainError } from './blockchain.service';
  */
 describe('classifyChainError', () => {
   it('reads the revert reason from reason', () => {
-    expect(classifyChainError({ reason: 'Root already exists' })).toBe('ROOT_EXISTS');
-    expect(classifyChainError({ reason: 'Not authorized' })).toBe('NOT_AUTHORIZED');
+    expect(classifyChainError({ reason: 'Root already exists' })).toBe(
+      'ROOT_EXISTS',
+    );
+    expect(classifyChainError({ reason: 'Not authorized' })).toBe(
+      'NOT_AUTHORIZED',
+    );
   });
 
   it('reads it from shortMessage', () => {
     expect(
-      classifyChainError({ shortMessage: 'execution reverted: "Root already exists"' }),
+      classifyChainError({
+        shortMessage: 'execution reverted: "Root already exists"',
+      }),
     ).toBe('ROOT_EXISTS');
     expect(
-      classifyChainError({ shortMessage: 'execution reverted: "Not authorized"' }),
+      classifyChainError({
+        shortMessage: 'execution reverted: "Not authorized"',
+      }),
     ).toBe('NOT_AUTHORIZED');
   });
 
@@ -24,23 +32,31 @@ describe('classifyChainError', () => {
     expect(
       classifyChainError({
         code: 'CALL_EXCEPTION',
-        revert: { name: 'Error', signature: 'Error(string)', args: ['Root already exists'] },
+        revert: {
+          name: 'Error',
+          signature: 'Error(string)',
+          args: ['Root already exists'],
+        },
       }),
     ).toBe('ROOT_EXISTS');
   });
 
   it('reads it from a plain Error message', () => {
-    expect(classifyChainError(new Error('execution reverted: Root already exists'))).toBe(
+    expect(
+      classifyChainError(new Error('execution reverted: Root already exists')),
+    ).toBe('ROOT_EXISTS');
+  });
+
+  it('is case-insensitive', () => {
+    expect(classifyChainError({ reason: 'ROOT ALREADY EXISTS' })).toBe(
       'ROOT_EXISTS',
     );
   });
 
-  it('is case-insensitive', () => {
-    expect(classifyChainError({ reason: 'ROOT ALREADY EXISTS' })).toBe('ROOT_EXISTS');
-  });
-
   it('falls back to OTHER for anything else', () => {
-    expect(classifyChainError(new Error('insufficient funds for gas'))).toBe('OTHER');
+    expect(classifyChainError(new Error('insufficient funds for gas'))).toBe(
+      'OTHER',
+    );
     expect(classifyChainError({ code: 'NONCE_EXPIRED' })).toBe('OTHER');
     expect(classifyChainError(undefined)).toBe('OTHER');
     expect(classifyChainError(null)).toBe('OTHER');

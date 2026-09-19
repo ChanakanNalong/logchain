@@ -67,3 +67,11 @@ dist/
 
 # Kafka mTLS certs — generate ด้วย infra/kafka/gen-certs.sh
 infra/kafka/certs/
+
+# secrets — .env.*.bak เดิมไม่ครอบชื่อแบบ .env.bak.<timestamp> ทำให้ backup หลุดขึ้น public repo มาแล้ว
+.env.bak*
+.env*.bak
+.secrets/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

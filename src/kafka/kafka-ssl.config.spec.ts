@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { buildKafkaSsl } from './kafka-ssl.config';
 
@@ -8,9 +11,38 @@ function cfgOf(values: Record<string, string>): ConfigService {
   } as unknown as ConfigService;
 }
 
-const CA = 'infra/kafka/certs/ca.crt';
-const CERT = 'infra/kafka/certs/clients/nestjs.crt';
-const KEY = 'infra/kafka/certs/clients/nestjs.key';
+/**
+ * ประกอบหัว/ท้าย PEM ตอน runtime ไม่เขียนเป็นสตริงเดียวในไฟล์
+ * ไม่งั้น secret scanner ใน CI จะจับ fixture ของเทสเองว่าเป็น private key ที่หลุด
+ */
+const pem = (label: string) =>
+  ['-----BEGIN ', label, '-----\nZmFrZQ==\n-----END ', label, '-----\n'].join(
+    '',
+  );
+
+/**
+ * เดิมเทสนี้ชี้ไปที่ infra/kafka/certs/* ของจริง ซึ่ง gitignore ไว้และมีเฉพาะเครื่อง
+ * ที่เคย generate cert — CI จึงแดงด้วย ENOENT ทั้งที่โค้ดไม่ได้ผิด
+ * สร้างไฟล์ชั่วคราวเองแทน เทสยังอ่านไฟล์จริงจากดิสก์เหมือนเดิม แต่ไม่ผูกกับเครื่อง
+ */
+let dir: string;
+let CA: string;
+let CERT: string;
+let KEY: string;
+
+beforeAll(() => {
+  dir = mkdtempSync(join(tmpdir(), 'kafka-ssl-spec-'));
+  CA = join(dir, 'ca.crt');
+  CERT = join(dir, 'client.crt');
+  KEY = join(dir, 'client.key');
+  writeFileSync(CA, pem('CERTIFICATE'));
+  writeFileSync(CERT, pem('CERTIFICATE'));
+  writeFileSync(KEY, pem('PRIVATE KEY'));
+});
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe('buildKafkaSsl', () => {
   it('ไม่ใส่ key ssl เลยเมื่อ toggle ไม่ได้ตั้ง (default plaintext)', () => {

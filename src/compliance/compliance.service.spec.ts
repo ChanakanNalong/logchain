@@ -50,7 +50,12 @@ function batchRow(day: string, counts: Partial<Record<string, number>>) {
   };
 }
 
-const EMPTY_RETENTION = { expired: '0', due_in_30d: '0', cde_scoped: '0', total: '0' };
+const EMPTY_RETENTION = {
+  expired: '0',
+  due_in_30d: '0',
+  cde_scoped: '0',
+  total: '0',
+};
 
 describe('ComplianceService.getReports', () => {
   let service: ComplianceService;
@@ -98,7 +103,7 @@ describe('ComplianceService.getReports', () => {
   /** เขียน fixture ให้ fs.readFileSync คืน erasure-log.json ตามที่กำหนด */
   function withErasureLog(records: any[]) {
     mockedFs.existsSync.mockReturnValue(true);
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(records) as any);
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(records));
   }
 
   // ---- integrity ----
@@ -147,7 +152,10 @@ describe('ComplianceService.getReports', () => {
     const report = await service.getReports('2026-08-04', '2026-08-05');
 
     expect(report.integrity).toHaveLength(2);
-    expect(report.integrity.map((d) => d.day)).toEqual(['2026-08-04', '2026-08-05']);
+    expect(report.integrity.map((d) => d.day)).toEqual([
+      '2026-08-04',
+      '2026-08-05',
+    ]);
     expect(report.integrity[0].integrityRate).toBe(100);
     expect(report.integrity[1].integrityRate).toBe(0);
   });
@@ -191,9 +199,9 @@ describe('ComplianceService.getReports', () => {
   });
 
   it('throws BadRequestException when from is after to', async () => {
-    await expect(service.getReports('2026-08-10', '2026-08-01')).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.getReports('2026-08-10', '2026-08-01'),
+    ).rejects.toThrow(BadRequestException);
     // ต้องพังก่อนแตะ repository
     expect(batchQb.getRawMany).not.toHaveBeenCalled();
   });
@@ -202,14 +210,39 @@ describe('ComplianceService.getReports', () => {
 
   it('keeps only erasure records inside the range and groups them by Bangkok day', async () => {
     // ทั้ง 6 record เขียนเป็นเวลา UTC — วันที่ที่คาดหวังคิดตามปฏิทินไทย (UTC+7)
-    const beforeWindow = { subject: 'before-window', erasedAt: '2026-07-31T10:00:00Z' }; // 31 ก.ค. 17:00 ICT
-    const ictAug01 = { subject: 'utc-jul31-ict-aug01', erasedAt: '2026-07-31T23:00:00Z' }; // 1 ส.ค. 06:00 ICT
-    const middayAug01 = { subject: 'midday-aug01', erasedAt: '2026-08-01T02:00:00Z' }; // 1 ส.ค. 09:00 ICT
-    const middayAug03 = { subject: 'midday-aug03', erasedAt: '2026-08-03T10:00:00Z' }; // 3 ส.ค. 17:00 ICT
-    const ictAug04 = { subject: 'utc-aug03-ict-aug04', erasedAt: '2026-08-03T18:30:00Z' }; // 4 ส.ค. 01:30 ICT
-    const afterWindow = { subject: 'after-window', erasedAt: '2026-08-04T10:00:00Z' }; // 4 ส.ค. 17:00 ICT
+    const beforeWindow = {
+      subject: 'before-window',
+      erasedAt: '2026-07-31T10:00:00Z',
+    }; // 31 ก.ค. 17:00 ICT
+    const ictAug01 = {
+      subject: 'utc-jul31-ict-aug01',
+      erasedAt: '2026-07-31T23:00:00Z',
+    }; // 1 ส.ค. 06:00 ICT
+    const middayAug01 = {
+      subject: 'midday-aug01',
+      erasedAt: '2026-08-01T02:00:00Z',
+    }; // 1 ส.ค. 09:00 ICT
+    const middayAug03 = {
+      subject: 'midday-aug03',
+      erasedAt: '2026-08-03T10:00:00Z',
+    }; // 3 ส.ค. 17:00 ICT
+    const ictAug04 = {
+      subject: 'utc-aug03-ict-aug04',
+      erasedAt: '2026-08-03T18:30:00Z',
+    }; // 4 ส.ค. 01:30 ICT
+    const afterWindow = {
+      subject: 'after-window',
+      erasedAt: '2026-08-04T10:00:00Z',
+    }; // 4 ส.ค. 17:00 ICT
 
-    withErasureLog([beforeWindow, ictAug01, middayAug01, middayAug03, ictAug04, afterWindow]);
+    withErasureLog([
+      beforeWindow,
+      ictAug01,
+      middayAug01,
+      middayAug03,
+      ictAug04,
+      afterWindow,
+    ]);
 
     const report = await service.getReports('2026-08-01', '2026-08-03');
 
@@ -218,7 +251,9 @@ describe('ComplianceService.getReports', () => {
       { day: '2026-08-03', requests: 1, records: [middayAug03] },
     ]);
 
-    const subjects = report.erasure.flatMap((d) => d.records.map((r: any) => r.subject));
+    const subjects = report.erasure.flatMap((d) =>
+      d.records.map((r: any) => r.subject),
+    );
     expect(subjects).not.toContain('before-window');
     expect(subjects).not.toContain('after-window');
     // ตกช่วง 00:00–07:00 ICT ของวันที่ 4 -> อยู่นอกหน้าต่าง แม้วัน UTC จะยังเป็นวันที่ 3
@@ -232,15 +267,22 @@ describe('ComplianceService.getReports', () => {
     ['2026-08-01T00:00:00Z', '2026-08-01'], // 07:00 ICT
     ['2026-08-01T16:59:59Z', '2026-08-01'], // 23:59:59 ICT
     ['2026-08-01T17:00:00Z', '2026-08-02'], // ข้ามไปวันถัดไปตาม ICT
-  ])('buckets an erasure record at %s into Bangkok day %s', async (erasedAt, expectedDay) => {
-    withErasureLog([{ subject: 'boundary', erasedAt }]);
+  ])(
+    'buckets an erasure record at %s into Bangkok day %s',
+    async (erasedAt, expectedDay) => {
+      withErasureLog([{ subject: 'boundary', erasedAt }]);
 
-    const report = await service.getReports('2026-07-31', '2026-08-02');
+      const report = await service.getReports('2026-07-31', '2026-08-02');
 
-    expect(report.erasure).toEqual([
-      { day: expectedDay, requests: 1, records: [{ subject: 'boundary', erasedAt }] },
-    ]);
-  });
+      expect(report.erasure).toEqual([
+        {
+          day: expectedDay,
+          requests: 1,
+          records: [{ subject: 'boundary', erasedAt }],
+        },
+      ]);
+    },
+  );
 
   it('returns an empty erasure list when the log file is missing', async () => {
     mockedFs.existsSync.mockReturnValue(false);
@@ -253,7 +295,7 @@ describe('ComplianceService.getReports', () => {
 
   it('survives a corrupt erasure log instead of throwing', async () => {
     mockedFs.existsSync.mockReturnValue(true);
-    mockedFs.readFileSync.mockReturnValue('{not json' as any);
+    mockedFs.readFileSync.mockReturnValue('{not json');
 
     const report = await service.getReports('2026-08-01', '2026-08-03');
 
@@ -263,7 +305,12 @@ describe('ComplianceService.getReports', () => {
   // ---- retention ----
 
   it('maps the retention snapshot to numbers', async () => {
-    logQb.rawOne = { expired: '3', due_in_30d: '7', cde_scoped: '2', total: '40' };
+    logQb.rawOne = {
+      expired: '3',
+      due_in_30d: '7',
+      cde_scoped: '2',
+      total: '40',
+    };
 
     const report = await service.getReports('2026-08-01', '2026-08-03');
 

@@ -9,6 +9,7 @@ on:
 jobs:
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,23 +18,60 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      
-      # Backend
+          cache: npm
+
       - name: Install dependencies
         run: npm ci
 
-      - name: npm audit
+      # audit เป็นข้อมูลประกอบ ไม่ตัดสินว่า build ผ่านหรือไม่ผ่าน
+      # (NestJS chain ต้องขึ้น major version ถึงจะเคลียร์ได้ ค้างไว้เป็นงานแยก)
+      - name: npm audit (backend)
         run: npm audit --audit-level=moderate
         continue-on-error: true
 
-      - name: Build check
-        run: npm run build
+      - name: npm audit (dashboard)
+        run: npm --prefix cylis-dashboard audit --audit-level=moderate
+        continue-on-error: true
 
-      # Security scan
-      - name: Run Trivy filesystem scan
+      # ── ด่านที่ทำให้ build แดงจริง ──
+      # secret หลุดเข้า repo คือเคสที่เกิดมาแล้ว (.env backup ถูก commit ขึ้น public
+      # repo อยู่ 10 วัน) ตอนนั้นสแกนตั้ง exit-code: 0 ไว้ CI เลยเขียวตลอดทั้งที่เจอ
+      #
+      # ทดสอบแล้วว่า Trivy secret scanner "ไม่จับ" ไฟล์ .env ที่เป็น key=value ธรรมดา
+      # (ยิงกับไฟล์จริงที่หลุด — เงียบสนิท) จึงต้องมีสามด่านที่ทับช่องว่างกัน:
+      #   1. เช็คตรง ๆ ว่ามีไฟล์ .env/key/cert ถูก track ไหม — ครอบเคสที่เคยเกิด 100%
+      #   2. gitleaks — จับ key=value และ secret ที่ฝังในซอร์ส (ทดสอบแล้วจับได้ทั้งคู่)
+      #   3. Trivy — จับ private key แบบ PEM/keystore ที่ gitleaks อาจข้าม
+      - name: ไฟล์ความลับถูก track ไหม
+        run: ./scripts/check-tracked-secrets.sh
+
+      # สแกนเฉพาะไฟล์ใน tree ไม่ไล่ทั้ง history — คอมมิตแรกสุดมี README ของ NestJS
+      # ที่ติด CI badge ซึ่งมีพารามิเตอร์หน้าตาเหมือน token ติดมาด้วย เป็น false
+      # positive ที่ลบย้อนหลังไม่ได้ (จะสแกน history ต้องใส่ fingerprint ลง
+      # .gitleaksignore ซึ่งเพี้ยนทุกครั้งที่ rewrite history — แลกไม่คุ้ม และไฟล์ที่
+      # หลุดจริงยังไงก็ต้องโผล่อยู่ใน tree ตอน push อยู่แล้ว)
+      #
+      # หมายเหตุ: อย่าเขียนค่าตัวอย่างที่หน้าตาเหมือน secret ลงในคอมเมนต์ไฟล์นี้
+      # gitleaks สแกนไฟล์ workflow ด้วย และเคยจับคอมเมนต์ของตัวเองจน CI แดงมาแล้ว
+      - name: gitleaks (blocking)
+        run: |
+          docker run --rm -v "$PWD":/scan:ro zricethezav/gitleaks:latest \
+            detect --source=/scan --no-git --redact -v
+
+      - name: Trivy — secret scan (blocking)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
+          scanners: secret
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: 1
+
+      - name: Trivy — vulnerability scan (informational)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: 0

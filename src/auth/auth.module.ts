@@ -4,8 +4,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { RolesGuard } from './guards/roles.guard';
 
 @Module({
-    imports: [PassportModule.register({ defaultStrategy: 'jwt'})],
-    providers: [JwtStrategy, RolesGuard],
-    exports: [PassportModule, RolesGuard],
+  imports: [PassportModule.register({ defaultStrategy: 'jwt' })],
+  providers: [JwtStrategy, RolesGuard],
+  exports: [PassportModule, RolesGuard],
 })
 export class AuthModule {}

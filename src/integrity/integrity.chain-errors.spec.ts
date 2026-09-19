@@ -78,22 +78,29 @@ describe('IntegrityService — chain write errors', () => {
           rows = rows.filter((r) => (idOp.value as string[]).includes(r.id));
         } else if (idOp && typeof idOp === 'object' && idOp.type === 'not') {
           // Not(In([...])) — FindOperator ซ้อนกัน โดย .value แบนออกมาเป็น array ให้แล้ว
-          const excluded: string[] = Array.isArray(idOp.value) ? idOp.value : [idOp.value];
+          const excluded: string[] = Array.isArray(idOp.value)
+            ? idOp.value
+            : [idOp.value];
           rows = rows.filter((r) => !excluded.includes(r.id));
         }
         if (opts.take) rows = rows.slice(0, opts.take);
         return rows;
       }),
-      findOneBy: jest.fn(async ({ id }: any) => logsStore.find((l) => l.id === id) ?? null),
+      findOneBy: jest.fn(
+        async ({ id }: any) => logsStore.find((l) => l.id === id) ?? null,
+      ),
     };
 
     const mappingRepo = {
       find: jest.fn(async (opts: any = {}) => {
         const bid = opts.where?.batchId;
-        return bid ? mappingStore.filter((m) => m.batchId === bid) : [...mappingStore];
+        return bid
+          ? mappingStore.filter((m) => m.batchId === bid)
+          : [...mappingStore];
       }),
-      findOneBy: jest.fn(async ({ logId }: any) =>
-        mappingStore.find((m) => m.logId === logId) ?? null,
+      findOneBy: jest.fn(
+        async ({ logId }: any) =>
+          mappingStore.find((m) => m.logId === logId) ?? null,
       ),
       create: jest.fn((dto: any) => ({ ...dto })),
       save: jest.fn(async (val: any) => {
@@ -116,7 +123,9 @@ describe('IntegrityService — chain write errors', () => {
           clauses.some((c: any) => !c?.status || c.status === b.status),
         );
       }),
-      findOneBy: jest.fn(async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null),
+      findOneBy: jest.fn(
+        async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
+      ),
     };
 
     const alertsRepo = {
@@ -128,10 +137,14 @@ describe('IntegrityService — chain write errors', () => {
 
     const blockchain = {
       ready: true,
-      storeRoot: jest.fn((batchId: string, root: string) => storeRootImpl(batchId, root)),
+      storeRoot: jest.fn((batchId: string, root: string) =>
+        storeRootImpl(batchId, root),
+      ),
       checkRoot: jest.fn(async (batchId: string, root: string) => {
         const stored = onChain.get(batchId);
-        const expected = (root.startsWith('0x') ? root : '0x' + root).toLowerCase();
+        const expected = (
+          root.startsWith('0x') ? root : '0x' + root
+        ).toLowerCase();
         if (!stored) return { result: 'MISSING', onChainRoot: '0x0' };
         return {
           result: stored.toLowerCase() === expected ? 'MATCH' : 'MISMATCH',
@@ -153,7 +166,9 @@ describe('IntegrityService — chain write errors', () => {
     }).compile();
 
     service = module.get(IntegrityService);
-    errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   });
 
@@ -230,7 +245,9 @@ describe('IntegrityService — chain write errors', () => {
 
     it('marks FAILED for a non-revert failure such as an RPC outage', async () => {
       storeRootImpl = async () => {
-        throw Object.assign(new Error('could not detect network'), { code: 'NETWORK_ERROR' });
+        throw Object.assign(new Error('could not detect network'), {
+          code: 'NETWORK_ERROR',
+        });
       };
 
       const batch = await service.sealBatch();

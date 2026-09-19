@@ -2,6 +2,7 @@
 # เช็คว่าระบบพร้อม demo — รันก่อนขึ้นเวที 30 นาที
 TOKEN="${1:-}"
 ok(){ echo "  ✅ $1"; }; bad(){ echo "  ❌ $1"; FAIL=1; }
+warn(){ echo "  ⚠️  $1"; }
 FAIL=0
 
 echo "── services ──"
@@ -46,15 +47,33 @@ echo "── integrity ──"
 # NOTE: ห้ามใช้ `psql ... | while read` — pipeline รัน while ใน subshell
 # FAIL=1 ที่ bad() ตั้งจะหายไปพร้อม subshell แล้วสรุปผลขึ้น "🎉 พร้อม demo"
 # ทั้งที่มี ❌ ใช้ process substitution ให้ while รันใน shell ตัวเดิมแทน
+#
+# batch FAILED ที่ไม่มีแถวใน log_batch_mapping = anchor ล้มก่อนถึงขั้นผูก log
+# (integrity.service.ts ตั้ง status แล้ว return ก่อนใส่ mapping) log ในใบนั้นจึงยัง
+# นับเป็น pending อยู่ และ seal cron รอบถัดไป (ทุก 1 นาที) รับไปทำต่อแล้ว
+# ใบที่ล้มกลายเป็นซากเปล่า ไม่ได้กั้น log ไว้ที่ไหน → ⚠️ ไม่ใช่ ❌ ไม่งั้น preflight
+# ติดถาวรเพราะ batch ที่ล้มไปเมื่อไหร่ก็ไม่รู้ ส่วน FAILED ที่ยังมี log ผูกอยู่
+# แปลว่า log ค้างกับ batch ที่ไม่ได้ขึ้น chain จริง — อันนั้นยังต้อง ❌ เหมือนเดิม
 BATCH_ROWS=$(docker exec logchain-postgres psql -U logchain -d logchain -tAc \
-  "SELECT status||':'||count(*) FROM batches GROUP BY status")
+  "SELECT k||':'||count(*) FROM (
+     SELECT CASE WHEN b.status = 'FAILED' AND NOT EXISTS (
+                   SELECT 1 FROM log_batch_mapping m WHERE m.batch_id = b.id)
+                 THEN 'FAILED_EMPTY' ELSE b.status END AS k
+     FROM batches b) t GROUP BY k")
 if [ -z "$(echo "$BATCH_ROWS" | tr -d '[:space:]')" ]; then
   bad "ไม่มี batch เลย — ยังไม่เคย seal สักรอบ"
 else
+  CONFIRMED_SEEN=0
   while read -r r; do
     [ -z "$r" ] && continue
-    case "$r" in CONFIRMED:*) ok "batches $r";; *) bad "batches $r ← ต้องเป็น CONFIRMED";; esac
+    case "$r" in
+      CONFIRMED:*)    CONFIRMED_SEEN=1; ok "batches $r";;
+      FAILED_EMPTY:*) warn "batches FAILED:${r#FAILED_EMPTY:} — ไม่มี log ผูกอยู่ ใบถัดไป seal ไปแล้ว";;
+      *)              bad "batches $r ← ต้องเป็น CONFIRMED";;
+    esac
   done < <(echo "$BATCH_ROWS")
+  # เหลือแต่ซาก FAILED_EMPTY = ยังไม่เคย anchor ติดเลย ไม่มีของให้ demo
+  [ "$CONFIRMED_SEEN" = 1 ] || bad "ไม่มี batch CONFIRMED สักใบ — ยังไม่เคย anchor สำเร็จ"
 fi
 
 if [ -n "$TOKEN" ]; then

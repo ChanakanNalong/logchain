@@ -23,7 +23,9 @@ export class ErasureService {
     }
 
     await this.auditRepo.delete({ userId });
-    this.logger.log(`Deleted ${auditRecords.length} audit records for user ${userId}`);
+    this.logger.log(
+      `Deleted ${auditRecords.length} audit records for user ${userId}`,
+    );
 
     // Tombstone = proof of erasure (PDPA compliance evidence)
     const deletedAt = new Date().toISOString();
@@ -32,7 +34,10 @@ export class ErasureService {
       requestedBy,
       deletedAt,
       recordsDeleted: auditRecords.length,
-      hash: crypto.createHash('sha256').update(userId + deletedAt).digest('hex'),
+      hash: crypto
+        .createHash('sha256')
+        .update(userId + deletedAt)
+        .digest('hex'),
     };
     this.appendErasureLog(tombstone);
 
