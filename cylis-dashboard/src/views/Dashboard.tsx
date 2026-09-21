@@ -214,6 +214,13 @@ export default function Dashboard() {
   const topSources = overview.topSources ?? [];
   const activeRange = TRAFFIC_RANGES.find((r) => r.key === range)!;
   const points = traffic?.points ?? [];
+  // ป้ายแกน X ยาวไม่เท่ากันในแต่ละช่วง — "YYYY" 4 ตัว ส่วน "DD Mon HH24:00" 13 ตัว
+  // ค่าคงที่ค่าเดียวจึงไม่พอ: 18 ทำให้ 7D/All ป้ายทับกันจนอ่านไม่ออก ("14 Sep 06:0015 Sep 18:00")
+  // ส่วนค่าสูงพอสำหรับ 7D ก็ทำให้ 30D/12M โล่งเกินจำเป็น
+  // -> คิดจากป้ายที่ยาวที่สุดในซีรีส์จริง (mono 11px กว้างราว 6.6px ต่อตัวอักษร)
+  // ป้ายวางกึ่งกลาง tick ระยะห่างจึงต้องมากกว่าความกว้างป้ายนิดเดียวก็พอ บวกเผื่อแค่ 6
+  const tickGap =
+    Math.ceil(points.reduce((n, p) => Math.max(n, p.label.length), 0) * 6.6) + 6;
   // /stats/traffic builds every series with generate_series + LEFT JOIN, so it always
   // returns a full grid of buckets — a quiet day comes back as zeros, not as [].
   // Checking length alone would render a blank chart instead of saying why.
@@ -257,7 +264,7 @@ export default function Dashboard() {
             tick={{ ...monoFont, fill: t.muted }}
             // ช่วงกว้างๆ มี bucket เยอะ ปล่อยให้ recharts ข้ามป้ายที่ชนกันเอง
             interval="preserveStartEnd"
-            minTickGap={18}
+            minTickGap={tickGap}
             dy={6}
           />
           <YAxis
