@@ -106,18 +106,25 @@ export const BUCKETS: Record<BucketKey, BucketSpec> = BUCKET_DEFS;
 /** จำนวน bucket สูงสุดที่ยอมให้ 'all' สร้าง — กันกราฟ (และ query) บานเมื่อ log เก่ามาก */
 export const MAX_BUCKETS = 60;
 
-/** ทุกช่วงยกเว้น 'all' ตรึง bucket + จำนวนจุดไว้ตายตัว ผลลัพธ์จึงกว้างเท่าที่ปุ่มบอกเสมอ */
+/**
+ * ทุกช่วงยกเว้น 'all' ตรึง bucket + จำนวนจุดไว้ตายตัว ผลลัพธ์จึงกว้างเท่าที่ปุ่มบอกเสมอ
+ *
+ * points = span/bucket **+1** เสมอ — bucket สุดท้ายคือช่วงปัจจุบันที่ยังไม่เต็ม
+ * ถ้าไม่บวก จุดเริ่มซีรีส์จะขยับเข้ามาเกือบหนึ่ง bucket แล้ว log ที่อยู่ในช่องว่างนั้น
+ * หายจากกราฟทั้งที่ป้ายบอกว่าครอบคลุม (7d เคยรวมได้ 23 ขณะที่ DB มี 24 ใน 7 วันจริง)
+ * planAllRange ก็บวก 1 ด้วยเหตุผลเดียวกัน
+ */
 export const RANGE_SPECS: Record<
   Exclude<TrafficRange, 'all'>,
   { bucket: BucketKey; points: number }
 > = {
-  '1h': { bucket: '5m', points: 12 },
-  '6h': { bucket: '15m', points: 24 },
-  '24h': { bucket: '1h', points: 24 },
-  '7d': { bucket: '6h', points: 28 },
-  '30d': { bucket: '1d', points: 30 },
-  '6m': { bucket: '1w', points: 26 },
-  '12m': { bucket: '1mo', points: 12 },
+  '1h': { bucket: '5m', points: 13 },
+  '6h': { bucket: '15m', points: 25 },
+  '24h': { bucket: '1h', points: 25 },
+  '7d': { bucket: '6h', points: 29 },
+  '30d': { bucket: '1d', points: 31 },
+  '6m': { bucket: '1w', points: 27 },
+  '12m': { bucket: '1mo', points: 13 },
 };
 
 /** bucket ที่เล็กที่สุดที่คลุม span ทั้งหมดได้ภายใน MAX_BUCKETS จุด */

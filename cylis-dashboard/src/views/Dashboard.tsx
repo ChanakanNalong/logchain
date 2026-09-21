@@ -179,6 +179,9 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     setTrafficLoading(true);
+    // ล้าง error ของช่วงก่อนหน้าด้วย — chartBody() เช็ค trafficError ก่อนอย่างอื่น
+    // ถ้าไม่ล้าง กดสลับช่วงหลังยิงพลาดจะเห็นข้อความ error เดิมค้างแทนกราฟที่กำลังโหลด
+    setTrafficError("");
 
     api
       .get("/stats/traffic", { params: { range } })

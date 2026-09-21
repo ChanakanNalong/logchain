@@ -25,11 +25,26 @@ function makeQueryBuilder() {
   return qb;
 }
 
+/**
+ * mock ของ logs repo เท่าที่ StatsService ใช้จริง
+ * เคยปล่อยเป็น `any` ทั้งก้อน แล้ว eslint เตือน unsafe-member-access/unsafe-assignment
+ * ทุกบรรทัดที่แตะ .query จนกลบ warning ที่มีความหมายจริงๆ — ระบุชนิดของ query ไว้
+ * ยังทำให้ `mock.calls[n]` อ่านออกว่าเป็น [sql, params] ด้วย
+ *
+ * params ระบุเป็นแบบบังคับ เพราะทุก query ของซีรีส์ส่งมาครบ — ยกเว้น
+ * min(created_at) ของ planAllRange ที่ส่ง sql อย่างเดียว ซึ่งไม่มีเทสไหนอ่าน params
+ */
+interface LogsRepoMock {
+  count: jest.Mock<Promise<number>, []>;
+  createQueryBuilder: jest.Mock;
+  query: jest.Mock<Promise<unknown[]>, [string, unknown[]]>;
+}
+
 describe('StatsService', () => {
   let service: StatsService;
   let logsQb: any;
   let batchQb: any;
-  let logsRepo: any;
+  let logsRepo: LogsRepoMock;
   let alertsQb: any;
   let alertsRepo: any;
 
@@ -39,9 +54,11 @@ describe('StatsService', () => {
     alertsQb = makeQueryBuilder();
 
     logsRepo = {
-      count: jest.fn().mockResolvedValue(0),
+      count: jest.fn<Promise<number>, []>().mockResolvedValue(0),
       createQueryBuilder: jest.fn(() => logsQb),
-      query: jest.fn().mockResolvedValue([]),
+      query: jest
+        .fn<Promise<unknown[]>, [string, unknown[]]>()
+        .mockResolvedValue([]),
     };
     const batchesRepo = { createQueryBuilder: jest.fn(() => batchQb) };
     alertsRepo = {
@@ -269,8 +286,9 @@ describe('StatsService', () => {
     expect(series.bucket).toBe('hour');
     const [, params] = logsRepo.query.mock.calls[0];
     expect(params[0]).toBe('1 hour');
-    // 24 จุด = ย้อนหลัง 23 ช่วง (จุดสุดท้ายคือชั่วโมงปัจจุบัน)
-    expect(params[1]).toBe(`${23 * 3600} seconds`);
+    // 25 จุด = ย้อนหลัง 24 ช่วงเต็ม + ชั่วโมงปัจจุบันที่ยังไม่จบ
+    // ต้องเป็น 24 ไม่ใช่ 23 ไม่งั้นซีรีส์เริ่มช้าไปหนึ่งชั่วโมงแล้ว log ช่วงนั้นหาย
+    expect(params[1]).toBe(`${24 * 3600} seconds`);
   });
 
   it('bins the 1h range into 5-minute buckets', async () => {
@@ -281,7 +299,7 @@ describe('StatsService', () => {
     const [sql, params] = logsRepo.query.mock.calls[0];
     expect(sql).toMatch(/date_bin/);
     expect(params[0]).toBe('5 minutes');
-    expect(params[1]).toBe(`${11 * 300} seconds`);
+    expect(params[1]).toBe(`${12 * 300} seconds`);
     expect(series.bucket).toBe('5 min');
   });
 
@@ -296,7 +314,7 @@ describe('StatsService', () => {
     expect(sql).toMatch(/date_trunc/);
     expect(sql).not.toMatch(/date_bin/);
     expect(params[0]).toBe('month');
-    expect(params[1]).toBe('11 months');
+    expect(params[1]).toBe('12 months');
     expect(series.bucket).toBe('month');
   });
 
@@ -324,6 +342,43 @@ describe('StatsService', () => {
     const [, params] = logsRepo.query.mock.calls[1];
     expect(params[0]).toBe('7 days');
   });
+
+  // RANGE_SPECS เคยตั้ง points = span/bucket พอดี ทำให้ซีรีส์สั้นกว่าป้ายไปหนึ่ง bucket
+  // (7d รวมได้ 23 ขณะที่ DB มี 24 ใน 7 วันจริง) — ล็อกไว้ว่าทุกช่วงต้องถอยหลังเต็ม span
+  it.each([
+    ['1h', 3_600],
+    ['6h', 6 * 3_600],
+    ['24h', 24 * 3_600],
+    ['7d', 7 * 24 * 3_600],
+    ['30d', 30 * 24 * 3_600],
+    ['6m', 26 * 7 * 24 * 3_600],
+  ] as const)(
+    'covers the full %s window, not one bucket short',
+    async (range, spanSeconds) => {
+      logsRepo.query.mockResolvedValue([]);
+
+      await service.getTraffic(range);
+
+      const [, params] = logsRepo.query.mock.calls[0];
+      expect(params[1]).toBe(`${spanSeconds} seconds`);
+    },
+  );
+
+  // ฝั่งซ้ายของเงื่อนไขต้องเป็น l.created_at เปล่าๆ ถึงจะเข้า idx_logs_created_at ได้
+  // ถ้าโดน date_bin/date_trunc ครอบเมื่อไหร่ planner จะกลับไป seq scan ทั้งตาราง
+  it.each(['24h', '12m'] as const)(
+    'bounds the join on raw created_at so %s can use the index',
+    async (range) => {
+      logsRepo.query.mockResolvedValue([]);
+
+      await service.getTraffic(range);
+
+      const sql: string = logsRepo.query.mock.calls[0][0];
+      expect(sql).toMatch(/AND\s+l\.created_at\s+>=/);
+      // ต้องอยู่ใน ON ไม่ใช่ WHERE ไม่งั้น LEFT JOIN กลายเป็น INNER แล้ว bucket ว่างหาย
+      expect(sql).not.toMatch(/WHERE/i);
+    },
+  );
 
   it('maps traffic points to numbers and keeps the bucket timestamp', async () => {
     logsRepo.query.mockResolvedValue([

@@ -148,6 +148,13 @@ export class StatsService {
    * timezone ของ DB — ฝั่ง dashboard ติดป้าย "(UTC)" ไว้ ถ้าใครตั้ง TZ ใหม่แล้ว
    * bucket เลื่อนตาม ป้ายนั้นจะกลายเป็นคำโกหกทันที
    * (หมายเหตุ: นาฬิกาบนหัวแอปเป็น ICT = UTC+7 คนละโซนกับกราฟนี้โดยตั้งใจ)
+   *
+   * เงื่อนไข `l.created_at >= <ต้นซีรีส์>` ใน ON ไม่ได้มีไว้กรอง (การ join แบบ
+   * เท่ากับ bucket กรองให้อยู่แล้ว) แต่มีไว้ให้ planner ใช้ idx_logs_created_at ได้
+   * ฝั่งซ้ายต้องเป็นคอลัมน์เปล่าๆ — date_bin/date_trunc ครอบเมื่อไหร่ index หลุดทันที
+   * ไม่มีบรรทัดนี้ = seq scan ตาราง logs ทั้งใบทุกครั้งที่เปิด dashboard แม้แต่ช่วง 1H
+   * และต้องอยู่ใน ON ไม่ใช่ WHERE ไม่งั้น LEFT JOIN กลายเป็น INNER แล้ว bucket
+   * ที่ไม่มี log จะหายไปจากกราฟแทนที่จะเป็น 0
    */
   async getTraffic(
     range: TrafficRange = DEFAULT_TRAFFIC_RANGE,
@@ -178,6 +185,10 @@ export class StatsService {
            ) AS b(bucket)
       LEFT JOIN logs l
              ON date_trunc($1::text, l.created_at AT TIME ZONE 'UTC') = b.bucket
+            AND l.created_at >= (
+                  (date_trunc($1::text, (now() AT TIME ZONE 'UTC')) - $2::interval)
+                  AT TIME ZONE 'UTC'
+                )
       GROUP BY b.bucket
       ORDER BY b.bucket ASC;
     `,
@@ -200,6 +211,10 @@ export class StatsService {
            ) AS b(bucket)
       LEFT JOIN logs l
              ON date_bin($1::interval, l.created_at AT TIME ZONE 'UTC', $4::timestamp) = b.bucket
+            AND l.created_at >= (
+                  date_bin($1::interval, (now() AT TIME ZONE 'UTC') - $2::interval, $4::timestamp)
+                  AT TIME ZONE 'UTC'
+                )
       GROUP BY b.bucket
       ORDER BY b.bucket ASC;
     `,
