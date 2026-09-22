@@ -91,10 +91,33 @@ describe('StatsService', () => {
     // byStatus ต้องมีครบทุก key เสมอ ฝั่ง frontend จะได้ไม่เจอ undefined
     expect(result.batches.byStatus).toEqual({
       CONFIRMED: 0,
+      SEALED: 0,
       UNVERIFIED: 0,
       TAMPERED: 0,
       PENDING: 0,
     });
+  });
+
+  // deployment ที่ไม่ได้ต่อ blockchain จะได้ batch เป็น SEALED ทั้งหมด (ปิด batch แล้ว
+  // แต่ไม่ได้ anchor) ถ้า integrityRate นับแต่ CONFIRMED จะขึ้น 0% คู่กับ 0 tampered
+  // ซึ่งขัดกันเอง — SEALED ผ่านการตรวจแบบ local ทุกนาทีอยู่แล้ว
+  it('counts SEALED batches as intact for integrityRate', async () => {
+    batchQb._results = [
+      [
+        { status: 'SEALED', count: '8', log_count: '800' },
+        { status: 'TAMPERED', count: '2', log_count: '200' },
+      ],
+    ];
+    logsQb._results = [[]];
+    logsRepo.count.mockResolvedValue(1000);
+    alertsRepo.count.mockResolvedValue(0);
+
+    const result = await service.getOverview();
+
+    expect(result.batches.total).toBe(10);
+    expect(result.batches.confirmed).toBe(0);
+    expect(result.batches.tampered).toBe(2);
+    expect(result.integrityRate).toBe(80); // (0 CONFIRMED + 8 SEALED) / 10
   });
 
   it('counts batches by status and derives integrityRate + sealedLogs', async () => {
@@ -117,6 +140,7 @@ describe('StatsService', () => {
     expect(result.batches.tampered).toBe(1);
     expect(result.batches.byStatus).toEqual({
       CONFIRMED: 7,
+      SEALED: 0,
       UNVERIFIED: 0,
       TAMPERED: 1,
       PENDING: 2,

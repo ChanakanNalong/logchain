@@ -89,13 +89,11 @@ PG_PASS="$(sed -nE 's/^POSTGRES_PASSWORD=(.*)$/\1/p' .env)"
 sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://logchain:${PG_PASS}@localhost:5433/logchain|" .env
 
 if grep -q '^BLOCKCHAIN_PRIVATE_KEY=CHANGE_ME' .env; then
-    warn "BLOCKCHAIN_PRIVATE_KEY ยังเป็น CHANGE_ME"
-    warn "  ingest / PII masking / detection / alert / dashboard ทำงานครบตามปกติ"
-    warn "  แต่ Merkle integrity (M2) จะไม่ทำงานเลย — sealBatch() return ทันที"
-    warn "  ถ้า blockchain ไม่พร้อม (src/integrity/integrity.service.ts:35) แปลว่า"
-    warn "  ไม่มี batch/proof เกิดขึ้น ไม่ใช่แค่ไม่ anchor"
-    warn "  อยากเปิด: ใส่ private key ของ wallet ที่มี MATIC บน Polygon Amoy"
-    warn "  + ตั้ง CONTRACT_ADDRESS แล้วรันซ้ำ"
+    warn "BLOCKCHAIN_PRIVATE_KEY ยังเป็น CHANGE_ME — batch จะเป็น SEALED ไม่ใช่ CONFIRMED"
+    warn "  Merkle root / per-log proof / tamper detection ทำงานครบตามปกติ"
+    warn "  ที่ยังไม่มีคือการตรึง root ขึ้น blockchain เท่านั้น"
+    warn "  ใส่ private key (wallet ที่มี MATIC บน Polygon Amoy) + CONTRACT_ADDRESS"
+    warn "  เมื่อไหร่ batch ที่ค้าง SEALED จะถูก anchor ย้อนหลังให้เองภายใน 1 นาที"
 fi
 
 # ── 2. kafka certs ─────────────────────────────────────────────────────────

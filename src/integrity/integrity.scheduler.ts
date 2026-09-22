@@ -22,6 +22,9 @@ export class IntegritySchedule {
   @Cron(CronExpression.EVERY_MINUTE)
   async handlVerify() {
     try {
+      // batch ที่ seal ไว้ตอนยังไม่มี chain — ตรึงขึ้น chain ให้ก่อน
+      // (no-op ถ้าไม่มี SEALED ค้าง หรือ chain ยังไม่พร้อม)
+      await this.integrity.anchorSealedBatches();
       await this.integrity.reanchorUnverified();
       await this.integrity.verifyAllBatches();
     } catch (err) {

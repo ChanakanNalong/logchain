@@ -106,12 +106,17 @@ npm install && npm run start:dev
 > verify / dashboard ทำงานครบ **แค่ไม่มี alert** เพราะ backend เป็นฝั่ง *consume*
 > `alerts.raw` / `alerts.cde` ซึ่ง detection-consumer เป็นคน publish
 
-> ⚠️ **แต่ถ้าไม่ตั้ง blockchain จะไม่มี Merkle integrity เลย** — `sealBatch()`
-> ตรวจ `blockchain.ready` เป็นอย่างแรกแล้ว return ทันทีถ้าไม่พร้อม
-> (`src/integrity/integrity.service.ts:35`) ผลคือ**ไม่มี batch สักก้อน** จึงไม่มี
-> Merkle root / per-log proof / tamper detection ให้ดูด้วย
-> ต้องมีครบทั้ง `CONTRACT_ADDRESS` (0x + 40 hex) และ private key ใน Vault
-> ถึงจะได้ฟีเจอร์ M2 ทั้งชุด
+> **ไม่ตั้ง blockchain ก็ยังได้ Merkle integrity** — batch จะถูกปิดเป็นสถานะ `SEALED`
+> แทน `CONFIRMED` ซึ่ง **Merkle root / per-log proof / tamper detection ใช้ได้ครบ**
+> ตัวที่ยังไม่มีคือการตรึง root ไว้บน chain
+>
+> ความต่างที่แท้จริง: `SEALED` เก็บ root ไว้ใน DB ก้อนเดียวกับ log ใครที่แก้ `logs`
+> **และ** แก้ `batches.merkle_root` ตามได้ด้วยจะรอดการตรวจ — `CONFIRMED` ปิดช่องนี้
+> เพราะ root ถูกตรึงไว้นอก DB
+>
+> ตั้ง `CONTRACT_ADDRESS` (0x + 40 hex) + private key ใน Vault เมื่อไหร่
+> `anchorSealedBatches()` จะไล่ anchor batch ที่ค้าง `SEALED` ย้อนหลังให้เองภายใน 1 นาที
+> โดย **ไม่ recompute root** (ใช้ root เดิมที่ปิดไว้ตอน seal)
 
 ---
 
@@ -153,7 +158,7 @@ npm install && npm run start:dev
 | `verify-now` ตอบ **403** | token ไม่มี realm role `admin` | login ด้วยบัญชี admin หรือใช้ service account ที่มี role ครบ |
 | `401 invalid issuer` ตอน backend อยู่ใน docker | `KEYCLOAK_URL` ถูก override เป็น `keycloak:8080` | `KEYCLOAK_URL` ต้องเป็น **public URL** (`localhost:8080`) เสมอ — ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL` |
 | dashboard login แล้ว redirect กลับมาเปล่า ๆ | `NEXT_PUBLIC_*` ถูกตั้งเป็นชื่อ service | ต้องเป็น `localhost` เสมอ (inline ตอน build + รันบนเบราว์เซอร์ซึ่งอยู่นอก docker network) — แก้แล้วต้อง `--build` ใหม่ |
-| **ไม่มี batch เกิดขึ้นเลย** + log ขึ้น `Blockchain not ready - skip sealing` ทุกนาที | ไม่มี `CONTRACT_ADDRESS` / private key ใน Vault | `sealBatch()` return ทันทีถ้า blockchain ไม่พร้อม (`src/integrity/integrity.service.ts:35`) → **Merkle integrity ทั้งชุดไม่ทำงาน** ไม่ใช่แค่ไม่ anchor · ต้องตั้ง `CONTRACT_ADDRESS` + private key ถึงจะได้ batch/proof/tamper detection |
+| batch ค้างที่ `SEALED` ไม่ขึ้น `CONFIRMED` | ไม่ได้ตั้ง `CONTRACT_ADDRESS` / private key ใน Vault | **ปกติ** — batch ถูกปิดแล้ว proof กับ tamper detection ทำงานครบ แค่ยังไม่ได้ตรึง root ขึ้น chain · ตั้ง blockchain เมื่อไหร่ `anchorSealedBatches()` จะตามไป anchor ย้อนหลังให้เองภายใน 1 นาที |
 | batch ค้างที่ `UNVERIFIED` ไม่ขึ้น `CONFIRMED` | anchor ไปแล้วแต่ tx ยังไม่ confirm ใน `BLOCKCHAIN_TX_TIMEOUT_MS` | รอบ verify ถัดไปตามผลให้เอง — ไม่ใช่ `FAILED` |
 
 ### Vault user lockout

@@ -23,6 +23,10 @@ function statusTone(status: string) {
     // anchor ไม่ผ่าน (RPC ล่ม / gas ไม่พอ) ไม่ใช่หลักฐานว่าข้อมูลถูกแก้ — เตือน ไม่ใช่แดง
     case "FAILED":
     case "PENDING": return "warn";
+    // SEALED = ปิด batch แล้วและผ่านการตรวจแบบ local ทุกนาที แต่ยังไม่ได้ anchor
+    // ขึ้น chain (ยังไม่ได้ตั้ง blockchain) — ไม่ใช่ปัญหา แต่ก็ยังไม่ใช่ "good"
+    // เท่า CONFIRMED เพราะ root ยังอยู่ใน DB ก้อนเดียวกับ log
+    case "SEALED": return "neutral";
     default: return "neutral";
   }
 }

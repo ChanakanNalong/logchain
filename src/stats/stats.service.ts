@@ -17,10 +17,21 @@ import {
 /** Batch statuses seeded so the shape stays stable on an empty database. */
 const BATCH_STATUSES = [
   'CONFIRMED',
+  'SEALED',
   'UNVERIFIED',
   'TAMPERED',
   'PENDING',
 ] as const;
+
+/**
+ * สถานะที่ถือว่า "ข้อมูลยังไม่ถูกแก้" สำหรับคิด integrityRate
+ *
+ * SEALED = ปิด batch แล้วแต่ยังไม่ได้ anchor (ไม่ได้ตั้ง blockchain) ซึ่งผ่านการตรวจ
+ * แบบ local ทุกนาทีอยู่แล้ว — ถ้ามีอะไรถูกแก้จะกลายเป็น TAMPERED ไปก่อน
+ * ไม่นับรวมจะทำให้ deployment ที่ไม่ได้ต่อ chain ขึ้น "integrity 0%" คู่กับ
+ * "0 tampered" ซึ่งขัดกันเองแบบเดียวกับเคส FAILED ด้านล่าง
+ */
+const INTACT_STATUSES = ['CONFIRMED', 'SEALED'] as const;
 
 export interface TrafficPoint {
   /** ต้นชั่วโมง/ต้นวัน ฯลฯ ของ bucket เป็น ISO UTC — ให้ frontend เรียงหรือ format เองได้ */
@@ -90,7 +101,7 @@ export class StatsService {
       integrityRate:
         batches.total === 0
           ? 0
-          : Math.round((batches.confirmed / batches.total) * 100),
+          : Math.round((batches.intact / batches.total) * 100),
       openAlerts,
       // overview ยังคงสัญญาเดิมไว้ ({ h, total } 24 ชั่วโมง) — หน้า dashboard ที่เลือก
       // ช่วงเวลาได้ย้ายไปเรียก /stats/traffic แทนแล้ว
@@ -134,6 +145,7 @@ export class StatsService {
       total,
       sealedLogs,
       confirmed: byStatus.CONFIRMED ?? 0,
+      intact: INTACT_STATUSES.reduce((n, st) => n + (byStatus[st] ?? 0), 0),
       tampered: byStatus.TAMPERED ?? 0,
     };
   }

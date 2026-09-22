@@ -14,6 +14,23 @@ import { isRawHashIntact } from '../logs/services/log-hash';
 
 const BATCH_SIZE = 100; // กำหนดขนาด batch
 
+/**
+ * สถานะของ batch
+ *
+ *   PENDING     เพิ่งสร้าง ยังไม่รู้ผล anchor (สถานะชั่วคราวระหว่าง seal)
+ *   SEALED      ปิด Merkle tree + ผูก mapping แล้ว แต่ยังไม่ได้ anchor ขึ้น chain
+ *   UNVERIFIED  ส่ง tx แล้วแต่ยังยืนยันกับ chain ไม่ได้
+ *   CONFIRMED   anchor แล้วและ verify กับ chain ผ่าน
+ *   TAMPERED    ตรวจเจอว่าข้อมูลถูกแก้หลัง seal
+ *   FAILED      anchor ไม่สำเร็จ (mapping ไม่ถูกเขียน — batch ใบนี้ไม่มี log ผูกจริง)
+ *
+ * **seal กับ anchor เป็นคนละเรื่องกัน**
+ * seal = ปิดชุด log แล้วคำนวณ Merkle root · anchor = เอา root ไปตรึงไว้บน chain
+ * Merkle root / per-log proof / การจับว่า row ถูกแก้ ใช้ได้ตั้งแต่ seal โดยไม่ต้องมี chain
+ * สิ่งที่ anchor เพิ่มให้คือ root ถูกเก็บไว้ **นอก** ฐานข้อมูลเดียวกับ log — คนที่แก้ทั้ง
+ * `logs` และ `batches.merkle_root` พร้อมกันจะรอดจากการตรวจแบบ local แต่ไม่รอดจาก chain
+ */
+
 @Injectable()
 export class IntegrityService {
   private readonly logger = new Logger(IntegrityService.name);
@@ -30,13 +47,11 @@ export class IntegrityService {
 
   /**
    * Seal batch — รวม logs ที่ยังไม่ถูก map เข้า batch
+   *
+   * ทำงานได้โดยไม่ต้องมี blockchain: ถ้า chain ไม่พร้อมจะปิด batch เป็น SEALED
+   * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
   async sealBatch(): Promise<Batch | null> {
-    if (!this.blockchain.ready) {
-      this.logger.warn('Blockchain not ready - skip sealing');
-      return null;
-    }
-
     // 1. หา log_id ที่ถูก map แล้ว (เพื่อ exclude)
     const mapped = await this.mappingRepo.find({ select: { logId: true } });
     const mappedIds = mapped.map((m) => m.logId);
@@ -66,8 +81,14 @@ export class IntegrityService {
       }),
     );
 
+    // 5. ไม่มี chain ก็ปิด batch ได้ — root กับ mapping คือของที่ proof และ
+    //    tamper detection ต้องใช้ ส่วน anchor เป็นชั้นที่เติมทีหลังได้
+    if (!this.blockchain.ready) {
+      return await this.sealWithoutAnchor(batch, pendingLogs, root);
+    }
+
     try {
-      // 5. commit root ขึ้น chain
+      // 6. commit root ขึ้น chain
       const { txHash, blockNumber, confirmed } =
         await this.blockchain.storeRoot(batch.id, root);
 
@@ -101,6 +122,89 @@ export class IntegrityService {
       await this.batchesRepo.save(batch);
       this.logger.error(`Batch ${batch.id} failed to commit`, err);
       return batch;
+    }
+  }
+
+  /**
+   * ปิด batch โดยไม่ anchor — ใช้เมื่อยังไม่ได้ตั้ง blockchain (ไม่มี CONTRACT_ADDRESS
+   * หรือไม่มี private key ใน Vault) ซึ่งเป็นสภาพปกติของคนที่เพิ่ง clone repo มารัน
+   *
+   * ต้องเขียน mapping เหมือน path ปกติ ไม่งั้น getLeavesForBatch คืน [] แล้วทั้ง
+   * proof และ verify รอบถัดไปจะคำนวณจาก leaf ว่าง
+   *
+   * ⚠️ การรับประกันต่ำกว่า CONFIRMED: root ถูกเก็บไว้ใน DB ก้อนเดียวกับ log
+   * คนที่แก้ `logs` ได้และแก้ `batches.merkle_root` ตามได้ด้วยจะไม่ถูกจับ
+   * การ anchor คือสิ่งที่ปิดช่องนี้ — ย้าย root ไปไว้นอก DB
+   */
+  private async sealWithoutAnchor(
+    batch: Batch,
+    logs: Log[],
+    root: string,
+  ): Promise<Batch> {
+    batch.status = 'SEALED';
+    await this.batchesRepo.save(batch);
+
+    const mappings = logs.map((log) =>
+      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
+    );
+    await this.mappingRepo.save(mappings);
+
+    this.logger.log(
+      `Batch ${batch.id} sealed (ไม่ anchor): ${logs.length} log, root=${root.slice(0, 18)}... — ` +
+        'ตั้ง CONTRACT_ADDRESS + BLOCKCHAIN_PRIVATE_KEY เพื่อให้ถูก anchor ขึ้น chain',
+    );
+    return batch;
+  }
+
+  /**
+   * ตรึง batch ที่ seal ไว้ตอน chain ยังไม่พร้อมขึ้น chain ย้อนหลัง
+   *
+   * ต่างจาก reanchorUnverified() ตรงที่ batch พวกนี้ **ไม่เคยถูก anchor มาก่อน**
+   * จึงไม่มีความกำกวมว่า root บน chain หายไปเพราะอะไร — ไม่ต้องรอ flag
+   * INTEGRITY_AUTO_REANCHOR เหมือนกรณี chain reset
+   */
+  async anchorSealedBatches(): Promise<void> {
+    if (!this.blockchain.ready) return;
+
+    const batches = await this.batchesRepo.find({ where: { status: 'SEALED' } });
+    if (batches.length === 0) return;
+
+    for (const batch of batches) {
+      const root = '0x' + batch.merkleRoot;
+      try {
+        const { txHash, blockNumber, confirmed } =
+          await this.blockchain.storeRoot(batch.id, root);
+        batch.txHash = txHash;
+        batch.blockNumber = blockNumber;
+
+        // mapping ถูกเขียนไปแล้วตอน seal — ที่นี่แค่เลื่อนสถานะ
+        batch.status = confirmed === false ? 'UNVERIFIED' : 'CONFIRMED';
+        if (batch.status === 'CONFIRMED') batch.confirmedAt = new Date();
+        await this.batchesRepo.save(batch);
+
+        this.logger.log(
+          `Batch ${batch.id} anchored ย้อนหลัง (${batch.status}) tx=${txHash.slice(0, 12)}...`,
+        );
+      } catch (err: any) {
+        // root ตัวนี้อยู่บน chain อยู่แล้ว = เคย anchor สำเร็จแต่ status ไม่ทันอัปเดต
+        if (classifyChainError(err) === 'ROOT_EXISTS') {
+          const { result } = await this.blockchain.checkRoot(batch.id, root);
+          if (result === 'MATCH') {
+            batch.status = 'CONFIRMED';
+            batch.confirmedAt = new Date();
+            await this.batchesRepo.save(batch);
+            this.logger.warn(
+              `Batch ${batch.id} root อยู่บน chain อยู่แล้ว — ตั้งเป็น CONFIRMED`,
+            );
+            continue;
+          }
+        }
+        // anchor ไม่ผ่านก็ปล่อยค้าง SEALED ไว้ **ห้ามตั้ง FAILED** — batch ใบนี้มี
+        // mapping ครบและ verify แบบ local ได้ปกติ รอบถัดไปค่อยลอง anchor ใหม่
+        this.logger.error(
+          `Anchor batch ${batch.id} ไม่สำเร็จ (ยังเป็น SEALED): ${err.message}`,
+        );
+      }
     }
   }
 
@@ -195,28 +299,37 @@ export class IntegrityService {
    * (UNVERIFIED ถูก re-check ด้วย เผื่อ chain กลับมา / tx ถูก confirm ทีหลัง)
    */
   async verifyAllBatches(): Promise<void> {
-    if (!this.blockchain.ready) return;
-
     const batches = await this.batchesRepo.find({
       where: [
         { status: 'CONFIRMED' },
         { status: 'UNVERIFIED' },
         { status: 'TAMPERED' },
+        { status: 'SEALED' },
       ],
     });
 
     for (const batch of batches) {
       const logs = await this.getLogsForBatch(batch.id);
       const { root } = this.merkle.buildTree(logs.map((l) => l.rawHash));
-      const { result, onChainRoot } = await this.blockchain.checkRoot(
-        batch.id,
-        root,
-      );
 
       // root ตรวจได้แค่ว่า raw_hash ยังเป็นชุดเดิมไหม — ไม่ได้ตรวจว่า "เนื้อ log ยังตรงกับ hash ของตัวเอง"
       // คนที่เข้าถึง DB ได้อาจแก้ severity/sourceIp ทิ้ง raw_hash ไว้เหมือนเดิม แล้ว root ยังตรง
       // จึงต้อง recompute hash จาก field ของ row เทียบกับ raw_hash ที่ผูกไว้ตอน insert ด้วย
       const modified = logs.filter((l) => !isRawHashIntact(l));
+
+      // เทียบกับ chain ไม่ได้ก็ยังตรวจแบบ local ได้ — 2 กรณี:
+      //   - batch เป็น SEALED (ไม่เคย anchor จึงไม่มีอะไรให้เทียบบน chain)
+      //   - chain ใช้ไม่ได้ชั่วคราว (RPC ล่ม / ถอด config ออก)
+      // เดิมทั้งสองกรณี return ทิ้งตั้งแต่ต้นฟังก์ชัน = ไม่ตรวจอะไรเลย
+      if (batch.status === 'SEALED' || !this.blockchain.ready) {
+        await this.verifyLocally(batch, root, modified);
+        continue;
+      }
+
+      const { result, onChainRoot } = await this.blockchain.checkRoot(
+        batch.id,
+        root,
+      );
 
       if (result === 'MISMATCH' || modified.length > 0) {
         // ข้อมูลถูกแก้ไขจริง — root ไม่ตรง chain หรือ row ไม่ตรง hash ของตัวเอง
@@ -250,6 +363,46 @@ export class IntegrityService {
         await this.resolveTamperAlerts(batch);
       }
     }
+  }
+
+  /**
+   * ตรวจ batch โดยไม่ใช้ chain — เทียบ root ที่คำนวณใหม่กับ root ที่เก็บไว้ใน DB
+   * บวกกับเช็คว่าแต่ละ row ยังตรงกับ raw_hash ของตัวเอง
+   *
+   * จับได้: แก้เนื้อ log, ลบ log ออกจาก batch, สลับลำดับ, ยัด log เพิ่ม
+   * จับไม่ได้: คนที่แก้ `logs` แล้วแก้ `batches.merkle_root` ให้สอดคล้องกันด้วย
+   *            (ช่องนี้ปิดด้วยการ anchor เท่านั้น)
+   */
+  private async verifyLocally(
+    batch: Batch,
+    recomputedRoot: string,
+    modified: Log[],
+  ): Promise<void> {
+    const rootMatches = recomputedRoot === '0x' + batch.merkleRoot;
+
+    if (!rootMatches || modified.length > 0) {
+      await this.raiseTamperAlert(batch, recomputedRoot, null, modified);
+      if (batch.status !== 'TAMPERED') {
+        batch.status = 'TAMPERED';
+        await this.batchesRepo.save(batch);
+      }
+      return;
+    }
+
+    // ผ่านการตรวจเท่าที่ทำได้โดยไม่มี chain
+    //
+    // batch ที่เคย anchor แล้ว (มี txHash) **ห้ามเลื่อนสถานะที่นี่** — การผ่านแบบ local
+    // ไม่ใช่หลักฐานเทียบเท่า chain การปล่อยให้ CONFIRMED/UNVERIFIED/TAMPERED ค้างไว้
+    // แล้วรอบที่ chain กลับมาค่อยตัดสิน เป็นฝั่งที่ปลอดภัยกว่า
+    if (batch.txHash) return;
+
+    if (batch.status === 'TAMPERED') {
+      // ไม่เคย anchor + เคยถูกแก้ + ตอนนี้กลับมาตรงแล้ว -> กลับเป็น SEALED
+      this.logger.log(`Batch ${batch.id} re-verified แบบ local (TAMPERED → SEALED)`);
+      batch.status = 'SEALED';
+      await this.batchesRepo.save(batch);
+    }
+    await this.resolveTamperAlerts(batch);
   }
 
   /**
@@ -335,7 +488,8 @@ export class IntegrityService {
   private async raiseTamperAlert(
     batch: Batch,
     recomputedRoot: string,
-    onChainRoot: string,
+    // null = ตรวจแบบ local ไม่ได้เทียบกับ chain (ดู verifyLocally)
+    onChainRoot: string | null,
     modifiedLogs: Log[] = [],
   ): Promise<void> {
     // ต้องกรอง status: 'OPEN' ด้วย — ถ้าเช็คแค่ batchId+alertType ตัว alert ที่ถูก
@@ -367,7 +521,9 @@ export class IntegrityService {
           message:
             modifiedLogs.length > 0
               ? `${modifiedLogs.length} log(s) no longer match their own raw_hash — row data was modified after sealing`
-              : 'On-chain root exists but does not match the recomputed root — log data was modified after sealing',
+              : onChainRoot === null
+                ? 'Recomputed root does not match the root stored at seal time — the batch contents changed after sealing'
+                : 'On-chain root exists but does not match the recomputed root — log data was modified after sealing',
         },
         status: 'OPEN',
       }),

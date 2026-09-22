@@ -82,6 +82,7 @@ export class ComplianceService {
         `COUNT(*) FILTER (WHERE batch.status='CONFIRMED')`,
         'confirmed',
       )
+      .addSelect(`COUNT(*) FILTER (WHERE batch.status='SEALED')`, 'sealed')
       .addSelect(`COUNT(*) FILTER (WHERE batch.status='TAMPERED')`, 'tampered')
       .addSelect(
         `COUNT(*) FILTER (WHERE batch.status='UNVERIFIED')`,

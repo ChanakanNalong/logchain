@@ -13,7 +13,7 @@
 > | E — เคลียร์ repo detection เก่า | ✅ 33,341 → 14 ไฟล์ |
 > | F — ย้ายไฟล์เข้า `detection/` | ✅ 17 ไฟล์ 332 KB |
 > | G1 `requirements.txt` · G2 `Dockerfile` · G3 `README.md` | ✅ |
-> | G4 — ลบ/archive repo เก่า | ⏸ รอ D/E |
+> | G4 — ลบ/archive repo เก่า | ⏸ **ค้างข้อเดียว** — ลบ repo บน GitHub |
 > | A1 `Dockerfile` ของ backend | ✅ |
 > | A2 service `backend` | ✅ |
 > | A3 dashboard เข้า compose หลัก | ✅ |
