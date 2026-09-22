@@ -3,7 +3,7 @@
 > **เอกสารนี้คืออะไร:** งานค้างของ LogChain เขียนให้ session หน้า (คนหรือ Claude Code)
 > อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **อัปเดตล่าสุด:** 2026-09-23 · **ฐาน:** `main = aee939b`
+> **อัปเดตล่าสุด:** 2026-09-23 (หลังทำ 1.1) · **ฐาน:** `main = aee939b` + งาน 1.1 ที่ยังไม่ commit
 > **รอบที่แล้วปิดไปแล้ว:** ทุกข้อของแผนเดิม — รายละเอียดอยู่ใน `docs/worklog/2026-09-22.md`
 > หัวข้อ 11–13 (Reports/SEALED · Kafka producer retry · NonceManager crash · P3)
 > ข้อในไฟล์นี้**มาจากสิ่งที่เจอระหว่างทำรอบที่แล้ว** แต่ยังไม่ได้แก้
@@ -12,8 +12,8 @@
 
 ## ลำดับที่แนะนำ
 
-1. **1.1 alert dedup กลืน rule อื่น** — ช่องโหว่ในการตรวจจับจริง ทำก่อน
-2. **2.2 ยืนยันงานรอบที่แล้วบนของจริง** — งานสั้น ปิดช่องที่ยังไม่ได้ตรวจ
+1. ~~**1.1 alert dedup กลืน rule อื่น**~~ ✅ เสร็จ 2026-09-23 (worklog `2026-09-23.md`)
+2. **2.2 ยืนยันงานบนของจริง** — dashboard rebuild แล้ว เหลือเปิดดูด้วยตา (ต้อง login ของเจ้าของ)
 3. **2.1 log ช่วง Kafka ล่มไม่ถึง detection** — ต้องออกแบบก่อนลงมือ
 4. ที่เหลือทำเมื่อว่าง
 
@@ -21,41 +21,23 @@
 
 # 🔴 P1
 
-## 1.1 alert dedup ไม่ดู rule — rule อื่นบน host เดียวกันหายเงียบ
+## 1.1 ✅ alert dedup ไม่ดู rule — แก้แล้ว (2026-09-23)
 
-**ปัญหา** — `src/alerts/alerts.service.ts:17` (`createOrDedup`) และ
-`infra/postgres/init/03-alerts-dedup-index.sql`
+ยืนยันบั๊กบน stack จริงก่อนแก้: 5715 (login สำเร็จหลัง brute force) ถูกกลืนเข้า 5710 ที่ค้าง OPEN
+หลังแก้ได้ 2 แถวแยกกัน และ 5710 ที่เกิดซ้ำนับ `occurrence_count` แทนการหาย · รายละเอียด
+`docs/worklog/2026-09-23.md`
 
-key ของ dedup คือ `(status='OPEN', alert_type, source, batch_id)` — `source` คือชื่อ host
-(เช่น `web-server-01`) **ไม่มี rule_id** ผลคือตราบใดที่มี `RULE_MATCH` ของ host นั้นค้าง OPEN
-อยู่หนึ่งตัว **ทุก rule หลังจากนั้นบน host เดียวกันจะถูกรวมเข้าตัวเดิมแล้วหายไป** ไม่เกิดแถวใหม่
-ไม่ส่ง email แม้เป็น CRITICAL
+**สิ่งที่เปลี่ยนที่ session หน้าต้องรู้:** มี**ระบบ migration แล้ว** (`src/database/migrations/`
++ `migrationsRun: true`) — เปลี่ยน schema ต่อจากนี้ให้เพิ่ม migration ห้ามแก้ `infra/postgres/init/`
 
-ตัวอย่างที่อันตรายที่สุด: rule 5710 (brute force) ค้าง OPEN แล้ว rule **5715 "Successful login
-after multiple failures"** — สัญญาณว่าเจาะเข้ามาได้แล้ว — ยิงตามมา → ถูกกลืนเข้า alert brute force
-ตัวเดิม analyst ไม่มีวันเห็น เช่นเดียวกับ ML_ANOMALY ที่ dedup ด้วย key เดียวกัน
+## 1.2 ส่ง email ซ้ำเมื่อ CRITICAL เกิดซ้ำหลัง alert เปิดมานาน (แยกออกมาจาก 1.1)
 
-**หลักฐานที่มี:** บน stack นี้มี `RULE_MATCH / web-server-01` ค้าง OPEN ตั้งแต่ 2026-09-22 10:01
-รอบทดสอบ demo-brute-force ตอน 15:57 detection ขึ้น `🚨 DETECTED` สองครั้ง backend ขึ้น
-`Persisted alert` แต่ไม่มีแถวใหม่ · **ยังไม่ได้ทดสอบกับ rule ต่างตัว** (อ่านจากโค้ด)
-
-**ตรวจก่อนแก้ (5 นาที):** ยิง log ที่เข้า 5715 (`"login success for user jdoe"` จาก host
-`web-server-01`) ภายใน 5 นาทีหลัง `demo-brute-force.sh` แล้วดูว่ามีแถว alert ใหม่ไหม
-คาดว่า**ไม่มี** = ยืนยันบั๊ก
-
-**ทำอะไร**
-1. เพิ่ม rule_id เข้า key — `detail->>'rule_id'` มีอยู่แล้วในทุก RULE_MATCH (ML ใช้ค่าอื่นหรือ
-   ค่าคงที่ได้) จะเป็นคอลัมน์ใหม่หรือ expression index ก็ได้ แต่ **findOne ใน `createOrDedup`
-   กับ unique index ต้องใช้ key เดียวกันเป๊ะ** ไม่งั้น insert ชน 23505 แล้ววนหาตัวเดิมไม่เจอ
-2. เพิ่ม `occurrence_count` + `last_seen_at` แล้ว increment ตอน dedup — ตอนนี้ dedup ทิ้งเหตุการณ์
-   ซ้ำไปเฉย ๆ ไม่รู้ว่าโดนซ้ำกี่ครั้ง ล่าสุดเมื่อไร (สำคัญต่อ PCI DSS Req 10 — audit trail)
-3. พิจารณาให้ CRITICAL ที่ซ้ำหลังจาก alert เดิมเปิดไปนานแล้ว (เช่น > 1 ชม.) ส่ง email อีกรอบ
-
-**ระวัง:** ไฟล์ใน `infra/postgres/init/` รันเฉพาะตอน volume ว่าง — DB ที่มีอยู่แล้ว (รวมเครื่องนี้)
-**ไม่ได้ index ใหม่อัตโนมัติ** ต้องมี migration หรือสคริปต์ให้รันเอง และต้องทำให้ทั้งสองทางได้ผลเหมือนกัน
-
-**เสร็จเมื่อ** — ทดสอบข้างบนได้ 2 แถว (5710 + 5715) · ยิง 5710 ซ้ำแล้ว `occurrence_count` ขึ้น
-ไม่เกิดแถวใหม่ · เทสต์ใน `src/alerts/` คุมทั้งสามเคส
+ตอนนี้ email ส่งเฉพาะตอนสร้าง alert ใหม่ · brute force ที่เกิดซ้ำอีกหลายชั่วโมงหลังจากนั้นแค่
+`occurrence_count` ขึ้น ไม่มีใครถูกเตือน ถ้าไม่มีคนเปิดหน้า Alerts
+**ทำอะไร** — migration เพิ่ม `last_notified_at` · ใน `recordRepeat()` ถ้า severity CRITICAL และ
+`now() - last_notified_at > 1 ชม.` ส่งอีกรอบแล้วอัปเดต (ทำใน UPDATE เดียวกันด้วย `RETURNING`
+กันส่งซ้ำตอนมาพร้อมกัน) · **ทดสอบจริงบนเครื่องนี้ไม่ได้** SMTP ใน Vault ว่าง — ใช้ unit test
+หรือตั้ง SMTP ทดสอบ (เช่น mailpit) ก่อน
 
 ---
 
@@ -86,12 +68,9 @@ after multiple failures"** — สัญญาณว่าเจาะเข้�
 
 รอบที่แล้วตรวจด้วย unit test + SQL บน DB จริง แต่ยังค้างสองอย่าง:
 
-1. **container ของ dashboard ยังเป็น image เก่า** (สร้าง 2026-09-22 11:39 UTC ก่อนแก้
-   Reports/tiles) — rebuild แล้วเปิดดู Reports (คอลัมน์ Sealed, CSV มี `sealed`), tile
-   "Sealed Batches" บน Dashboard และ "Anchored on chain" บน Verify
-   ```bash
-   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --build --no-deps cylis-dashboard
-   ```
+1. **dashboard rebuild แล้ว (2026-09-23) เหลือเปิดดูด้วยตา** — ต้อง login `admin-user` + OTP
+   ของเจ้าของ · ดู Reports (คอลัมน์ Sealed, CSV มี `sealed`), tile "Sealed Batches" บน Dashboard,
+   "Anchored on chain" บน Verify และหน้า **Alerts** (คอลัมน์ "Last seen" + badge `×3` ของ 5710)
 2. **ยังไม่เคยเห็นเลขตรงกันบน stack ที่ไม่มี blockchain** — stack นี้ต่อ Amoy อยู่ batch เป็น
    CONFIRMED หมด ทำได้ตอน smoke test รอบหน้า (clone ใหม่ไม่มี `CONTRACT_ADDRESS`):
    `/api/v1/stats/overview` กับ `/api/v1/compliance/reports` ต้องได้ `integrityRate` เท่ากัน
@@ -161,10 +140,10 @@ history ของ repo นั้น
 | อาการ | ที่จริงคือ |
 |---|---|
 | approle login ตอบ `permission denied` ทั้งที่ค่าใน `.env` ถูก | Vault user lockout — `./scripts/vault-unlock.sh` ดูและปลดได้ |
-| ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | ดูสองชั้น: (1) `docker logs logchain-backend \| grep KafkaProducer` ว่าต่อ Kafka ติดไหม (2) มี alert OPEN ของ `alert_type`+host เดียวกันค้างอยู่ไหม — ถูก dedup กลืน (ข้อ 1.1) |
+| ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | ดูสองชั้น: (1) `docker logs logchain-backend \| grep KafkaProducer` ว่าต่อ Kafka ติดไหม (2) มี alert OPEN ของ rule + host เดียวกันค้างอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
 | login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | realm import ครั้งเดียวตอน boot แรก และเจ้าของเปลี่ยนรหัส + ตั้ง OTP ไปแล้ว — ไม่ใช่ Keycloak พัง |
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
-| แก้ไฟล์ใน `infra/postgres/init/` แล้วไม่มีผล | รันเฉพาะตอน volume ว่าง — DB เดิมต้องรันเองหรือทำ migration |
+| แก้ไฟล์ใน `infra/postgres/init/` แล้วไม่มีผล | รันเฉพาะตอน volume ว่าง — เปลี่ยน schema ให้เพิ่ม migration ใน `src/database/migrations/` (backend รันเองตอน boot) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — ต้อง `docker compose build detection-api` |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
@@ -176,8 +155,9 @@ history ของ repo นั้น
 | ไฟล์ | เกี่ยวตรงไหน |
 |---|---|
 | `docs/worklog/2026-09-22.md` | บันทึกเต็ม หัวข้อ 1–13 (11–13 = รอบล่าสุด) |
-| `src/alerts/alerts.service.ts:17` | `createOrDedup` — ข้อ 1.1 |
-| `infra/postgres/init/03-alerts-dedup-index.sql` | unique index ของ dedup — ข้อ 1.1 |
+| `docs/worklog/2026-09-23.md` | งานข้อ 1.1 |
+| `src/alerts/alerts.service.ts` | `createOrDedup` + `recordRepeat` — ข้อ 1.2 ต่อจากตรงนี้ |
+| `src/database/migrations/` | migration ของ schema (ตัวแรก = AlertsRuleDedup) |
 | `detection/rules/security_rules.yaml` | rule 5710 / 5715 ที่ใช้ทดสอบข้อ 1.1 |
 | `src/kafka/kafka-producer.service.ts:116` | จุดที่ log ถูกข้ามตอน Kafka ยังไม่พร้อม — ข้อ 2.1 |
 | `detection/app/rules.py` | threshold ใช้ `time.time()` ตอนรับ — ต้องคิดถ้าทำ replay ข้อ 2.1 |
