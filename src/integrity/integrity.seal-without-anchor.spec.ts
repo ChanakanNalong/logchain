@@ -255,7 +255,10 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     expect(batch!.confirmedAt).toBeInstanceOf(Date);
     // root ต้องเป็นตัวเดิมที่ปิดไว้ตอน seal ห้าม recompute
     expect(batch!.merkleRoot).toBe(sealedRoot);
-    expect(blockchain.storeRoot).toHaveBeenCalledWith('batch-0', '0x' + sealedRoot);
+    expect(blockchain.storeRoot).toHaveBeenCalledWith(
+      'batch-0',
+      '0x' + sealedRoot,
+    );
 
     // verify รอบถัดไปเทียบกับ chain ได้แล้วและต้องผ่าน
     await service.verifyAllBatches();

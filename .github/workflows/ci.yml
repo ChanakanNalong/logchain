@@ -113,10 +113,13 @@ jobs:
 
       - name: Seed Vault (AppRole + secrets)
         run: |
-          docker compose up vault-init
+          # HOST_UID: ให้ init.sh chown approle.env มาเป็นของ runner — ไม่งั้นไฟล์เป็น root:root 0600 อ่านไม่ได้
+          HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up vault-init
           # role_id/secret_id ออกใหม่ทุกครั้งที่ init — ต่อท้าย .env ให้ VaultService หยิบไปใช้
-          docker compose logs --no-log-prefix vault-init \
-            | grep -E '^VAULT_(NESTJS|DETECTION)_(ROLE|SECRET)_ID=' >> .env
+          # อ่านจากไฟล์ ไม่ใช่ log: init.sh เลิก echo ค่าพวกนี้ออก stdout ตั้งแต่ 98f1eb8
+          # (ความลับไม่ควรอยู่ใน log ของ CI) — grep ที่ log จึงได้ 0 บรรทัดแล้ว exit 1 ทั้ง job
+          grep -E '^VAULT_(NESTJS|DETECTION)_(ROLE|SECRET)_ID=' \
+            infra/vault/.secrets/approle.env >> .env
           grep -c '^VAULT_' .env
 
       - name: Integration + e2e tests

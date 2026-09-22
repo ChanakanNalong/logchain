@@ -166,7 +166,9 @@ export class IntegrityService {
   async anchorSealedBatches(): Promise<void> {
     if (!this.blockchain.ready) return;
 
-    const batches = await this.batchesRepo.find({ where: { status: 'SEALED' } });
+    const batches = await this.batchesRepo.find({
+      where: { status: 'SEALED' },
+    });
     if (batches.length === 0) return;
 
     for (const batch of batches) {
@@ -398,7 +400,9 @@ export class IntegrityService {
 
     if (batch.status === 'TAMPERED') {
       // ไม่เคย anchor + เคยถูกแก้ + ตอนนี้กลับมาตรงแล้ว -> กลับเป็น SEALED
-      this.logger.log(`Batch ${batch.id} re-verified แบบ local (TAMPERED → SEALED)`);
+      this.logger.log(
+        `Batch ${batch.id} re-verified แบบ local (TAMPERED → SEALED)`,
+      );
       batch.status = 'SEALED';
       await this.batchesRepo.save(batch);
     }
