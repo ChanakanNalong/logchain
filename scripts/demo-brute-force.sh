@@ -17,10 +17,26 @@ done
 echo "→ รอ detection + backend consume (5s)..."
 sleep 5
 echo "→ RULE_MATCH ล่าสุด:"
-curl -s -H "Authorization: Bearer $TOKEN" "$API/alerts" \
-  | jq -r '[.[] | select(.alertType == "RULE_MATCH")][0]
-           | if . == null then
-               "  ยังไม่มี RULE_MATCH — รอ detection อีกสักครู่"
-             else
-               "  \(.alertType) | \(.severity) | \(.title)"
-             end'
+# ดัก HTTP code ก่อน jq — token ของ log-ingestor (จาก ingest-log.sh) ยิง /logs ได้
+# แต่อ่าน /alerts ไม่ได้ (ต้อง role analyst/operator/admin) ได้ 403 เป็น JSON error
+# แล้ว jq พังด้วย "Cannot index string" ทั้งที่ alert ถูกบันทึกไปเรียบร้อยแล้ว
+BODY=$(mktemp)
+trap 'rm -f "$BODY"' EXIT
+CODE=$(curl -s -o "$BODY" -w "%{http_code}" -H "Authorization: Bearer $TOKEN" "$API/alerts")
+case "$CODE" in
+  200) ;;
+  401|403)
+    echo "  alert ถูกบันทึกแล้ว แต่ token นี้ไม่มีสิทธิ์อ่าน /alerts (HTTP $CODE)"
+    echo "  เปิดดูที่หน้า Alerts บน dashboard หรือรันใหม่ด้วย token ที่มี role analyst/operator/admin"
+    exit 0 ;;
+  *)
+    echo "  อ่าน /alerts ไม่สำเร็จ (HTTP $CODE):" >&2
+    cat "$BODY" >&2; echo >&2
+    exit 1 ;;
+esac
+jq -r '[.[] | select(.alertType == "RULE_MATCH")][0]
+       | if . == null then
+           "  ยังไม่มี RULE_MATCH — รอ detection อีกสักครู่"
+         else
+           "  \(.alertType) | \(.severity) | \(.title)"
+         end' "$BODY"

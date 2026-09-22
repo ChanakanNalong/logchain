@@ -157,6 +157,7 @@ npm install && npm run start:dev
 | ยิง `/api/v1/*` แล้วได้ **401** | ปกติ — แปลว่า route ต่อแล้ว แค่ยังไม่ได้แนบ token | `./scripts/ingest-log.sh` ขอ token ให้เอง |
 | `verify-now` ตอบ **403** | token ไม่มี realm role `admin` | login ด้วยบัญชี admin หรือใช้ service account ที่มี role ครบ |
 | `401 invalid issuer` ตอน backend อยู่ใน docker | `KEYCLOAK_URL` ถูก override เป็น `keycloak:8080` | `KEYCLOAK_URL` ต้องเป็น **public URL** (`localhost:8080`) เสมอ — ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL` |
+| login dashboard ด้วย `admin-user` + `KEYCLOAK_ADMIN_USER_PASSWORD` แล้วขึ้น *Invalid username or password* | Keycloak import realm (พร้อมรหัสจาก `.env`) **ครั้งเดียวตอน boot แรก** — ถ้าเคยเปลี่ยนรหัสผ่านหน้าเว็บ หรือแก้ `.env` ทีหลัง ค่าใน `.env` จะไม่ตรงกับของจริงอีกต่อไป | ใช้รหัสที่ตั้งไว้เอง หรือ reset ที่ Keycloak admin console (`http://localhost:8080` → realm `logchain` → Users) · ระวัง brute force protection ล็อกหลังพลาด 5 ครั้ง |
 | dashboard login แล้ว redirect กลับมาเปล่า ๆ | `NEXT_PUBLIC_*` ถูกตั้งเป็นชื่อ service | ต้องเป็น `localhost` เสมอ (inline ตอน build + รันบนเบราว์เซอร์ซึ่งอยู่นอก docker network) — แก้แล้วต้อง `--build` ใหม่ |
 | batch ค้างที่ `SEALED` ไม่ขึ้น `CONFIRMED` | ไม่ได้ตั้ง `CONTRACT_ADDRESS` / private key ใน Vault | **ปกติ** — batch ถูกปิดแล้ว proof กับ tamper detection ทำงานครบ แค่ยังไม่ได้ตรึง root ขึ้น chain · ตั้ง blockchain เมื่อไหร่ `anchorSealedBatches()` จะตามไป anchor ย้อนหลังให้เองภายใน 1 นาที |
 | batch ค้างที่ `UNVERIFIED` ไม่ขึ้น `CONFIRMED` | anchor ไปแล้วแต่ tx ยังไม่ confirm ใน `BLOCKCHAIN_TX_TIMEOUT_MS` | รอบ verify ถัดไปตามผลให้เอง — ไม่ใช่ `FAILED` |
@@ -177,7 +178,14 @@ docker logs --tail=20 logchain-vault | grep -i lockout
 # core: login attempts exceeded, user is locked out: request_path=auth/approle/login
 ```
 
-**วิธีแก้** — ต้องหยุด container ที่วน retry ก่อน ไม่งั้น unlock ไปก็โดนล็อกซ้ำทันที:
+**วิธีแก้แบบเร็ว** — สคริปต์ทำขั้นตอนด้านล่างให้ครบ (หยุด container → unlock → เปิดใหม่):
+
+```bash
+./scripts/vault-unlock.sh              # ดูอย่างเดียวว่ามีใครโดนล็อก
+./scripts/vault-unlock.sh detection    # หรือ backend
+```
+
+**วิธีแก้แบบทำเอง** — ต้องหยุด container ที่วน retry ก่อน ไม่งั้น unlock ไปก็โดนล็อกซ้ำทันที:
 
 ```bash
 docker compose stop detection-consumer          # หรือ backend แล้วแต่ตัวไหนพัง

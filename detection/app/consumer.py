@@ -21,6 +21,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ตั้ง logging ก่อนทำอะไรที่ log ได้ — ของเดิมอยู่หลัง get_vault() ทำให้ log.info
+# "Vault login OK" ถูกยิงตอนยังไม่มี handler แล้วหายเงียบ (warning ยังโผล่ผ่าน
+# lastResort handler) เงียบ = ผ่าน ซึ่งสับสนมากเวลา debug
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("consumer")
+
 # Bootstrap Vault ตอน start - ถ้า vault ไม่พร้อม ให้ refuse to start ตั้งแต่ตอนนี้
 # ไม่ต้องรอ enrich ตัวแรกถึงค่อย fail
 _vault = get_vault()
@@ -52,6 +58,7 @@ ALERT_PUBLISH_FAILED = Counter(
 
 # Start metrics HTTP server (port 9101 - ตาม prometheus.yml)
 start_http_server(9101)
+log.info("Metrics server started on :9101")
 
 # ---- config ----
 KAFKA_BROKER = os.getenv("KAFKA_BROKERS", "localhost:29092")
@@ -86,10 +93,6 @@ def kafka_security_args() -> dict:
     }
 WINDOW_SIZE = 11 # ต้อง >= window_size + 1 ที่ FastAPI ใช้
 BUFFER_SIZE = 30 # เก็บ log key ล่าสุดกี่ตัวต่อ source
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("consumer")
-log.info("Metrics server started on :9101")
 
 rule_engine = RuleEngine()
 

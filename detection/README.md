@@ -53,17 +53,14 @@ python -m app.consumer                # terminal 2
 `VAULT_DETECTION_ROLE_ID` / `VAULT_DETECTION_SECRET_ID` ไม่ครบ — ดังกว่าปล่อยให้
 รันไปเงียบ ๆ แล้วไม่มี alert ออก
 
-> **กับดักตอนอ่าน log:** `consumer.py` เรียก `get_vault()` (บรรทัด 26) **ก่อน**
-> `logging.basicConfig()` (บรรทัด 90) — ตอน Vault login สำเร็จมันยิง `log.info`
-> ออกไปตอนที่ยังไม่มี handler บรรทัด `Vault login OK` จึง**ไม่โผล่เลย**
-> (ส่วนที่พลาดเป็น `log.warning` ซึ่ง lastResort handler ของ Python ปล่อยผ่านให้)
->
-> **สรุป: เงียบ = ผ่าน** สัญญาณว่า Vault ผ่านจริงคือ 2 บรรทัดถัดมาที่รันหลัง basicConfig
-> ```
-> Metrics server started on :9101
-> Loaded 9 security rules
-> ```
-> ถ้าเห็นสองบรรทัดนี้แปลว่า bootstrap Vault ผ่านมาแล้วแน่นอน
+ตอน start ปกติ log ของ consumer จะขึ้นตามลำดับนี้
+```
+Vault login OK (attempt 1, ttl=...s)
+Metrics server started on :9101
+Loaded 9 security rules
+```
+(ก่อน 2026-09-22 บรรทัด `Vault login OK` ไม่โผล่เพราะ `logging.basicConfig()` อยู่หลัง
+`get_vault()` — ถ้าเจอ image เก่าที่ยังเงียบอยู่ ให้ดูสองบรรทัดหลังแทน)
 
 ## ไฟล์ใน data/
 
