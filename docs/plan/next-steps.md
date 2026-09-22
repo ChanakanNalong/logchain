@@ -3,7 +3,7 @@
 > **เอกสารนี้คืออะไร:** งานค้างของ LogChain เขียนให้ session หน้า (คนหรือ Claude Code)
 > อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **อัปเดตล่าสุด:** 2026-09-23 (หลังทำ 1.2) · **ฐาน:** `main` + งาน 1.2 ที่ยังไม่ commit
+> **อัปเดตล่าสุด:** 2026-09-23 (หลัง smoke test — เจอ+แก้ 3 บั๊ก worklog หัวข้อ 7) · **ฐาน:** `main` + งาน 1.2 ที่ยังไม่ commit
 > **รอบที่แล้วปิดไปแล้ว:** ทุกข้อของแผนเดิม — รายละเอียดอยู่ใน `docs/worklog/2026-09-22.md`
 > หัวข้อ 11–13 (Reports/SEALED · Kafka producer retry · NonceManager crash · P3)
 > ข้อในไฟล์นี้**มาจากสิ่งที่เจอระหว่างทำรอบที่แล้ว** แต่ยังไม่ได้แก้
@@ -72,7 +72,8 @@ HIGH/CRITICAL ที่ยัง OPEN แล้วเกิดซ้ำ ส่�
 1. **dashboard rebuild แล้ว (2026-09-23) เหลือเปิดดูด้วยตา** — ต้อง login `admin-user` + OTP
    ของเจ้าของ · ดู Reports (คอลัมน์ Sealed, CSV มี `sealed`), tile "Sealed Batches" บน Dashboard,
    "Anchored on chain" บน Verify และหน้า **Alerts** (คอลัมน์ "Last seen" + badge `×3` ของ 5710)
-2. **ยังไม่เคยเห็นเลขตรงกันบน stack ที่ไม่มี blockchain** — stack นี้ต่อ Amoy อยู่ batch เป็น
+2. ✅ **ตรวจแล้วตอน smoke test 2026-09-23** (worklog หัวข้อ 7) — stats 100% = compliance 100%
+   · ข้อความเดิม: **ยังไม่เคยเห็นเลขตรงกันบน stack ที่ไม่มี blockchain** — stack นี้ต่อ Amoy อยู่ batch เป็น
    CONFIRMED หมด ทำได้ตอน smoke test รอบหน้า (clone ใหม่ไม่มี `CONTRACT_ADDRESS`):
    `/api/v1/stats/overview` กับ `/api/v1/compliance/reports` ต้องได้ `integrityRate` เท่ากัน
    และ `confirmed+sealed+tampered+unverified+pending = total` · ต้องใช้ token ที่มี role
