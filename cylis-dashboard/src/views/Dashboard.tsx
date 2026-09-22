@@ -104,6 +104,9 @@ function RangePicker({ value, onChange }: { value: RangeKey; onChange: (r: Range
 }
 
 function buildKpis(o: Overview) {
+  // confirmed = anchored on-chain only. Without a blockchain every batch stays SEALED, so showing
+  // confirmed alone reads "0" next to "Chain Integrity 100%" — count both as sealed, anchored in delta.
+  const sealedBatches = o.batches.confirmed + (o.batches.byStatus.SEALED ?? 0);
   return [
     {
       label: "Total Logs",
@@ -120,9 +123,9 @@ function buildKpis(o: Overview) {
       icon: ShieldCheck,
     },
     {
-      label: "Confirmed Batches",
-      value: o.batches.confirmed.toLocaleString(),
-      delta: `${o.batches.total} batches total`,
+      label: "Sealed Batches",
+      value: sealedBatches.toLocaleString(),
+      delta: `${o.batches.confirmed.toLocaleString()} anchored on-chain`,
       tone: "blue",
       icon: Boxes,
     },

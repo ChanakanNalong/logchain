@@ -15,6 +15,8 @@ interface ReportData {
   integrity: {
     day: string;
     confirmed: number;
+    /** sealed locally, not yet anchored on-chain — counts as intact (same as the Dashboard) */
+    sealed: number;
     tampered: number;
     unverified: number;
     pending: number;
@@ -77,7 +79,7 @@ function toCsv(data: ReportData): string {
   const lines: string[] = [];
   lines.push("section,day,key,value");
   data.integrity.forEach((r) =>
-    ["confirmed", "tampered", "unverified", "pending", "total", "integrityRate"].forEach((k) =>
+    ["confirmed", "sealed", "tampered", "unverified", "pending", "total", "integrityRate"].forEach((k) =>
       lines.push(`integrity,${r.day},${k},${(r as any)[k]}`),
     ),
   );
@@ -313,14 +315,17 @@ export default function Reports() {
   const integrityRows = days.map(
     (day) =>
       integrityByDay.get(day) ?? {
-        day, confirmed: 0, tampered: 0, unverified: 0, pending: 0, total: 0, integrityRate: 0,
+        day, confirmed: 0, sealed: 0, tampered: 0, unverified: 0, pending: 0, total: 0, integrityRate: 0,
       },
   );
   const activeIntegrityRows = integrityRows.filter((r) => r.total > 0);
   const inactiveIntegrityDays = integrityRows.length - activeIntegrityRows.length;
+  // Same formula as the backend's per-day integrityRate (and the Dashboard): intact = confirmed + sealed.
+  // Recomputed from sums because averaging the rounded per-day rates would weight quiet days wrongly.
   const confirmedSum = activeIntegrityRows.reduce((s, r) => s + r.confirmed, 0);
+  const intactSum = activeIntegrityRows.reduce((s, r) => s + r.confirmed + r.sealed, 0);
   const totalBatchSum = activeIntegrityRows.reduce((s, r) => s + r.total, 0);
-  const chainIntegrityPct = totalBatchSum > 0 ? Math.round((confirmedSum / totalBatchSum) * 100) : null;
+  const chainIntegrityPct = totalBatchSum > 0 ? Math.round((intactSum / totalBatchSum) * 100) : null;
   const anyTampered = activeIntegrityRows.some((r) => r.tampered > 0);
   const anyUnverifiedOrPending = activeIntegrityRows.some((r) => r.unverified > 0 || r.pending > 0);
   const integrityTone = chainIntegrityPct === null ? "neutral" : anyTampered ? "danger" : anyUnverifiedOrPending ? "warn" : "good";
@@ -357,7 +362,7 @@ export default function Reports() {
       icon: ShieldCheck,
       value: chainIntegrityPct === null ? "—" : `${chainIntegrityPct}%`,
       context: totalBatchSum > 0
-        ? `${confirmedSum.toLocaleString()} of ${totalBatchSum.toLocaleString()} batch${totalBatchSum === 1 ? "" : "es"} confirmed`
+        ? `${intactSum.toLocaleString()} of ${totalBatchSum.toLocaleString()} batch${totalBatchSum === 1 ? "" : "es"} intact · ${confirmedSum.toLocaleString()} anchored on-chain`
         : "no batches in this period",
       tone: integrityTone,
       accent: true,
@@ -475,18 +480,27 @@ export default function Reports() {
               <col />
               <col />
               <col />
+              <col />
               <col style={{ width: "16%" }} />
             </colgroup>
             <thead>
               <tr>
                 <th style={headCell(t)}>Day</th>
-                <th style={headCell(t, { textAlign: "right" })}>Confirmed</th>
+                <th style={headCell(t, { textAlign: "right" })} title="Anchored on-chain and verified">
+                  Confirmed
+                </th>
+                <th
+                  style={headCell(t, { textAlign: "right" })}
+                  title="Sealed with a Merkle root and checked locally every minute, but not anchored on-chain yet. Counts as intact."
+                >
+                  Sealed
+                </th>
                 <th style={headCell(t, { textAlign: "right" })}>Tampered</th>
                 <th style={headCell(t, { textAlign: "right" })}>Unverified</th>
                 <th style={headCell(t, { textAlign: "right" })}>Pending</th>
                 <th
                   style={headCell(t, { textAlign: "right" })}
-                  title="Total counts every batch the API returned for that day. Statuses it doesn't break out (e.g. failed sealing attempts) still count toward Total."
+                  title="Sum of the status columns. Failed anchoring attempts are excluded — they hold no logs."
                 >
                   Total
                 </th>
@@ -502,6 +516,7 @@ export default function Reports() {
                   <tr key={r.day} style={bad ? { background: "rgba(244,63,94,0.08)" } : undefined}>
                     <td style={bodyCell(t, { ...monoFont })}>{r.day}</td>
                     <td style={bodyCell(t, { textAlign: "right", ...monoFont, ...dim(r.confirmed) })}>{r.confirmed}</td>
+                    <td style={bodyCell(t, { textAlign: "right", ...monoFont, ...dim(r.sealed) })}>{r.sealed}</td>
                     <td
                       style={bodyCell(t, {
                         textAlign: "right",
@@ -533,6 +548,7 @@ export default function Reports() {
                   <td style={bodyCell(t, { color: t.muted })}>
                     Other {inactiveIntegrityDays} day{inactiveIntegrityDays === 1 ? "" : "s"}
                   </td>
+                  <td style={bodyCell(t, { color: t.muted, textAlign: "right", ...monoFont })}>—</td>
                   <td style={bodyCell(t, { color: t.muted, textAlign: "right", ...monoFont })}>—</td>
                   <td style={bodyCell(t, { color: t.muted, textAlign: "right", ...monoFont })}>—</td>
                   <td style={bodyCell(t, { color: t.muted, textAlign: "right", ...monoFont })}>—</td>

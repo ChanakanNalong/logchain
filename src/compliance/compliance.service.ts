@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Batch } from '../logs/entities/batch.entity';
+import { Batch, INTACT_STATUSES } from '../logs/entities/batch.entity';
 import { Log } from '../logs/entities/log.entity';
 import { AuditAccess } from '../audit/entities/audit-access.entity';
 
@@ -89,7 +89,9 @@ export class ComplianceService {
         'unverified',
       )
       .addSelect(`COUNT(*) FILTER (WHERE batch.status='PENDING')`, 'pending')
-      .addSelect('COUNT(*)', 'total')
+      // FAILED = anchor พลาด ไม่มี log ผูกจริง — กันออกจากตัวหารให้ตรงกับ stats.service
+      // ไม่งั้นแค่ RPC ล่มก็ทำให้ integrityRate ของ Reports ต่ำกว่า Dashboard
+      .addSelect(`COUNT(*) FILTER (WHERE batch.status<>'FAILED')`, 'total')
       .where(
         `(batch.sealed_at AT TIME ZONE 'Asia/Bangkok') >= :from::timestamp
               AND (batch.sealed_at AT TIME ZONE 'Asia/Bangkok') < :toExclusive::timestamp`,
@@ -100,16 +102,22 @@ export class ComplianceService {
       .getRawMany();
 
     return rows.map((r) => {
-      const total = +r.total,
-        confirmed = +r.confirmed;
+      const total = +r.total;
+      // สูตรเดียวกับ stats.service (Dashboard) — intact = CONFIRMED + SEALED
+      // alias ของแต่ละสถานะใน SELECT ด้านบนคือชื่อสถานะตัวเล็ก
+      const intact = INTACT_STATUSES.reduce(
+        (n, st) => n + (+r[st.toLowerCase()] || 0),
+        0,
+      );
       return {
         day: r.day,
-        confirmed,
+        confirmed: +r.confirmed,
+        sealed: +r.sealed,
         tampered: +r.tampered,
         unverified: +r.unverified,
         pending: +r.pending,
         total,
-        integrityRate: total ? Math.round((confirmed / total) * 100) : 0,
+        integrityRate: total ? Math.round((intact / total) * 100) : 0,
       };
     });
   }

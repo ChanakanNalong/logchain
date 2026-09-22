@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Log } from '../logs/entities/log.entity';
-import { Batch } from '../logs/entities/batch.entity';
+import { Batch, INTACT_STATUSES } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import {
   BUCKETS,
@@ -22,16 +22,6 @@ const BATCH_STATUSES = [
   'TAMPERED',
   'PENDING',
 ] as const;
-
-/**
- * สถานะที่ถือว่า "ข้อมูลยังไม่ถูกแก้" สำหรับคิด integrityRate
- *
- * SEALED = ปิด batch แล้วแต่ยังไม่ได้ anchor (ไม่ได้ตั้ง blockchain) ซึ่งผ่านการตรวจ
- * แบบ local ทุกนาทีอยู่แล้ว — ถ้ามีอะไรถูกแก้จะกลายเป็น TAMPERED ไปก่อน
- * ไม่นับรวมจะทำให้ deployment ที่ไม่ได้ต่อ chain ขึ้น "integrity 0%" คู่กับ
- * "0 tampered" ซึ่งขัดกันเองแบบเดียวกับเคส FAILED ด้านล่าง
- */
-const INTACT_STATUSES = ['CONFIRMED', 'SEALED'] as const;
 
 export interface TrafficPoint {
   /** ต้นชั่วโมง/ต้นวัน ฯลฯ ของ bucket เป็น ISO UTC — ให้ frontend เรียงหรือ format เองได้ */

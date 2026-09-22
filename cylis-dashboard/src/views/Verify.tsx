@@ -118,11 +118,15 @@ export default function Verify() {
     <div style={{ color: t.muted, padding: 16, textAlign: "center", fontSize: 13 }}>{text}</div>
   );
 
+  // confirmed = anchored on-chain only; SEALED batches are intact but not anchored yet (no blockchain
+  // configured). Same split as the Dashboard's "Sealed Batches" tile.
+  const confirmed = overview?.batches.confirmed ?? 0;
+  const sealedBatches = confirmed + (overview?.batches.byStatus?.SEALED ?? 0);
   const tiles = overview && [
     { label: "Chain integrity", value: `${overview.integrityRate}%`, tone: overview.batches.tampered > 0 ? "danger" : "good" },
-    { label: "Confirmed", value: overview.batches.confirmed?.toLocaleString() ?? "0", tone: "good" },
+    { label: "Sealed", value: sealedBatches.toLocaleString(), tone: "good" },
     { label: "Tampered", value: overview.batches.tampered?.toLocaleString() ?? "0", tone: overview.batches.tampered > 0 ? "danger" : "muted" },
-    { label: "Batches on chain", value: overview.batches.total?.toLocaleString() ?? "0", tone: "blue" },
+    { label: "Anchored on chain", value: confirmed.toLocaleString(), tone: "blue" },
   ];
 
   return (

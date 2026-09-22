@@ -38,11 +38,19 @@ function makeQueryBuilder() {
 
 /** COUNT(...) comes back from pg as strings — mirror that in fixtures. */
 function batchRow(day: string, counts: Partial<Record<string, number>>) {
-  const c = { confirmed: 0, tampered: 0, unverified: 0, pending: 0, ...counts };
-  const total = c.confirmed + c.tampered + c.unverified + c.pending;
+  const c = {
+    confirmed: 0,
+    sealed: 0,
+    tampered: 0,
+    unverified: 0,
+    pending: 0,
+    ...counts,
+  };
+  const total = c.confirmed + c.sealed + c.tampered + c.unverified + c.pending;
   return {
     day,
     confirmed: String(c.confirmed),
+    sealed: String(c.sealed),
     tampered: String(c.tampered),
     unverified: String(c.unverified),
     pending: String(c.pending),
@@ -117,6 +125,51 @@ describe('ComplianceService.getReports', () => {
     expect(report.integrity[0].total).toBe(0);
     expect(report.integrity[0].integrityRate).toBe(0);
     expect(Number.isNaN(report.integrity[0].integrityRate)).toBe(false);
+  });
+
+  it('counts SEALED as intact — same formula as stats (Dashboard)', async () => {
+    // deployment ที่ไม่ต่อ blockchain: ทุก batch เป็น SEALED ต้องได้ 100% ไม่ใช่ 0%
+    batchQb.rawMany = [batchRow('2026-08-05', { sealed: 3 })];
+
+    const report = await service.getReports('2026-08-05', '2026-08-05');
+
+    expect(report.integrity[0]).toMatchObject({
+      confirmed: 0,
+      sealed: 3,
+      total: 3,
+      integrityRate: 100,
+    });
+  });
+
+  it('breakdown columns add up to total', async () => {
+    batchQb.rawMany = [
+      batchRow('2026-08-05', {
+        confirmed: 1,
+        sealed: 2,
+        tampered: 1,
+        unverified: 1,
+        pending: 1,
+      }),
+    ];
+
+    const report = await service.getReports('2026-08-05', '2026-08-05');
+    const d = report.integrity[0];
+
+    expect(d.confirmed + d.sealed + d.tampered + d.unverified + d.pending).toBe(
+      d.total,
+    );
+    expect(d.integrityRate).toBe(50); // (1 + 2) / 6
+  });
+
+  it('excludes FAILED from total, matching stats', async () => {
+    batchQb.rawMany = [batchRow('2026-08-05', { confirmed: 1 })];
+
+    await service.getReports('2026-08-05', '2026-08-05');
+
+    expect(batchQb.addSelect).toHaveBeenCalledWith(
+      `COUNT(*) FILTER (WHERE batch.status<>'FAILED')`,
+      'total',
+    );
   });
 
   it('computes integrityRate from confirmed / total', async () => {
