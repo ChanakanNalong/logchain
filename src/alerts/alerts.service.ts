@@ -1,18 +1,36 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Alert } from './entities/alert.entity';
 import { NotificationService } from '../notification/notification.service';
 
+/** severity ที่ส่ง email — ทั้งตอนสร้างและตอนเกิดซ้ำ */
+const NOTIFY_SEVERITIES = ['HIGH', 'CRITICAL'];
+
+/** ลำดับความรุนแรง ต่ำ → สูง — ค่าที่ไม่รู้จักถือว่าต่ำสุด */
+const SEVERITY_RANK = ['INFO', 'WARNING', 'HIGH', 'CRITICAL'];
+
+/** เตือนซ้ำได้ถี่สุดเท่าไร ถ้า alert ยังเกิดซ้ำต่อเนื่อง (0 = ไม่เตือนซ้ำ) */
+const DEFAULT_RENOTIFY_MINUTES = 60;
+
 @Injectable()
 export class AlertsService {
   private readonly logger = new Logger(AlertsService.name);
+  private readonly renotifyMinutes: number;
 
   constructor(
     @InjectRepository(Alert)
     private alertRepo: Repository<Alert>,
     private notificationService: NotificationService,
-  ) {}
+    config: ConfigService,
+  ) {
+    // ไม่ตั้ง / ว่าง / ค่าเพี้ยน → ค่าตั้งต้น (Number('') = 0 ซึ่งแปลว่าปิด ต้องกันไว้)
+    const raw = config.get<string>('ALERT_RENOTIFY_MINUTES');
+    const n = raw === undefined || raw === '' ? NaN : Number(raw);
+    this.renotifyMinutes =
+      Number.isInteger(n) && n >= 0 ? n : DEFAULT_RENOTIFY_MINUTES;
+  }
 
   async createOrDedup(dto: Partial<Alert>): Promise<Alert> {
     const ruleId = ruleIdOf(dto);
@@ -32,16 +50,19 @@ export class AlertsService {
 
     const existing = await this.alertRepo.findOne({ where: dedupWhere });
     if (existing) {
-      return this.recordRepeat(existing);
+      return this.recordRepeat(existing, dto);
     }
 
-    // occurrenceCount/lastSeenAt ใช้ค่าของ DB เสมอ ไม่รับจาก body ของ POST /alerts
+    const notify = NOTIFY_SEVERITIES.includes(dto.severity ?? '');
+
+    // occurrenceCount/lastSeenAt/lastNotifiedAt ใช้ค่าของระบบเสมอ ไม่รับจาก body ของ POST /alerts
     const newAlert = this.alertRepo.create({
       ...dto,
       ruleId,
       status: 'OPEN',
       occurrenceCount: 1,
       lastSeenAt: undefined,
+      lastNotifiedAt: notify ? new Date() : null,
     });
 
     let saved: Alert;
@@ -58,15 +79,15 @@ export class AlertsService {
           this.logger.debug(
             `Dedup race lost for ${dto.alertType}/${dto.source} — counting as a repeat`,
           );
-          return this.recordRepeat(winner);
+          return this.recordRepeat(winner, dto);
         }
       }
       throw err;
     }
 
-    if (dto.severity && ['HIGH', 'CRITICAL'].includes(dto.severity)) {
+    if (notify) {
       await this.notificationService.sendAlertEmail(
-        dto.severity,
+        dto.severity!,
         dto.title ?? 'Alert',
         JSON.stringify(dto.detail ?? {}),
       );
@@ -77,24 +98,70 @@ export class AlertsService {
 
   /**
    * นับการเกิดซ้ำแทนการทิ้งเฉย ๆ — ให้ analyst เห็นว่าโดนกี่ครั้ง ล่าสุดเมื่อไร (PCI DSS Req 10)
-   * บวกใน SQL ไม่ใช่ read-modify-write ฝั่งแอป ไม่งั้น alert ที่มาพร้อมกันนับหาย
+   *
+   * ทำทุกอย่างใน UPDATE เดียว ไม่ read-modify-write ฝั่งแอป:
+   *  - occurrence_count + 1 — alert ที่มาพร้อมกันไม่นับหาย
+   *  - severity ขยับขึ้นเป็นตัวที่แรงกว่า — ML ให้ severity ต่างกันทุก event แต่ dedup key ไม่มี
+   *    severity ถ้าไม่ขยับ CRITICAL ที่มาตอน WARNING ค้าง OPEN จะไม่เคยถูก email เลย
+   *  - last_notified_at = now() เมื่อควรเตือน: severity ถึงเกณฑ์ และ (ยังไม่เคยเตือน หรือเตือน
+   *    ล่าสุดนานกว่า renotifyMinutes) — row lock ของ UPDATE ทำให้ event ที่มาพร้อมกัน
+   *    มีแค่ตัวเดียวที่เห็นเงื่อนไขเป็นจริง จึงไม่ส่ง email ซ้ำกันหลายฉบับ
    */
-  private async recordRepeat(alert: Alert): Promise<Alert> {
+  private async recordRepeat(
+    alert: Alert,
+    incoming: Partial<Alert>,
+  ): Promise<Alert> {
+    const rank = (expr: string) =>
+      `COALESCE(array_position(ARRAY[${SEVERITY_RANK.map((s) => `'${s}'`).join(',')}]::text[], ${expr}::text), 0)`;
+    const newSeverity = `CASE WHEN ${rank(':incomingSeverity')} > ${rank('severity')} THEN :incomingSeverity ELSE severity END`;
+    const shouldNotify =
+      `(${newSeverity}) IN (${NOTIFY_SEVERITIES.map((s) => `'${s}'`).join(',')}) ` +
+      `AND (last_notified_at IS NULL OR ` +
+      `(:renotifyMinutes > 0 AND last_notified_at <= now() - make_interval(mins => :renotifyMinutes)))`;
+
     const result = await this.alertRepo
       .createQueryBuilder()
       .update(Alert)
       .set({
         occurrenceCount: () => 'occurrence_count + 1',
         lastSeenAt: () => 'now()',
+        severity: () => newSeverity,
+        lastNotifiedAt: () =>
+          `CASE WHEN ${shouldNotify} THEN now() ELSE last_notified_at END`,
       })
       .where('id = :id', { id: alert.id })
-      .returning(['occurrence_count', 'last_seen_at'])
+      .setParameters({
+        incomingSeverity: incoming.severity ?? '',
+        renotifyMinutes: this.renotifyMinutes,
+      })
+      // now() คงที่ตลอด statement — ค่าที่เพิ่งตั้งจึงเท่ากับ now() พอดี = รอบนี้ต้องส่ง
+      .returning(
+        'occurrence_count, last_seen_at, severity, last_notified_at, ' +
+          'COALESCE(last_notified_at = now(), false) AS notify_now',
+      )
       .execute();
 
     const row = (result.raw as any[])?.[0];
-    if (row) {
-      alert.occurrenceCount = Number(row.occurrence_count);
-      alert.lastSeenAt = new Date(row.last_seen_at);
+    if (!row) return alert;
+
+    alert.occurrenceCount = Number(row.occurrence_count);
+    alert.lastSeenAt = new Date(row.last_seen_at);
+    alert.severity = row.severity;
+    alert.lastNotifiedAt = row.last_notified_at
+      ? new Date(row.last_notified_at)
+      : null;
+
+    if (row.notify_now) {
+      await this.notificationService.sendAlertEmail(
+        alert.severity,
+        alert.title ?? incoming.title ?? 'Alert',
+        JSON.stringify(incoming.detail ?? alert.detail ?? {}),
+        {
+          occurrences: alert.occurrenceCount,
+          firstSeen: alert.createdAt,
+          lastSeen: alert.lastSeenAt,
+        },
+      );
     }
     return alert;
   }

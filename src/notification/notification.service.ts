@@ -39,18 +39,38 @@ export class NotificationService implements OnModuleInit {
     );
   }
 
-  async sendAlertEmail(severity: string, title: string, detail: string) {
+  /**
+   * @param repeat มีเมื่อเป็นการเตือนซ้ำของ alert ที่ยัง OPEN อยู่ (AlertsService.recordRepeat)
+   */
+  async sendAlertEmail(
+    severity: string,
+    title: string,
+    detail: string,
+    repeat?: { occurrences: number; firstSeen: Date; lastSeen: Date },
+  ) {
+    const repeatTag = repeat ? ` (repeat ×${repeat.occurrences})` : '';
     if (!this.transporter) {
-      this.logger.warn(`Skipping alert email (SMTP not initialized): ${title}`);
+      this.logger.warn(
+        `Skipping alert email (SMTP not initialized): [${severity}]${repeatTag} ${title}`,
+      );
       return;
     }
 
-    const subject = `[${severity}] Alert: ${title}`;
+    const subject = `[${severity}] Alert${repeatTag}: ${title}`;
+    // escape ทุกค่า — title/detail มาจาก log ที่ผู้โจมตีส่งเข้ามาเอง (detail.log_message)
+    // ถ้าไม่ escape ใส่ HTML/ลิงก์ปลอมลงใน email ที่ส่งถึงทีม security ได้
+    const repeatHtml = repeat
+      ? `<p>Still happening while this alert is OPEN — fired
+           <b>${repeat.occurrences}</b> times · first seen
+           ${escapeHtml(repeat.firstSeen.toISOString())} · last seen
+           ${escapeHtml(repeat.lastSeen.toISOString())}</p>`
+      : '';
     const html = `
       <h2 style="color:${severity === 'CRITICAL' ? 'red' : 'orange'}">
-        [${severity}] ${title}
+        [${escapeHtml(severity)}] ${escapeHtml(title)}
       </h2>
-      <p>${detail}</p>
+      ${repeatHtml}
+      <pre style="white-space:pre-wrap">${escapeHtml(detail)}</pre>
       <p><small>Logchain Alert System</small></p>
     `;
 
@@ -66,4 +86,13 @@ export class NotificationService implements OnModuleInit {
       this.logger.error(`Failed to send email: ${err.message}`);
     }
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

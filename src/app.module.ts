@@ -28,6 +28,7 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { StatsModule } from './stats/stats.module';
 import { AdminModule } from './admin/admin.module';
 import { AlertsRuleDedup1790121600000 } from './database/migrations/1790121600000-AlertsRuleDedup';
+import { AlertsLastNotified1790208000000 } from './database/migrations/1790208000000-AlertsLastNotified';
 
 @Module({
   imports: [
@@ -56,7 +57,10 @@ import { AlertsRuleDedup1790121600000 } from './database/migrations/179012160000
           synchronize: false,
           // import class ตรง ๆ ไม่ใช้ glob — ไม่ต้องเดา path ของ dist ตอน build
           // รันตอน boot ทุกครั้ง migration ที่รันไปแล้วถูกข้าม (จดไว้ในตาราง migrations)
-          migrations: [AlertsRuleDedup1790121600000],
+          migrations: [
+            AlertsRuleDedup1790121600000,
+            AlertsLastNotified1790208000000,
+          ],
           migrationsRun: true,
         };
       },

@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IsNull } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 import { NotificationService } from '../notification/notification.service';
@@ -10,13 +11,44 @@ describe('AlertsService', () => {
   let mockRepo: any;
   let mockNotification: any;
   let updateQb: any;
+  let env: Record<string, string | undefined>;
+
+  /** แถวที่ UPDATE ... RETURNING คืนมา — ค่าตั้งต้น = เกิดซ้ำแต่ยังไม่ถึงเวลาเตือน */
+  function returning(row: Record<string, unknown> = {}) {
+    updateQb.execute.mockResolvedValue({
+      raw: [
+        {
+          occurrence_count: 2,
+          last_seen_at: '2026-09-23T01:00:00.000Z',
+          severity: 'CRITICAL',
+          last_notified_at: '2026-09-23T00:30:00.000Z',
+          notify_now: false,
+          ...row,
+        },
+      ],
+    });
+  }
+
+  async function build() {
+    const module = await Test.createTestingModule({
+      providers: [
+        AlertsService,
+        { provide: getRepositoryToken(Alert), useValue: mockRepo },
+        { provide: NotificationService, useValue: mockNotification },
+        { provide: ConfigService, useValue: { get: (k: string) => env[k] } },
+      ],
+    }).compile();
+    service = module.get(AlertsService);
+  }
 
   beforeEach(async () => {
+    env = {};
     // UPDATE ... SET occurrence_count = occurrence_count + 1 RETURNING ...
     updateQb = {
       update: jest.fn(() => updateQb),
       set: jest.fn(() => updateQb),
       where: jest.fn(() => updateQb),
+      setParameters: jest.fn(() => updateQb),
       returning: jest.fn(() => updateQb),
       execute: jest.fn(() =>
         Promise.resolve({
@@ -34,16 +66,8 @@ describe('AlertsService', () => {
       createQueryBuilder: jest.fn(() => updateQb),
     };
     mockNotification = { sendAlertEmail: jest.fn() };
-
-    const module = await Test.createTestingModule({
-      providers: [
-        AlertsService,
-        { provide: getRepositoryToken(Alert), useValue: mockRepo },
-        { provide: NotificationService, useValue: mockNotification },
-      ],
-    }).compile();
-
-    service = module.get(AlertsService);
+    returning();
+    await build();
   });
 
   it('creates a new alert when no OPEN duplicate exists', async () => {
@@ -187,10 +211,12 @@ describe('AlertsService', () => {
 
     const result = await service.createOrDedup(bruteForce);
 
-    expect(updateQb.set).toHaveBeenCalledWith({
-      occurrenceCount: expect.any(Function),
-      lastSeenAt: expect.any(Function),
-    });
+    expect(updateQb.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        occurrenceCount: expect.any(Function),
+        lastSeenAt: expect.any(Function),
+      }),
+    );
     // บวกฝั่ง DB — ถ้าอ่านค่ามา +1 ในแอป alert ที่มาพร้อมกันจะนับหาย
     expect(updateQb.set.mock.calls[0][0].occurrenceCount()).toBe(
       'occurrence_count + 1',
@@ -225,6 +251,85 @@ describe('AlertsService', () => {
 
     expect(mockRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ occurrenceCount: 1, lastSeenAt: undefined }),
+    );
+  });
+
+  // ---- 1.2 เตือนซ้ำ + ขยับ severity ----
+
+  it('a new CRITICAL alert records lastNotifiedAt; a WARNING one does not', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+    await service.createOrDedup(bruteForce);
+    expect(mockRepo.save.mock.calls[0][0].lastNotifiedAt).toBeInstanceOf(Date);
+
+    await service.createOrDedup(loginAfterFailures);
+    expect(mockRepo.save.mock.calls[1][0].lastNotifiedAt).toBeNull();
+  });
+
+  it('re-sends the email when the UPDATE says it is time (notify_now), with repeat info', async () => {
+    const existing = {
+      id: 'a-5710',
+      ...bruteForce,
+      createdAt: new Date('2026-09-22T10:01:00.000Z'),
+    };
+    mockRepo.findOne.mockResolvedValue(existing);
+    returning({ occurrence_count: 7, notify_now: true });
+
+    await service.createOrDedup({
+      ...bruteForce,
+      detail: { rule_id: 5710, n: 7 },
+    });
+
+    expect(mockNotification.sendAlertEmail).toHaveBeenCalledWith(
+      'CRITICAL',
+      'Multiple authentication failures (brute force)',
+      JSON.stringify({ rule_id: 5710, n: 7 }), // detail ของครั้งล่าสุด ไม่ใช่ครั้งแรก
+      {
+        occurrences: 7,
+        firstSeen: new Date('2026-09-22T10:01:00.000Z'),
+        lastSeen: new Date('2026-09-23T01:00:00.000Z'),
+      },
+    );
+  });
+
+  it('takes the escalated severity from the UPDATE (WARNING alert hit by a CRITICAL repeat)', async () => {
+    const ml = {
+      alertType: 'ML_ANOMALY',
+      source: 'web-app',
+      title: 'anomaly',
+      detail: {},
+    };
+    mockRepo.findOne.mockResolvedValue({
+      id: 'ml-1',
+      ...ml,
+      severity: 'WARNING',
+    });
+    returning({ severity: 'CRITICAL', notify_now: true });
+
+    const result = await service.createOrDedup({ ...ml, severity: 'CRITICAL' });
+
+    expect(updateQb.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ incomingSeverity: 'CRITICAL' }),
+    );
+    expect(result.severity).toBe('CRITICAL');
+    expect(mockNotification.sendAlertEmail.mock.calls[0][0]).toBe('CRITICAL');
+  });
+
+  it.each([
+    [undefined, 60],
+    ['', 60],
+    ['abc', 60],
+    ['-5', 60],
+    ['15', 15],
+    ['0', 0], // 0 = ไม่เตือนซ้ำ (เตือนเฉพาะครั้งแรก / ตอน severity ขยับถึงเกณฑ์)
+  ])('ALERT_RENOTIFY_MINUTES=%p → %p minutes', async (value, expected) => {
+    env.ALERT_RENOTIFY_MINUTES = value;
+    await build();
+    mockRepo.findOne.mockResolvedValue({ id: 'a', ...bruteForce });
+
+    await service.createOrDedup(bruteForce);
+
+    expect(updateQb.setParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ renotifyMinutes: expected }),
     );
   });
 });

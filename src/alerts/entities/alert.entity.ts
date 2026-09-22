@@ -40,4 +40,8 @@ export class Alert {
   /** ครั้งล่าสุดที่เกิด — createdAt คือครั้งแรก */
   @Column({ name: 'last_seen_at', type: 'timestamptz', default: () => 'now()' })
   lastSeenAt: Date;
+
+  /** ส่ง email ครั้งล่าสุดเมื่อไร — null = ยังไม่เคย (severity ไม่ถึงเกณฑ์) */
+  @Column({ name: 'last_notified_at', type: 'timestamptz', nullable: true })
+  lastNotifiedAt: Date | null;
 }
