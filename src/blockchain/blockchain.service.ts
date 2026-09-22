@@ -42,6 +42,14 @@ export type ChainWriteError = 'ROOT_EXISTS' | 'NOT_AUTHORIZED' | 'OTHER';
  */
 export const DEFAULT_TX_TIMEOUT_MS = 120_000;
 
+/**
+ * หลังส่ง tx สำเร็จ เชื่อ nonce ที่จำไว้เองแทน chain ได้นานสุดเท่าไร (ms)
+ * public RPC เป็น load balancer — ถาม "pending" ทันทีหลังส่งอาจไปโดน node ที่ยังไม่เห็น tx
+ * แล้วได้ nonce เดิมกลับมา (ชนกัน) · พ้นช่วงนี้ไปแล้วเชื่อ chain เสมอ ไม่ให้ tx ที่ถูก drop
+ * จาก mempool ทิ้ง nonce ที่จำไว้ค้างจนเกิดช่องว่างถาวร
+ */
+const NONCE_HINT_TTL_MS = 60_000;
+
 export function classifyChainError(err: unknown): ChainWriteError {
   const e = err as any;
   // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
@@ -59,11 +67,29 @@ export function classifyChainError(err: unknown): ChainWriteError {
 export class BlockchainService implements OnModuleInit {
   private readonly logger = new Logger(BlockchainService.name);
   private provider: ethers.JsonRpcProvider;
-  private wallet: ethers.NonceManager;
+  /**
+   * Wallet ธรรมดา ไม่ใช่ ethers.NonceManager — NonceManager (6.17) มีบั๊กสองตัว:
+   *  1. sendTransaction เริ่ม getNonce ไว้แล้วไป await populateTransaction ก่อน ถ้า populate
+   *     พังก่อน (RPC timeout) promise ของ nonce ไม่มีใคร await → unhandled rejection
+   *     ฆ่าทั้ง process (เจอจริง: "request timeout" หลัง Anchor batch ... ไม่สำเร็จ)
+   *  2. นับ nonce +1 ก่อนรู้ว่าส่งสำเร็จ และไม่เคย reset — send ที่ revert ตอน estimateGas
+   *     (เช่น "Root already exists") ทำให้ tx ถัดไปได้ nonce เกิน chain ไป 1 แล้วค้าง
+   *     ใน mempool ตลอดกาล · ถ้า getNonce พังครั้งเดียว promise ที่ reject ถูก cache ไว้
+   *     ทุก send หลังจากนั้นพังตามจนกว่าจะ restart
+   * จึงจัดการ nonce เองใน sendStoreRoot() แทน
+   */
+  private wallet: ethers.Wallet;
   private contract: ethers.Contract;
   private isReady = false;
   /** เพดานเวลารอ tx confirm — public RPC ช้ากว่า Hardhat มาก ปล่อยรอไม่มีเพดานไม่ได้ */
   private txTimeoutMs = DEFAULT_TX_TIMEOUT_MS;
+  /**
+   * ส่ง tx ทีละตัว — cron seal กับ cron anchor/reanchor ยิงพร้อมกันทุกนาที
+   * ถ้าปล่อยขนานจะถาม nonce ได้เลขเดียวกันแล้วชนกัน (เหตุผลเดิมที่ใส่ NonceManager)
+   */
+  private sendQueue: Promise<unknown> = Promise.resolve();
+  /** nonce ของ tx ล่าสุดที่ส่งสำเร็จ — ใช้กัน RPC ตอบ pending nonce ล้าหลัง */
+  private lastSent: { nonce: number; at: number } | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -119,9 +145,7 @@ export class BlockchainService implements OnModuleInit {
         staticNetwork: network,
       });
       // wallet - บัญชีใฃ้เซ้น transaction (จ่าย gas)
-      this.wallet = new ethers.NonceManager(
-        new ethers.Wallet(pk, this.provider),
-      );
+      this.wallet = new ethers.Wallet(pk, this.provider);
       // contract instance - ผูก address + ABI + wallet
       this.contract = new ethers.Contract(address, CONTRACT_ABI, this.wallet);
 
@@ -163,12 +187,14 @@ export class BlockchainService implements OnModuleInit {
       : '0x' + merkleRoot;
 
     this.logger.log(`Storing root for batch ${batchId}...`);
-    const tx = await this.contract.storeRoot(batchBytes, rootBytes);
+    const tx = await this.sendStoreRoot(batchBytes, rootBytes);
 
     // ถึงตรงนี้ tx ถูกส่งขึ้น chain แล้ว — hash ใช้ตามรอยได้เสมอ ต่อให้รอ confirm ไม่ทัน
     try {
       // รอ transaction ถูก mine (confirm) ก่อน — มีเพดานเวลา ไม่รอไม่จำกัด
       const receipt = await tx.wait(1, this.txTimeoutMs);
+      // ethers คืน null เฉพาะตอน confirms=0 — ที่นี่ขอ 1 จึงไม่ควรเกิด
+      if (!receipt) throw new Error(`tx ${tx.hash} returned no receipt`);
       this.logger.log(
         `Root stored tx=${receipt.hash} block=${receipt.blockNumber}`,
       );
@@ -188,6 +214,39 @@ export class BlockchainService implements OnModuleInit {
       );
       return { txHash: tx.hash, blockNumber: null, confirmed: false };
     }
+  }
+
+  /**
+   * ส่ง storeRoot โดยกำหนด nonce เอง ทีละ tx
+   *
+   * nonce = max(pending ของ chain, ตัวถัดจากที่เราเพิ่งส่ง) — จำ nonce ไว้ **หลัง** ส่งสำเร็จ
+   * เท่านั้น send ที่พังก่อนถึง chain (estimateGas revert / RPC timeout) จึงไม่ทิ้งช่องว่าง
+   * และไม่มี state พังค้าง รอบถัดไปถาม chain ใหม่เสมอ
+   * ทุก promise อยู่ในสาย await เดียว RPC พลาดจึง reject มาที่ caller ไม่หลุดเป็น uncaught
+   */
+  private sendStoreRoot(
+    batchBytes: string,
+    rootBytes: string,
+  ): Promise<ethers.ContractTransactionResponse> {
+    const send = async () => {
+      const pending = await this.wallet.getNonce('pending');
+      const hint =
+        this.lastSent && Date.now() - this.lastSent.at < NONCE_HINT_TTL_MS
+          ? this.lastSent.nonce + 1
+          : 0;
+      const nonce = Math.max(pending, hint);
+
+      const tx = (await this.contract.storeRoot(batchBytes, rootBytes, {
+        nonce,
+      })) as ethers.ContractTransactionResponse;
+      this.lastSent = { nonce, at: Date.now() };
+      return tx;
+    };
+
+    // ต่อคิวหลัง send ก่อนหน้า ไม่ว่าตัวก่อนจะสำเร็จหรือพัง
+    const run = this.sendQueue.then(send, send);
+    this.sendQueue = run.catch(() => undefined);
+    return run;
   }
 
   /**
