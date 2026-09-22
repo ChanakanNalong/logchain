@@ -33,9 +33,10 @@ const BLOCK = {
   transactions: [],
 };
 
-type RpcCall = { id: number; method: string; params: any[] };
+type RpcCall = { id: number; method: string; params: unknown[] };
 /** คืน undefined = ตอบค่าปกติ · 'DROP' = ตอบ 502 ทั้ง batch (เหมือน RPC timeout) · object = JSON-RPC error */
-type Override = (call: RpcCall) => undefined | 'DROP' | { error: any };
+type JsonRpcError = { code: number; message: string };
+type Override = (call: RpcCall) => undefined | 'DROP' | { error: JsonRpcError };
 
 describe('BlockchainService — nonce handling', () => {
   let server: http.Server;
@@ -76,8 +77,10 @@ describe('BlockchainService — nonce handling', () => {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
-        const parsed = JSON.parse(body);
-        const calls: RpcCall[] = Array.isArray(parsed) ? parsed : [parsed];
+        const parsed: unknown = JSON.parse(body);
+        const calls: RpcCall[] = (
+          Array.isArray(parsed) ? parsed : [parsed]
+        ) as RpcCall[];
         const results: unknown[] = [];
         for (const call of calls) {
           const o = override(call);
@@ -128,7 +131,9 @@ describe('BlockchainService — nonce handling', () => {
   });
 
   afterEach(async () => {
-    (svc as any).provider?.destroy();
+    (
+      svc as unknown as { provider?: { destroy: () => void } }
+    ).provider?.destroy();
     // ให้ rejection ที่หลุดมีเวลาโผล่ก่อนถอด listener
     await new Promise((r) => setTimeout(r, 50));
     process.off('unhandledRejection', onUnhandled);

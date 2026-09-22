@@ -10,6 +10,41 @@ import { AuditAccess } from '../audit/entities/audit-access.entity';
 
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 
+/**
+ * แถวจาก getRawMany/getRawOne — COUNT(...) ของ Postgres มาเป็น string เสมอ
+ * (ไม่ใช่ number) ชื่อ key คือ alias ที่ตั้งไว้ใน SELECT
+ */
+interface IntegrityRawRow {
+  day: string;
+  confirmed: string;
+  sealed: string;
+  tampered: string;
+  unverified: string;
+  pending: string;
+  total: string;
+  [status: string]: string;
+}
+interface RetentionRawRow {
+  expired: string;
+  due_in_30d: string;
+  cde_scoped: string;
+  total: string;
+}
+interface AuditRawRow {
+  day: string;
+  action: string;
+  count: string;
+}
+/** record ใน erasure-log.json — เขียนโดย ErasureService คนละรูปแบบตามรุ่น */
+export interface ErasureRecord {
+  erasedAt?: string;
+  requestedAt?: string;
+  date?: string;
+  at?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 @Injectable()
 export class ComplianceService {
   private readonly erasureLogPath = path.join(
@@ -100,7 +135,7 @@ export class ComplianceService {
       )
       .groupBy('day')
       .orderBy('day', 'ASC')
-      .getRawMany();
+      .getRawMany<IntegrityRawRow>();
 
     return rows.map((r) => {
       const total = +r.total;
@@ -137,7 +172,8 @@ export class ComplianceService {
       )
       .addSelect(`COUNT(*) FILTER (WHERE log.cde_scope)`, 'cde_scoped')
       .addSelect('COUNT(*)', 'total')
-      .getRawOne();
+      .getRawOne<RetentionRawRow>();
+    if (!row) return { expired: 0, dueIn30d: 0, cdeScoped: 0, total: 0 };
     return {
       expired: +row.expired,
       dueIn30d: +row.due_in_30d,
@@ -149,9 +185,9 @@ export class ComplianceService {
   // ---- ③ erasure per day (JSON file) ----
   private getErasureByDay(from: string, toExclusive: string) {
     const records = this.readErasureLog();
-    const dateOf = (r: any) =>
+    const dateOf = (r: ErasureRecord) =>
       r.erasedAt ?? r.requestedAt ?? r.date ?? r.at ?? r.timestamp;
-    const byDay = new Map<string, any[]>();
+    const byDay = new Map<string, ErasureRecord[]>();
     for (const rec of records) {
       const raw = dateOf(rec);
       if (!raw) continue;
@@ -163,11 +199,13 @@ export class ComplianceService {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([day, recs]) => ({ day, requests: recs.length, records: recs }));
   }
-  private readErasureLog(): any[] {
+  private readErasureLog(): ErasureRecord[] {
     if (!fs.existsSync(this.erasureLogPath)) return [];
     try {
-      const p = JSON.parse(fs.readFileSync(this.erasureLogPath, 'utf-8'));
-      return Array.isArray(p) ? p : [];
+      const p: unknown = JSON.parse(
+        fs.readFileSync(this.erasureLogPath, 'utf-8'),
+      );
+      return Array.isArray(p) ? (p as ErasureRecord[]) : [];
     } catch {
       return [];
     }
@@ -191,7 +229,7 @@ export class ComplianceService {
       .groupBy('day')
       .addGroupBy('audit.action')
       .orderBy('day', 'ASC')
-      .getRawMany();
+      .getRawMany<AuditRawRow>();
 
     const map = new Map<string, Record<string, number>>();
     for (const r of rows) {

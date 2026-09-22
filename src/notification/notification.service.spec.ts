@@ -4,15 +4,16 @@ import { VaultService } from '../vault/vault.service';
 
 describe('NotificationService.sendAlertEmail', () => {
   let svc: NotificationService;
-  let sendMail: jest.Mock;
+  /** argument ที่ nodemailer.sendMail ได้รับ — อ่าน subject/html ในเทสต์ */
+  let sendMail: jest.Mock<Promise<void>, [{ subject: string; html: string }]>;
 
   beforeEach(() => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation();
     jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     svc = new NotificationService({} as VaultService);
-    sendMail = jest.fn().mockResolvedValue(undefined);
+    sendMail = jest.fn<Promise<void>, [{ subject: string; html: string }]>();
     // เทียบเท่า onModuleInit ที่ตั้ง SMTP สำเร็จ
-    Object.assign(svc as any, {
+    Object.assign(svc as unknown as Record<string, unknown>, {
       transporter: { sendMail },
       mailFrom: 'from@x',
       mailTo: 'to@x',

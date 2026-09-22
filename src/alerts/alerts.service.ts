@@ -68,11 +68,11 @@ export class AlertsService {
     let saved: Alert;
     try {
       saved = await this.alertRepo.save(newAlert);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 23505 = unique_violation จาก idx_alerts_open_dedup_rule
       // findOne...save ไม่ atomic — request ที่มาพร้อมกันอาจเห็น "ยังไม่มี" ทั้งคู่
       // DB เป็นตัวตัดสิน ฝั่งที่แพ้ก็แค่นับเป็นการเกิดซ้ำของตัวที่ชนะ ไม่ใช่ error จริง
-      const code = err.code ?? err.driverError?.code;
+      const code = pgErrorCode(err);
       if (code === '23505') {
         const winner = await this.alertRepo.findOne({ where: dedupWhere });
         if (winner) {
@@ -141,7 +141,7 @@ export class AlertsService {
       )
       .execute();
 
-    const row = (result.raw as any[])?.[0];
+    const row = (result.raw as RepeatRow[] | undefined)?.[0];
     if (!row) return alert;
 
     alert.occurrenceCount = Number(row.occurrence_count);
@@ -187,6 +187,22 @@ export class AlertsService {
  * detection ส่งเป็นตัวเลข (5710) เก็บเป็น string ให้ตรงกับ detail->>'rule_id' ที่ migration backfill
  */
 function ruleIdOf(dto: Partial<Alert>): string | null {
-  const raw = dto.ruleId ?? (dto.detail as any)?.rule_id;
+  const detail = dto.detail as { rule_id?: string | number | null } | null;
+  const raw = dto.ruleId ?? detail?.rule_id;
   return raw === undefined || raw === null || raw === '' ? null : String(raw);
+}
+
+/** แถวที่ UPDATE ... RETURNING ของ recordRepeat คืนมา (ชื่อคอลัมน์ของ Postgres) */
+interface RepeatRow {
+  occurrence_count: number | string;
+  last_seen_at: string | Date;
+  severity: string;
+  last_notified_at: string | Date | null;
+  notify_now: boolean;
+}
+
+/** SQLSTATE ของ error จาก pg — TypeORM ห่อไว้ใน driverError อีกชั้น */
+function pgErrorCode(err: unknown): string | undefined {
+  const e = err as { code?: string; driverError?: { code?: string } };
+  return e?.code ?? e?.driverError?.code;
 }

@@ -6,15 +6,54 @@ import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 import { NotificationService } from '../notification/notification.service';
 
+/** แถวดิบที่ UPDATE ... RETURNING คืนมา (ชื่อคอลัมน์ของ Postgres) */
+interface RawRepeatRow {
+  occurrence_count: number;
+  last_seen_at: string;
+  severity: string;
+  last_notified_at: string | null;
+  notify_now: boolean;
+}
+
+type FindOneArgs = { where: Record<string, unknown> };
+type EmailArgs = [
+  string,
+  string,
+  string,
+  { occurrences: number; firstSeen: Date; lastSeen: Date }?,
+];
+
+/** query builder ของ UPDATE — ใส่ type ให้ .mock.calls อ่านได้โดยไม่ต้องแคสต์ */
+interface UpdateQbMock {
+  update: jest.Mock;
+  set: jest.Mock;
+  where: jest.Mock;
+  setParameters: jest.Mock;
+  returning: jest.Mock;
+  execute: jest.Mock<Promise<{ raw: RawRepeatRow[] }>, []>;
+}
+
+interface RepoMock {
+  findOne: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+  find: jest.Mock;
+  createQueryBuilder: jest.Mock;
+}
+
+/** เติมฟิลด์ที่เหลือให้ fixture เป็น Alert เต็มใบ — cast ที่เดียว ไม่ต้องโรย any ทั้งไฟล์ */
+const asAlert = (p: Partial<Alert>): Alert =>
+  ({ id: 'alert-id', status: 'OPEN', occurrenceCount: 1, ...p }) as Alert;
+
 describe('AlertsService', () => {
   let service: AlertsService;
-  let mockRepo: any;
-  let mockNotification: any;
-  let updateQb: any;
+  let mockRepo: RepoMock;
+  let mockNotification: { sendAlertEmail: jest.Mock<Promise<void>, EmailArgs> };
+  let updateQb: UpdateQbMock;
   let env: Record<string, string | undefined>;
 
   /** แถวที่ UPDATE ... RETURNING คืนมา — ค่าตั้งต้น = เกิดซ้ำแต่ยังไม่ถึงเวลาเตือน */
-  function returning(row: Record<string, unknown> = {}) {
+  function returning(row: Partial<RawRepeatRow> = {}) {
     updateQb.execute.mockResolvedValue({
       raw: [
         {
@@ -38,8 +77,18 @@ describe('AlertsService', () => {
         { provide: ConfigService, useValue: { get: (k: string) => env[k] } },
       ],
     }).compile();
-    service = module.get(AlertsService);
+    service = module.get<AlertsService>(AlertsService);
   }
+
+  /** อ่าน argument ของ mock แบบมี type — cast ที่นี่ที่เดียวแทนการปล่อย any ทั้งไฟล์ */
+  const callsOf = (m: jest.Mock): unknown[][] => m.mock.calls as unknown[][];
+  const setValues = () =>
+    callsOf(updateQb.set)[0][0] as Record<string, () => string>;
+  const savedAlert = (n = 0) => callsOf(mockRepo.save)[n][0] as Partial<Alert>;
+  const findOneWhere = (n = 0) =>
+    (callsOf(mockRepo.findOne)[n][0] as FindOneArgs).where;
+  const emailArgs = (n = 0) =>
+    callsOf(mockNotification.sendAlertEmail)[n] as EmailArgs;
 
   beforeEach(async () => {
     env = {};
@@ -50,22 +99,18 @@ describe('AlertsService', () => {
       where: jest.fn(() => updateQb),
       setParameters: jest.fn(() => updateQb),
       returning: jest.fn(() => updateQb),
-      execute: jest.fn(() =>
-        Promise.resolve({
-          raw: [
-            { occurrence_count: 2, last_seen_at: '2026-09-23T01:00:00.000Z' },
-          ],
-        }),
-      ),
+      execute: jest.fn<Promise<{ raw: RawRepeatRow[] }>, []>(),
     };
     mockRepo = {
       findOne: jest.fn(),
-      create: jest.fn((dto) => dto),
-      save: jest.fn((dto) => Promise.resolve({ id: 'uuid-1', ...dto })),
+      create: jest.fn((dto: Partial<Alert>) => dto),
+      save: jest.fn((dto: Partial<Alert>) =>
+        Promise.resolve(asAlert({ id: 'uuid-1', ...dto })),
+      ),
       find: jest.fn(),
       createQueryBuilder: jest.fn(() => updateQb),
     };
-    mockNotification = { sendAlertEmail: jest.fn() };
+    mockNotification = { sendAlertEmail: jest.fn<Promise<void>, EmailArgs>() };
     returning();
     await build();
   });
@@ -139,14 +184,14 @@ describe('AlertsService', () => {
   // บั๊กที่คุม: key เดิมไม่มี rule_id → RULE_MATCH ที่ค้าง OPEN ของ host หนึ่งกลืนทุก rule
   // อื่นบน host เดียวกัน เจอจริง: 5715 (login สำเร็จหลัง brute force) หายเข้า 5710
 
-  const bruteForce = {
+  const bruteForce: Partial<Alert> = {
     alertType: 'RULE_MATCH',
     severity: 'CRITICAL',
     source: 'web-server-01',
     title: 'Multiple authentication failures (brute force)',
     detail: { rule_id: 5710 },
   };
-  const loginAfterFailures = {
+  const loginAfterFailures: Partial<Alert> = {
     alertType: 'RULE_MATCH',
     severity: 'WARNING',
     source: 'web-server-01',
@@ -175,8 +220,8 @@ describe('AlertsService', () => {
 
   it('a different rule on the same host is a NEW alert, not a repeat of the open one', async () => {
     // findOne ตอบตาม where จริง — มีแค่ 5710 ค้าง OPEN อยู่
-    const open5710 = { id: 'a-5710', ...bruteForce, ruleId: '5710' };
-    mockRepo.findOne.mockImplementation(({ where }) =>
+    const open5710 = asAlert({ id: 'a-5710', ...bruteForce, ruleId: '5710' });
+    mockRepo.findOne.mockImplementation(({ where }: FindOneArgs) =>
       Promise.resolve(where.ruleId === '5710' ? open5710 : null),
     );
 
@@ -200,27 +245,29 @@ describe('AlertsService', () => {
       detail: { rule_id: null, confidence: 0.9 },
     });
 
-    expect(mockRepo.findOne.mock.calls[0][0].where.ruleId).toEqual(IsNull());
+    expect(findOneWhere().ruleId).toEqual(IsNull());
   });
 
   // ---- เกิดซ้ำต้องนับ ไม่ใช่ทิ้งเงียบ ----
 
   it('a repeat of the same rule bumps occurrence_count in SQL and does not insert or email', async () => {
-    const existing = { id: 'a-5710', ...bruteForce, occurrenceCount: 1 };
+    const existing = asAlert({
+      id: 'a-5710',
+      ...bruteForce,
+      occurrenceCount: 1,
+    });
     mockRepo.findOne.mockResolvedValue(existing);
 
     const result = await service.createOrDedup(bruteForce);
 
     expect(updateQb.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        occurrenceCount: expect.any(Function),
-        lastSeenAt: expect.any(Function),
+        occurrenceCount: expect.any(Function) as unknown,
+        lastSeenAt: expect.any(Function) as unknown,
       }),
     );
     // บวกฝั่ง DB — ถ้าอ่านค่ามา +1 ในแอป alert ที่มาพร้อมกันจะนับหาย
-    expect(updateQb.set.mock.calls[0][0].occurrenceCount()).toBe(
-      'occurrence_count + 1',
-    );
+    expect(setValues().occurrenceCount()).toBe('occurrence_count + 1');
     expect(updateQb.where).toHaveBeenCalledWith('id = :id', { id: 'a-5710' });
     expect(result.occurrenceCount).toBe(2);
     expect(result.lastSeenAt).toEqual(new Date('2026-09-23T01:00:00.000Z'));
@@ -229,7 +276,7 @@ describe('AlertsService', () => {
   });
 
   it('losing the insert race (23505) counts as a repeat of the winner', async () => {
-    const winner = { id: 'winner', ...bruteForce, occurrenceCount: 1 };
+    const winner = asAlert({ id: 'winner', ...bruteForce, occurrenceCount: 1 });
     mockRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
     mockRepo.save.mockRejectedValue({ code: '23505' });
 
@@ -259,18 +306,18 @@ describe('AlertsService', () => {
   it('a new CRITICAL alert records lastNotifiedAt; a WARNING one does not', async () => {
     mockRepo.findOne.mockResolvedValue(null);
     await service.createOrDedup(bruteForce);
-    expect(mockRepo.save.mock.calls[0][0].lastNotifiedAt).toBeInstanceOf(Date);
+    expect(savedAlert().lastNotifiedAt).toBeInstanceOf(Date);
 
     await service.createOrDedup(loginAfterFailures);
-    expect(mockRepo.save.mock.calls[1][0].lastNotifiedAt).toBeNull();
+    expect(savedAlert(1).lastNotifiedAt).toBeNull();
   });
 
   it('re-sends the email when the UPDATE says it is time (notify_now), with repeat info', async () => {
-    const existing = {
+    const existing = asAlert({
       id: 'a-5710',
       ...bruteForce,
       createdAt: new Date('2026-09-22T10:01:00.000Z'),
-    };
+    });
     mockRepo.findOne.mockResolvedValue(existing);
     returning({ occurrence_count: 7, notify_now: true });
 
@@ -298,11 +345,13 @@ describe('AlertsService', () => {
       title: 'anomaly',
       detail: {},
     };
-    mockRepo.findOne.mockResolvedValue({
-      id: 'ml-1',
-      ...ml,
-      severity: 'WARNING',
-    });
+    mockRepo.findOne.mockResolvedValue(
+      asAlert({
+        id: 'ml-1',
+        ...ml,
+        severity: 'WARNING',
+      }),
+    );
     returning({ severity: 'CRITICAL', notify_now: true });
 
     const result = await service.createOrDedup({ ...ml, severity: 'CRITICAL' });
@@ -311,7 +360,7 @@ describe('AlertsService', () => {
       expect.objectContaining({ incomingSeverity: 'CRITICAL' }),
     );
     expect(result.severity).toBe('CRITICAL');
-    expect(mockNotification.sendAlertEmail.mock.calls[0][0]).toBe('CRITICAL');
+    expect(emailArgs()[0]).toBe('CRITICAL');
   });
 
   it.each([
@@ -324,7 +373,7 @@ describe('AlertsService', () => {
   ])('ALERT_RENOTIFY_MINUTES=%p → %p minutes', async (value, expected) => {
     env.ALERT_RENOTIFY_MINUTES = value;
     await build();
-    mockRepo.findOne.mockResolvedValue({ id: 'a', ...bruteForce });
+    mockRepo.findOne.mockResolvedValue(asAlert({ id: 'a', ...bruteForce }));
 
     await service.createOrDedup(bruteForce);
 
