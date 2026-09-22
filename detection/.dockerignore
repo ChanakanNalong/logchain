@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+# dataset ก้อนใหญ่ — ไม่ต้องเข้า build context (ทำให้ build ช้าเป็นนาที)
+data/*
+!data/deeplog_model.pt
+!data/drain_state.json
+README.md
+FIXES-*.md

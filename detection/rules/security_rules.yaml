@@ -1,0 +1,91 @@
+# Wazuh-style security rules for LogChain
+# format: ตามแนวคิด Wazuh rules แต่ปรับให้ใช้ได้ใน Python consumer
+#
+# fields:
+#   id: rule ID (เลข 5 หลัก ตาม Wazuh convention)
+#   description: คำอธิบาย (โผล่ใน alert title)
+#   severity: WARNING / CRITICAL
+#   match_patterns: list ของ regex/keyword ที่ match กับ message
+#   event_types: ถ้ามี - จำกัด rule นี้ให้ match แค่ event_type ที่ ระบุ
+#   threshold: optional - match X ครั้งใน Y วินาที (frequency rule)
+#   cde_scope_only: ถ้า true -> match เฉพาะ log ที่อยู่ใน CDE (cdeScope=true)
+
+rules:
+  # ---- Authentication attacks ----
+  - id: 5710
+    description: "Multiple authentication failures (brute force)"
+    severity: CRITICAL
+    match_patterns:
+      - "(?i)authentication.{0,20}fail"
+      - "(?i)login.{0,20}(fail|denied|invalid)"
+      - "(?i)wrong password"
+    threshold:
+      count: 5
+      window_seconds: 60
+
+  - id: 5715
+    description: "Successful login after multiple failures"
+    severity: WARNING
+    match_patterns:
+      - "(?i)login.{0,20}success"
+    requires_prior_rule: 5710
+    window_seconds: 300
+
+  # ---- Privilege escalation ----
+  - id: 5820
+    description: "Privilege escalation attempt"
+    severity: CRITICAL
+    match_patterns:
+      - "(?i)sudo.{0,30}(root|admin)"
+      - "(?i)privilege.{0,20}(escalat|elevat)"
+      - "(?i)unauthorized.{0,20}(escalat|access)"
+      - "(?i)setuid.{0,10}0"
+
+  # ---- Injection attacks ----
+  - id: 31100
+    description: "SQL injection pattern detected"
+    severity: CRITICAL
+    match_patterns:
+      - "(?i)(union\\s+select|or\\s+1\\s*=\\s*1|';\\s*drop\\s+table)"
+      - "(?i)(--\\s*$|/\\*.*\\*/)"
+      - "(?i)0x[0-9a-f]{8,}"
+
+  - id: 31151
+    description: "Command injection attempt"
+    severity: CRITICAL
+    match_patterns:
+      - "(?i)(;\\s*(rm|cat|wget|curl|nc)\\s)"
+      - "(?i)(\\$\\(.*\\)|`.*`)"
+      - "(?i)(\\.\\./){2,}"
+
+  # --- PCI / CDE-specific (highest priorty) ----
+  - id: 90001
+    description: "Card data access from non-CDE context"
+    severity: CRITICAL
+    match_patterns: 
+    - "(?i)(card|pan|cvv|cardholder)"
+    cde_scope_only: false # match เฉพาะ log ที่ cde_scope=false
+                          # แต่ message พูดถึง card -> ผิดปกติ
+    cde_alert: true       # -> ส่ง alert ไป channel CDE
+
+  - id: 90002
+    description: "Cardholder data access logged"
+    severity: WARNING
+    event_types: ["PAYMENT", "CARD_ACCESS"]
+    cde_scope_only: true  # match เฉพาะ CDE log
+    cde_alert: true
+
+  # ---- Anomaly indeicators ----
+  - id: 60001
+    description: "Suspicious user agent or scanner"
+    severity: WARNING
+    match_patterns:
+      - "(?i)(sqlmap|nikto|nmap|burp|metasploit|hydra)"
+      - "(?i)(bot|crawler|spider).{0,20}admin"
+
+  - id: 60002
+    description: "Path traversal attempt"
+    severity: CRITICAL
+    match_patterns:
+      - "(\\.\\./|\\.\\.\\\\)"
+      - "(?i)(/etc/passwd|/etc/shadow|c:\\\\windows)"

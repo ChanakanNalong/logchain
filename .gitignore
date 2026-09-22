@@ -75,3 +75,19 @@ infra/kafka/certs/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# --- detection service ---
+# dataset ใหญ่ + โมเดลที่ derive ได้ — โหลด/สร้างเอง (ดู detection/README.md)
+# ไม่ ignore detection/data/ ทั้งก้อน เพราะ drain_state.json + deeplog_model.pt
+# (รวมกัน 221 KB) ต้อง commit เข้าไป ไม่งั้น demo รันไม่ได้
+detection/data/HDFS.log
+detection/data/HDFS_1.tar.gz
+detection/data/anomaly_label.csv
+detection/data/hdfs_sequences.csv
+detection/data/train.txt
+detection/data/test_*.txt
+# MaxMind GeoLite2 — ต้องสมัครบัญชีเอง ห้ามแจกจ่ายซ้ำ
+detection/data/GeoLite2-City.mmdb
+detection/venv/
+__pycache__/
+*.py[cod]
