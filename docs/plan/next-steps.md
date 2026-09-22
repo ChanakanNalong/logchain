@@ -3,7 +3,7 @@
 > **เอกสารนี้คืออะไร:** งานค้างของ LogChain เขียนให้ session หน้า (คนหรือ Claude Code)
 > อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **อัปเดตล่าสุด:** 2026-09-23 (หลัง smoke test — เจอ+แก้ 3 บั๊ก worklog หัวข้อ 7) · **ฐาน:** `main` + งาน 1.2 ที่ยังไม่ commit
+> **อัปเดตล่าสุด:** 2026-09-23 (หลัง smoke test 2 รอบ + แก้ CI ให้เขียว — worklog หัวข้อ 7–9) · **ฐาน:** `main` + งาน 1.2 ที่ยังไม่ commit
 > **รอบที่แล้วปิดไปแล้ว:** ทุกข้อของแผนเดิม — รายละเอียดอยู่ใน `docs/worklog/2026-09-22.md`
 > หัวข้อ 11–13 (Reports/SEALED · Kafka producer retry · NonceManager crash · P3)
 > ข้อในไฟล์นี้**มาจากสิ่งที่เจอระหว่างทำรอบที่แล้ว** แต่ยังไม่ได้แก้
@@ -145,6 +145,8 @@ history ของ repo นั้น
 | ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | ดูสองชั้น: (1) `docker logs logchain-backend \| grep KafkaProducer` ว่าต่อ Kafka ติดไหม (2) มี alert OPEN ของ rule + host เดียวกันค้างอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
 | login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | realm import ครั้งเดียวตอน boot แรก และเจ้าของเปลี่ยนรหัส + ตั้ง OTP ไปแล้ว — ไม่ใช่ Keycloak พัง |
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
+| lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน warning — **ก่อน commit ให้รัน `npm run lint:ci`** (`--max-warnings 668`) ซึ่งเป็นคำสั่งเดียวกับ CI |
+| รัน e2e ในเครื่องแล้ว integrity บน dashboard ตกจาก 100% | `test/jest-e2e.json` ยิง DB จริงและทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) ไว้ — ลบทิ้งหลังรัน |
 | แก้ไฟล์ใน `infra/postgres/init/` แล้วไม่มีผล | รันเฉพาะตอน volume ว่าง — เปลี่ยน schema ให้เพิ่ม migration ใน `src/database/migrations/` (backend รันเองตอน boot) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — ต้อง `docker compose build detection-api` |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ |
@@ -166,4 +168,5 @@ history ของ repo นั้น
 | `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง · บรรทัด 207 = ข้อ 3.2 |
 | `src/logs/entities/batch.entity.ts` | `INTACT_STATUSES` — แหล่งเดียวของสูตร integrity |
 | `scripts/vault-unlock.sh` | ปลด Vault lockout |
+| `.github/workflows/ci.yml` | CI 3 job — ขั้น Seed Vault อ่าน AppRole จาก `infra/vault/.secrets/approle.env` |
 | `README.md` หัวข้อ Troubleshooting + Vault user lockout | เคสที่เจอบ่อยพร้อมคำสั่งแก้ |
