@@ -14,22 +14,26 @@ scrape_configs:
     static_configs:
       - targets: ['node-exporter:9100']
 
-  # NestJS api-gateway (รันบน host ตอนนี้)
+  # แอปทั้ง 3 ตัวรันได้ 2 โหมด: ในคอมโพส (ชื่อ service) หรือบน host
+  # (host.docker.internal) — ใส่ทั้งคู่ไว้เลย โหมดที่ไม่ได้ใช้จะขึ้น DOWN ใน
+  # /targets ซึ่งถูกต้องตามความเป็นจริง ดีกว่าต้องแก้ไฟล์นี้ทุกครั้งที่สลับโหมด
+
+  # NestJS api-gateway
   - job_name: 'nestjs-api'
     static_configs:
-      - targets: ['host.docker.internal:3000']
+      - targets: ['backend:3000', 'host.docker.internal:3000']
     metrics_path: '/metrics'
 
-  # FastAPI detection service (รันบน host ตอนนี้)
+  # FastAPI detection service
   - job_name: 'fastapi-detect'
     static_configs:
-      - targets: ['host.docker.internal:8000']
+      - targets: ['detection-api:8000', 'host.docker.internal:8000']
     metrics_path: '/metrics'
 
-  # Python Kafka consumer - port 9101 (จะ  implement ทีหลัง)
+  # Python Kafka consumer - prometheus_client start_http_server(9101)
   - job_name: 'detection-consumer'
     static_configs:
-      - targets: ['host.docker.internal:9101']
+      - targets: ['detection-consumer:9101', 'host.docker.internal:9101']
     metrics_path: '/metrics'
 
   # Kafka cluster metrics (ISR, replication lag, consumer offsets)

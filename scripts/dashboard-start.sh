@@ -2,7 +2,8 @@
 # start cylis-dashboard (Next.js) บนพอร์ต 3003 — dev mode
 # คู่กับ ./scripts/demo-start.sh ที่ start backend + detection
 set -uo pipefail
-ROOT=~/Documents/logchain
+# หา repo root จากตำแหน่งของสคริปต์ — clone ไว้ที่ไหนก็รันได้
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP=$ROOT/cylis-dashboard
 PORT=3003
 

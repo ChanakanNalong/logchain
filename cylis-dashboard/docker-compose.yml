@@ -1,3 +1,9 @@
+# ⚠️ ไฟล์นี้ไว้รัน dashboard เดี่ยว ๆ ตอน dev เท่านั้น (เช่น อยากแก้ UI โดยไม่ยกทั้ง stack)
+# ของจริงที่ใช้รันทั้งระบบคือ service `cylis-dashboard` ใน ../docker-compose.yml
+#   รันทั้งระบบ:  cd .. && docker compose up -d
+#   รันเดี่ยว:     docker compose -f docker-compose.yml up -d --build
+# แก้ build args ที่นี่แล้วอย่าลืมแก้ที่ ../docker-compose.yml ด้วย — สองไฟล์นี้ไม่ได้ผูกกัน
+
 services:
   cylis-dashboard:
     build:

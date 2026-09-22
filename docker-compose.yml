@@ -1,5 +1,22 @@
 name: logchain
 
+# ─────────────────────────────────────────────────────────────────────────────
+# `docker compose up -d` ยกทั้งระบบ: infra + backend + dashboard + detection
+# ของที่ต้องเตรียมก่อน (.env, kafka certs, vault unseal) — ใช้ ./scripts/bootstrap.sh
+#
+# เรื่อง host ที่ต้องเข้าใจก่อนแก้ไฟล์นี้:
+#   ค่าใน .env เขียนไว้สำหรับ "รันบน host" (localhost:5433, localhost:29092, ...)
+#   พอรันใน compose network ต้องเป็นชื่อ service แทน — เลย override เฉพาะตัวที่
+#   เกี่ยวกับ host ในบล็อก `environment:` ของแต่ละ service (ทับ env_file เสมอ)
+#   ที่เหลือ (secret, feature flag) อ่านจาก .env ตรง ๆ ไม่ต้องเขียนซ้ำ
+#
+#   ยกเว้น 2 กลุ่มที่ห้ามเปลี่ยนเป็นชื่อ service:
+#     - NEXT_PUBLIC_* ของ dashboard — รันบนเบราว์เซอร์ซึ่งอยู่นอก network
+#     - KEYCLOAK_URL ของ backend — เป็น issuer ที่ต้องตรงกับ `iss` ในโทเคนที่
+#       เบราว์เซอร์/สคริปต์ขอมาจาก localhost:8080 (ที่อยู่จริงที่ backend ยิงไป
+#       แยกไปอยู่ KEYCLOAK_INTERNAL_URL)
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
   postgres:
     image: postgres:16-alpine 
@@ -454,6 +471,12 @@ services:
         condition: service_healthy
     environment:
       VAULT_ADDR: "http://vault:8200"
+      # init.sh เขียน approle.env ลง bind mount ในฐานะ root — ส่ง uid/gid ของคนที่
+      # รัน compose มาให้ chown กลับ ไม่งั้น scripts/bootstrap.sh อ่านไฟล์ตัวเองไม่ได้
+      # (bootstrap.sh export ให้อัตโนมัติ; สั่ง compose เองก็ใช้ `HOST_UID=$(id -u)
+      #  HOST_GID=$(id -g) docker compose up -d` หรือใส่ 2 ตัวนี้ไว้ใน .env)
+      HOST_UID: ${HOST_UID:-0}
+      HOST_GID: ${HOST_GID:-0}
       # ไม่มี VAULT_TOKEN แล้ว — init.sh อ่าน root token จาก .secrets/init.env
       # ที่ vault-unseal สร้างไว้ตอน operator init
       #
@@ -473,9 +496,131 @@ services:
     volumes:
       - ./infra/vault/init.sh:/vault/init.sh:ro
       - ./infra/vault/policies:/vault/policies:ro
-      - ./infra/vault/.secrets:/vault/secrets:ro
+      # rw (เดิมเป็น ro) — init.sh เขียน approle.env กลับมาให้ bootstrap.sh ใช้
+      - ./infra/vault/.secrets:/vault/secrets
     entrypoint: ["/bin/sh", "vault/init.sh"]
     restart: "no"
+
+  # ═══════════════════════ application services ═══════════════════════
+
+  # ── NestJS API gateway ──
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: logchain-backend:dev
+    container_name: logchain-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # override เฉพาะค่าที่ผูกกับ host — ที่เหลือมาจาก .env ตาม env_file ข้างบน
+      NODE_ENV: production
+      PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      # internal listener เป็น PLAINTEXT — mTLS มีเฉพาะ EXTERNAL (39092-39094)
+      # ที่ไว้ demo การต่อจาก host ดู scripts/demo-mtls.sh
+      KAFKA_SSL_ENABLED: "false"
+      VAULT_ADDR: "http://vault:8200"
+      # KEYCLOAK_URL (issuer) ห้าม override — ต้องเป็น localhost:8080 ตาม .env
+      # ตัวที่ backend ใช้ยิงจริงคือตัวนี้
+      KEYCLOAK_INTERNAL_URL: "http://keycloak:8080"
+    ports:
+      - "3000:3000"
+    volumes:
+      # ให้สลับ KAFKA_SSL_ENABLED=true ได้โดยไม่ต้อง rebuild image
+      # path ใน .env เป็น ./infra/kafka/certs/... ซึ่ง resolve จาก WORKDIR /app พอดี
+      - ./infra/kafka/certs:/app/infra/kafka/certs:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      keycloak: {condition: service_started}
+      vault: {condition: service_healthy}
+      # topic ต้องมีก่อน ไม่งั้น consumer ยอมแพ้ถาวรหลัง retry 5 ครั้ง
+      kafka-init: {condition: service_completed_successfully}
+      # AppRole ต้องถูกสร้างก่อน ไม่งั้น vault login 403
+      vault-init: {condition: service_completed_successfully}
+    healthcheck:
+      # /health และ /metrics อยู่นอก global prefix api/v1 (ดู src/main.ts)
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ── Next.js dashboard ──
+  # NEXT_PUBLIC_* ถูก inline ตอน build และรันบนเบราว์เซอร์ที่อยู่ "นอก" docker
+  # network — ต้องเป็น localhost เสมอ เปลี่ยนเป็น backend:3000 เมื่อไหร่หน้าเว็บพังทันที
+  cylis-dashboard:
+    build:
+      context: ./cylis-dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8080}
+        NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-logchain}
+        NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-logchain-frontend}
+    image: cylis-dashboard:dev
+    container_name: cylis-dashboard-app
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    depends_on:
+      backend: {condition: service_started}
+    healthcheck:
+      # node:alpine ไม่มี wget/curl แบบ full — ใช้ node ยิงเอง
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── Detection: FastAPI (Deeplog inference) ──
+  # แยกเป็น 2 service จาก image เดียวกัน คนละ command — restart/debug แยกกันได้
+  detection-api:
+    build:
+      context: ./detection
+    image: logchain-detection:dev
+    container_name: logchain-detection-api
+    restart: unless-stopped
+    environment:
+      # api ไม่ต้องใช้ Vault/Kafka — แค่โหลดโมเดลแล้วตอบ /api/v1/detect
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 10s
+      # โหลด torch + state_dict ตอน startup กินเวลาหลายสิบวินาทีบนเครื่องช้า
+      retries: 5
+      start_period: 60s
+
+  # ── Detection: Kafka consumer (logs.raw -> alerts.raw/alerts.cde) ──
+  detection-consumer:
+    image: logchain-detection:dev
+    container_name: logchain-detection-consumer
+    restart: unless-stopped
+    command: ["python", "-m", "app.consumer"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      KAFKA_SSL_ENABLED: "false"
+      DETECT_URL: "http://detection-api:8000/api/v1/detect"
+      VAULT_ADDR: "http://vault:8200"
+      # app/vault.py refuse-to-start ถ้า 2 ตัวนี้ไม่มี (ตั้งใจ — fail ดังกว่า
+      # เงียบ ๆ แล้วไม่มี alert ออก) scripts/bootstrap.sh เติมให้ใน .env
+      # ยังไม่ได้เติม = container วน restart พร้อม log
+      # "Vault config missing - required: VAULT_ADDR, VAULT_DETECTION_ROLE_ID, ..."
+      # ห้ามใช้ ${VAR:?...} ตรงนี้ — compose จะ error ทั้งไฟล์ ทำให้ `up -d` ของ
+      # service อื่นพังตามไปด้วย ซึ่งคือ phase แรกที่ bootstrap.sh ต้องใช้
+      VAULT_DETECTION_ROLE_ID: ${VAULT_DETECTION_ROLE_ID:-}
+      VAULT_DETECTION_SECRET_ID: ${VAULT_DETECTION_SECRET_ID:-}
+    depends_on:
+      detection-api: {condition: service_healthy}
+      vault: {condition: service_healthy}
+      kafka-init: {condition: service_completed_successfully}
+      vault-init: {condition: service_completed_successfully}
 
 volumes:
   postgres_data:

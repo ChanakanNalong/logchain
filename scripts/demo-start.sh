@@ -2,8 +2,11 @@
 # start backend + detection ในโหมด mTLS สำหรับ demo
 # ใช้ production build ไม่ใช่ watch mode — watch จะ recompile กลางคันถ้าไฟล์ถูกแตะ
 set -uo pipefail
-ROOT=~/Documents/logchain
-DET=~/Documents/logchain-detection
+# หา repo root จากตำแหน่งของสคริปต์ ไม่ใช่ hardcode ~/Documents/logchain
+# — clone ไว้ที่ไหนก็รันได้
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# detection ถูกรวมเข้ามาในรีโปแล้ว (เดิมอยู่ ~/Documents/logchain-detection)
+DET="$ROOT/detection"
 
 # ── ล็อก Node version ตาม .nvmrc — jwks-rsa@4 ดึง jose@6 ที่เป็น ESM-only
 #    Node < 20.19 จะตายด้วย ERR_REQUIRE_ESM ตอน import jwt.strategy
@@ -65,6 +68,13 @@ echo "── start ──"
 ( cd "$ROOT" && exec nohup node dist/main > /tmp/logchain-backend.log 2>&1 ) &
 BACKEND_PID=$!
 disown "$BACKEND_PID" 2>/dev/null
+if [ ! -d "$DET/venv" ]; then
+  echo "  ❌ ไม่มี $DET/venv — สร้างก่อน (ดู detection/README.md):"
+  echo "     cd detection && python3.12 -m venv venv && . venv/bin/activate \\"
+  echo "       && pip install --index-url https://download.pytorch.org/whl/cpu torch==2.12.0 \\"
+  echo "       && pip install -r requirements.txt"
+  exit 1
+fi
 ( cd "$DET" && . venv/bin/activate && \
   exec nohup python3 -m app.consumer > /tmp/logchain-detection.log 2>&1 ) &
 DETECTION_PID=$!

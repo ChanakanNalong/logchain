@@ -60,9 +60,16 @@ export class KeycloakAdminService {
     private readonly vault: VaultService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config
-      .get<string>('KEYCLOAK_URL', 'http://localhost:8080')
-      .replace(/\/+$/, '');
+    // server-to-server — ต้องเป็นที่อยู่ที่ process นี้ยิงถึงจริง ไม่ใช่ public URL
+    // ใน docker compose คือ http://keycloak:8080 (ดูคอมเมนต์ใน jwt.strategy.ts)
+    const publicUrl = this.config.get<string>(
+      'KEYCLOAK_URL',
+      'http://localhost:8080',
+    );
+    // ค่าว่างใน .env = ไม่ได้ตั้ง (ConfigService ไม่ fallback ให้เอง)
+    this.baseUrl = (
+      this.config.get<string>('KEYCLOAK_INTERNAL_URL')?.trim() || publicUrl
+    ).replace(/\/+$/, '');
     this.realm = this.config.get<string>('KEYCLOAK_REALM', 'logchain');
     this.clientId = this.config.get<string>(
       'KEYCLOAK_ADMIN_CLIENT_ID',

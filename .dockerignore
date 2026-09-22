@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.*
+coverage
+cylis-dashboard
+detection
+docs
+test
+infra/vault/.secrets
+infra/kafka/certs
+*.log

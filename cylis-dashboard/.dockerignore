@@ -1,3 +1,18 @@
 node_modules
 .next
 .git
+
+# .env.local ถูก gitignore (คนละค่ากันทุกเครื่อง / ไม่มีบน clone ใหม่) แต่ COPY . .
+# ลากเข้า image แล้ว Next.js โหลดทับ NEXT_PUBLIC_* ที่ส่งมาทาง build args เงียบ ๆ
+# -> image ที่ build บนเครื่องที่มีไฟล์นี้ ได้คนละค่ากับเครื่องที่ไม่มี
+.env
+.env.*
+
+# ของที่ไม่ต้องใช้ตอน build
+tsconfig.tsbuildinfo
+README.md
+AGENTS.md
+CLAUDE.md
+docker-compose.yml
+Dockerfile
+.dockerignore
