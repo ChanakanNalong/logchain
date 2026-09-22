@@ -1,249 +1,158 @@
 # สิ่งที่ต้องทำต่อ
 
-> **เอกสารนี้คืออะไร:** งานค้างที่เหลือหลังปิดแผน `onboarding-and-repo-consolidation.md`
-> เขียนให้ session หน้า (คนหรือ Claude Code) อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
+> **เอกสารนี้คืออะไร:** งานค้างของ LogChain เขียนให้ session หน้า (คนหรือ Claude Code)
+> อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **อัปเดตล่าสุด:** 2026-09-22 (รอบ 2) · **ฐาน:** `main = 88c119a` + งานรอบ 2 ที่ยังไม่ commit
->
-> **ความคืบหน้ารอบ 2:** ✅ P3 (3.1 ตรวจแล้ว · 3.2 ชั่งแล้วไม่ทำ · 3.3 มีสคริปต์) · ✅ P1 ทั้งหมด · ✅ 2.2 · ✅ 2.3 · ✅ บั๊ก producer (ข้อ 0) · ⏳ 2.1 รอเจ้าของรันเอง
-> · ✅ ข้อ 0.1 (backend crash ตอน RPC timeout) — worklog หัวข้อ 12
-> **ที่มา:** `docs/worklog/2026-09-22.md` (10 หัวข้อ — อ่านหัวข้อ 9 ก่อนถ้าจะแตะ integrity)
+> **อัปเดตล่าสุด:** 2026-09-23 · **ฐาน:** `main = aee939b`
+> **รอบที่แล้วปิดไปแล้ว:** ทุกข้อของแผนเดิม — รายละเอียดอยู่ใน `docs/worklog/2026-09-22.md`
+> หัวข้อ 11–13 (Reports/SEALED · Kafka producer retry · NonceManager crash · P3)
+> ข้อในไฟล์นี้**มาจากสิ่งที่เจอระหว่างทำรอบที่แล้ว** แต่ยังไม่ได้แก้
 
 ---
 
-## สถานะระบบ ณ ตอนเขียน
+## ลำดับที่แนะนำ
 
-`git clone https://github.com/ChanakanNalong/logchain.git && ./scripts/bootstrap.sh`
-รวดเดียวจบ ยก 20 service · ทดสอบจาก GitHub จริงแล้วผ่านทุกเกณฑ์ (worklog หัวข้อ 10)
-
-แผน onboarding + รวม repo **จบครบทุกข้อ (A–G)** — `detection/` รวมเข้ามาแล้ว
-repo `logchain-detection` ถูกลบจาก GitHub · `logchain-contracts` แยกไว้ตามแผน
-
----
-
-# 🆕 เจอรอบ 2
-
-## 0. ✅ `KafkaProducerService` ยอมแพ้ถาวรถ้า Kafka ขึ้นช้ากว่า backend — แก้แล้ว
-connect ครั้งเดียวตอน boot → `log publishing disabled` ทั้ง run · log เข้า DB แต่ไม่ถึง
-`logs.raw` → detection ตายเงียบ · แก้เป็น retry ไม่ยอมแพ้แบบ consumer แล้ว (worklog หัวข้อ 11)
-
-## 0.1 ✅ backend crash ทั้ง process เมื่อ blockchain RPC timeout — แก้แล้ว
-ต้นเหตุคือ `ethers.NonceManager` (ไม่ใช่ `tx.wait()` อย่างที่เดาไว้) — เลิกใช้แล้ว จัดการ nonce เอง
-ใน `BlockchainService.sendStoreRoot()` · เจอบั๊ก nonce พ่วงอีก 2 ตัว · รายละเอียด worklog หัวข้อ 12
-**ห้ามกลับไปใช้ NonceManager** (เทสต์ `src/blockchain/blockchain.nonce.spec.ts` จะพัง 3 เคส)
+1. **1.1 alert dedup กลืน rule อื่น** — ช่องโหว่ในการตรวจจับจริง ทำก่อน
+2. **2.2 ยืนยันงานรอบที่แล้วบนของจริง** — งานสั้น ปิดช่องที่ยังไม่ได้ตรวจ
+3. **2.1 log ช่วง Kafka ล่มไม่ถึง detection** — ต้องออกแบบก่อนลงมือ
+4. ที่เหลือทำเมื่อว่าง
 
 ---
 
-# ✅ P1 — ปมที่ค้างจากงาน "แยก seal ออกจาก anchor" (เสร็จรอบ 2)
+# 🔴 P1
 
-> **เสร็จแล้ว** — ทำครบ 1.1–1.3 (ทาง ก สำหรับ 1.3) + เจอพ่วงว่า `total` ของ compliance นับ
-> `FAILED` ด้วย แก้ให้ตรงกับ stats แล้ว · ยังไม่ได้ยิง endpoint จริงบน stack **ที่ไม่มี** chain
-> (stack บนเครื่องต่อ chain อยู่) ตรวจด้วย unit test + รัน SQL บน DB จริง
+## 1.1 alert dedup ไม่ดู rule — rule อื่นบน host เดียวกันหายเงียบ
 
-> งานรอบที่แล้วเพิ่มสถานะ `SEALED` (batch ที่ปิดแล้วแต่ยังไม่ anchor) และแก้
-> `stats.service.ts` ให้นับ `SEALED` เป็น intact **แต่แก้ไม่ครบทุกที่ที่อ่านสถานะ batch**
-> ผลคือหน้าเว็บ 2 หน้ารายงานเลขไม่ตรงกันบน deployment ที่ไม่ได้ต่อ blockchain
->
-> **ทำ 1.1 ก่อนเสมอ** (แก้ backend ให้เป็นแหล่งความจริงเดียว) แล้วค่อย 1.2/1.3
+**ปัญหา** — `src/alerts/alerts.service.ts:17` (`createOrDedup`) และ
+`infra/postgres/init/03-alerts-dedup-index.sql`
 
-## 1.1 `compliance.service.ts` — `sealed` ถูก query มาแล้วทิ้ง + สูตรไม่ตรงกับ stats
+key ของ dedup คือ `(status='OPEN', alert_type, source, batch_id)` — `source` คือชื่อ host
+(เช่น `web-server-01`) **ไม่มี rule_id** ผลคือตราบใดที่มี `RULE_MATCH` ของ host นั้นค้าง OPEN
+อยู่หนึ่งตัว **ทุก rule หลังจากนั้นบน host เดียวกันจะถูกรวมเข้าตัวเดิมแล้วหายไป** ไม่เกิดแถวใหม่
+ไม่ส่ง email แม้เป็น CRITICAL
 
-**ปัญหา** — `src/compliance/compliance.service.ts`
+ตัวอย่างที่อันตรายที่สุด: rule 5710 (brute force) ค้าง OPEN แล้ว rule **5715 "Successful login
+after multiple failures"** — สัญญาณว่าเจาะเข้ามาได้แล้ว — ยิงตามมา → ถูกกลืนเข้า alert brute force
+ตัวเดิม analyst ไม่มีวันเห็น เช่นเดียวกับ ML_ANOMALY ที่ dedup ด้วย key เดียวกัน
 
-- บรรทัด **85** `SELECT COUNT(*) FILTER (WHERE batch.status='SEALED') AS sealed`
-  ถูกเพิ่มไว้ **แต่ object ที่ return (บรรทัด 105–113) ไม่มี field `sealed`** → query ทิ้งเปล่า
-- บรรทัด **112** `integrityRate: confirmed / total` ขณะที่ `stats.service.ts:104`
-  ใช้ `intact / total` โดย `intact = CONFIRMED + SEALED` (`stats.service.ts:148`)
-  → **สองหน้าคิดคนละสูตร**
+**หลักฐานที่มี:** บน stack นี้มี `RULE_MATCH / web-server-01` ค้าง OPEN ตั้งแต่ 2026-09-22 10:01
+รอบทดสอบ demo-brute-force ตอน 15:57 detection ขึ้น `🚨 DETECTED` สองครั้ง backend ขึ้น
+`Persisted alert` แต่ไม่มีแถวใหม่ · **ยังไม่ได้ทดสอบกับ rule ต่างตัว** (อ่านจากโค้ด)
 
-**ผลที่เห็นจริง** บน deployment ที่ไม่มี blockchain (batch ทั้งหมดเป็น `SEALED`):
-
-| หน้า | ค่าที่โชว์ |
-|---|---|
-| Dashboard (`/api/v1/stats/overview`) | Chain Integrity **100%** |
-| Reports (`/api/v1/compliance/...`) | integrityRate **0%** |
-
-และคอลัมน์รายวัน `confirmed + tampered + unverified + pending` จะ **ไม่เท่ากับ `total`**
-เพราะ `total` เป็น `COUNT(*)` ที่รวม `SEALED` ไว้ด้วย
+**ตรวจก่อนแก้ (5 นาที):** ยิง log ที่เข้า 5715 (`"login success for user jdoe"` จาก host
+`web-server-01`) ภายใน 5 นาทีหลัง `demo-brute-force.sh` แล้วดูว่ามีแถว alert ใหม่ไหม
+คาดว่า**ไม่มี** = ยืนยันบั๊ก
 
 **ทำอะไร**
+1. เพิ่ม rule_id เข้า key — `detail->>'rule_id'` มีอยู่แล้วในทุก RULE_MATCH (ML ใช้ค่าอื่นหรือ
+   ค่าคงที่ได้) จะเป็นคอลัมน์ใหม่หรือ expression index ก็ได้ แต่ **findOne ใน `createOrDedup`
+   กับ unique index ต้องใช้ key เดียวกันเป๊ะ** ไม่งั้น insert ชน 23505 แล้ววนหาตัวเดิมไม่เจอ
+2. เพิ่ม `occurrence_count` + `last_seen_at` แล้ว increment ตอน dedup — ตอนนี้ dedup ทิ้งเหตุการณ์
+   ซ้ำไปเฉย ๆ ไม่รู้ว่าโดนซ้ำกี่ครั้ง ล่าสุดเมื่อไร (สำคัญต่อ PCI DSS Req 10 — audit trail)
+3. พิจารณาให้ CRITICAL ที่ซ้ำหลังจาก alert เดิมเปิดไปนานแล้ว (เช่น > 1 ชม.) ส่ง email อีกรอบ
 
-1. เพิ่ม `sealed` เข้า object ที่ return
-2. เปลี่ยนสูตรให้ตรงกับ stats: `integrityRate = (confirmed + sealed) / total`
-3. ทางที่สะอาดกว่า — ย้าย `INTACT_STATUSES` จาก `stats.service.ts` ไปไว้ที่ที่ใช้ร่วมกันได้
-   (เช่น `src/logs/entities/batch.entity.ts` หรือไฟล์ constant ใหม่) แล้วให้ทั้งสอง service
-   import ตัวเดียวกัน — กันไม่ให้หลุดจากกันอีกรอบตอนเพิ่มสถานะใหม่ครั้งหน้า
+**ระวัง:** ไฟล์ใน `infra/postgres/init/` รันเฉพาะตอน volume ว่าง — DB ที่มีอยู่แล้ว (รวมเครื่องนี้)
+**ไม่ได้ index ใหม่อัตโนมัติ** ต้องมี migration หรือสคริปต์ให้รันเอง และต้องทำให้ทั้งสองทางได้ผลเหมือนกัน
 
-**เสร็จเมื่อ** — ยิง `/api/v1/stats/overview` กับ `/api/v1/compliance/...` บน stack
-ที่ไม่มี blockchain แล้ว `integrityRate` ตรงกัน และ `confirmed+sealed+tampered+unverified+pending = total`
-
-## 1.2 `Reports.tsx` — คิด % เองฝั่ง client ด้วยสูตรเก่า
-
-**ปัญหา** — `cylis-dashboard/src/views/Reports.tsx`
-
-- บรรทัด **321–323** `confirmedSum / totalBatchSum` — คิดซ้ำฝั่ง client ไม่ได้ใช้
-  `integrityRate` ที่ backend ส่งมา จึงพลาดเหมือนข้อ 1.1
-- บรรทัด **316–317** default row ไม่มี key `sealed`
-- บรรทัด **79–81** `toCsv()` export แค่ `confirmed, tampered, unverified, pending, total, integrityRate`
-  → CSV ที่ auditor ได้จะขาด `sealed` ไปเลย (สำคัญ เพราะเป็นไฟล์ที่เอาไปใช้อ้างอิง)
-
-**ทำอะไร** — เพิ่ม `sealed` ทั้ง 3 จุด และให้ `chainIntegrityPct` นับ `sealed` เป็น intact
-หรือดีกว่านั้นคือใช้ค่าจาก backend ตรง ๆ หลังแก้ 1.1 แล้ว
-
-## 1.3 tile "Confirmed Batches" อ่านแล้วขัดกันเอง
-
-**ปัญหา** — `cylis-dashboard/src/views/Dashboard.tsx:123-125` และ `Verify.tsx:123`
-โชว์ `batches.confirmed` ตรง ๆ บน deployment ที่ไม่มี blockchain จะได้
-
-```
-Chain Integrity  100%          Confirmed Batches  0
-```
-
-ซึ่งดูเหมือนบั๊กทั้งที่ทั้งคู่ถูกตามนิยามของมัน
-
-**ทำอะไร** — เลือกทางใดทางหนึ่ง (อย่าทำทั้งคู่)
-- (ก) เปลี่ยน tile เป็น "Sealed Batches" ใช้ `confirmed + sealed` แล้วใส่ `delta`
-  บอกว่า anchor ไปแล้วกี่ใบ — **แนะนำทางนี้** สื่อความจริงได้ครบโดยไม่ต้องเพิ่ม tile
-- (ข) เพิ่ม tile "Sealed (not anchored)" แยกอีกอัน
-
-> อย่าแก้ด้วยการเอา `SEALED` ไปนับรวมใน `batches.confirmed` ฝั่ง backend —
-> `confirmed` ต้องแปลว่า "anchor แล้ว" เท่านั้น ไม่งั้นความหมายเพี้ยนทั้งระบบ
+**เสร็จเมื่อ** — ทดสอบข้างบนได้ 2 แถว (5710 + 5715) · ยิง 5710 ซ้ำแล้ว `occurrence_count` ขึ้น
+ไม่เกิดแถวใหม่ · เทสต์ใน `src/alerts/` คุมทั้งสามเคส
 
 ---
 
-# 🟡 P2 — เก็บกวาดจาก session ที่แล้ว
+# 🟡 P2
 
-## 2.1 ⏳ repo detection เก่าบนเครื่อง (รอเจ้าของรันเอง)
+## 2.1 log ที่เข้าระหว่าง Kafka ล่ม ไม่ถึง detection เลย
 
-`~/Documents/logchain-detection` ยังมี `origin` ชี้ไป
-`https://github.com/ChanakanNalong/logchain-detection.git` ซึ่ง **ถูกลบไปแล้ว (404)**
+**ปัญหา** — `src/kafka/kafka-producer.service.ts:116`
 
-ตอนนี้ push ไม่ขึ้น แต่ถ้าวันหลังมีใครสร้าง repo ชื่อเดิมขึ้นมา `git push` จะยิง
-history **4.2 GB** (venv + HDFS.log) เข้าไปทันที
+รอบที่แล้วแก้ให้ producer ต่อใหม่เองไม่ยอมแพ้ แต่**ระหว่างที่ยังต่อไม่ติด** `publishLog()` แค่เตือน
+ครั้งเดียวแล้ว `return` — log เข้า DB ครบ (integrity ปกติ) แต่ detection ไม่เคยเห็น log ช่วงนั้น
+ไม่มี replay · DLQ (`logs.raw.dlq`) ช่วยไม่ได้เพราะใช้เฉพาะตอน send พังหลังต่อติดแล้ว
 
-```bash
-cd ~/Documents/logchain-detection && git remote remove origin
-```
+ช่วงที่เกิดจริง: ทุกครั้งที่ compose ยก backend ขึ้นก่อน broker (~10–60 วิ) และตอน Kafka ล่ม
+ผู้โจมตีที่ยิงตรงช่วงนั้นจะไม่โดน rule ใดเลย
 
-หรือลบโฟลเดอร์ทิ้งเลย — ไฟล์ทั้ง 14 ตัวถูกคัดลอกเข้า `detection/` ครบแล้ว
-และตรวจแล้วว่า**ตรงกันทุกไบต์** ลบแล้วได้ที่คืน 4.2 GB
+**ทำอะไร (ต้องเลือกแนวทางก่อน)**
+- (ก) **replay จาก DB** — จำ `created_at` ของ log สุดท้ายที่ publish สำเร็จ พอต่อติดแล้วส่ง log
+  ที่ใหม่กว่านั้นตามไป · ง่าย ใช้ `logs` เป็น outbox อยู่แล้ว · ระวัง rule แบบ threshold
+  (5710 = 5 ครั้งใน 60 วิ) — detection ใช้ `time.time()` ตอนรับ ไม่ใช่เวลาของ log
+  replay ทีเดียวทั้งก้อนจะนับเวลาเพี้ยน อาจต้องให้ `rules.py` ใช้ `createdAt` ของ event
+- (ข) buffer ในหน่วยความจำ — ง่ายสุดแต่หายตอน restart ไม่แนะนำ
 
-## 2.2 ✅ `demo-brute-force.sh` จบด้วย error เสมอ (แก้แล้ว รอบ 2)
+**เสร็จเมื่อ** — stop kafka → ยิง log 6 ตัวแบบ demo-brute-force → start kafka →
+ได้ `RULE_MATCH` (ตอนนี้ได้แค่ warning `ไม่ถูกส่งไป detection`)
 
-`scripts/demo-brute-force.sh` รับ token มาแล้วขั้นสุดท้ายยิง `GET /api/v1/alerts`
-ซึ่งต้องมี role `analyst`/`operator`/`admin` แต่ token ที่คนส่วนใหญ่มีในมือคือของ
-`log-ingestor` (จาก `ingest-log.sh`) → ได้ **403** แล้ว `jq` พัง:
+## 2.2 ยืนยันงานรอบที่แล้วที่ยังไม่ได้ตรวจบนของจริง
 
-```
-jq: error (at <stdin>:0): Cannot index string with string "alertType"
-```
+รอบที่แล้วตรวจด้วย unit test + SQL บน DB จริง แต่ยังค้างสองอย่าง:
 
-alert ถูกบันทึกเรียบร้อยแล้วจริง ๆ แค่สคริปต์อ่านกลับไม่ได้ — คนรัน demo ครั้งแรก
-จะนึกว่าพัง
+1. **container ของ dashboard ยังเป็น image เก่า** (สร้าง 2026-09-22 11:39 UTC ก่อนแก้
+   Reports/tiles) — rebuild แล้วเปิดดู Reports (คอลัมน์ Sealed, CSV มี `sealed`), tile
+   "Sealed Batches" บน Dashboard และ "Anchored on chain" บน Verify
+   ```bash
+   HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --build --no-deps cylis-dashboard
+   ```
+2. **ยังไม่เคยเห็นเลขตรงกันบน stack ที่ไม่มี blockchain** — stack นี้ต่อ Amoy อยู่ batch เป็น
+   CONFIRMED หมด ทำได้ตอน smoke test รอบหน้า (clone ใหม่ไม่มี `CONTRACT_ADDRESS`):
+   `/api/v1/stats/overview` กับ `/api/v1/compliance/reports` ต้องได้ `integrityRate` เท่ากัน
+   และ `confirmed+sealed+tampered+unverified+pending = total` · ต้องใช้ token ที่มี role
+   `admin`/`auditor` (service account `log-ingestor` ไม่มี)
 
-**ทำอะไร** — ดัก HTTP code ก่อน `jq` แล้วขึ้นข้อความว่า "alert ถูกบันทึกแล้ว แต่ token
-นี้ไม่มีสิทธิ์อ่าน /alerts — เปิดดูที่หน้า Alerts หรือใช้ token ที่มี role analyst"
+## 2.3 detection consumer ขึ้น `RuntimeError: Task is already done!` ~24 ครั้ง/วัน
 
-## 2.3 ✅ `Vault login OK` ไม่มีวันโผล่ใน log ของ consumer (แก้แล้ว รอบ 2)
+`kafka-python==3.0.2` (`detection/requirements.txt:17`) โยน error นี้จาก `kafka/net/selector.py`
+มักตามหลัง `NotCoordinatorError` / broker restart · detection ยังทำงาน (ทดสอบแล้วจับ RULE_MATCH ได้)
+แต่**ยังไม่รู้ว่าทำ message หายหรือ commit offset ข้ามไหม**
 
-`detection/app/consumer.py` เรียก `get_vault()` ที่ **บรรทัด 26** แต่
-`logging.basicConfig()` อยู่ **บรรทัด 90** → ตอน login สำเร็จมันยิง `log.info` ออกไป
-ตอนที่ยังไม่มี handler บรรทัดนั้นจึงหายเงียบ (ส่วนที่พลาดเป็น `log.warning`
-ซึ่ง lastResort handler ของ Python ปล่อยผ่าน)
-
-**เงียบ = ผ่าน** ซึ่งสับสนมากเวลา debug (เขียนเตือนไว้ใน `detection/README.md` แล้ว)
-
-**ทำอะไร** — ย้าย `logging.basicConfig()` ขึ้นไปก่อน `get_vault()`
-ระวัง: `start_http_server(9101)` (บรรทัด 54) ก็อยู่ระหว่างกลาง ย้ายแล้วรันจริงดูสักรอบ
+**ทำอะไร** — เทียบ offset ที่ consumer commit กับจำนวนที่ `consumer_process_seconds_count`
+นับได้ข้ามช่วงที่เกิด error · ถ้าหายจริง ลอง pin เวอร์ชันอื่นของ kafka-python หรือย้ายไป
+`confluent-kafka` · ถ้าไม่หาย ลดระดับ log ไว้พอ
 
 ---
 
-# 🟢 P3 — ปรับปรุงที่ยังไม่จำเป็นตอนนี้
+# 🟢 P3 — ทำเมื่อว่าง
 
-## 3.1 ✅ login ผ่านเบราว์เซอร์ (ตรวจแล้ว รอบ 2 — ไม่ต้องทำอะไรต่อ)
+## 3.1 กันพลาดเผื่อ ethers หลุด unhandled rejection อีก
 
-> **ผลตรวจ:** บน stack ของเครื่องนี้ `admin-user` **ลงทะเบียน OTP ไว้แล้วตั้งแต่ 2026-09-06**
-> และ**เปลี่ยนรหัสผ่านเมื่อ 2026-09-17** (อ่านจาก admin API) = มีคน login ผ่านเบราว์เซอร์
-> จนผ่าน MFA มาแล้วจริง · ไล่ PKCE flow ด้วย curl: หน้า login ขึ้นถูก client/redirect แต่รหัสใน
-> `.env` ถูกปฏิเสธ — ปกติ เพราะ Keycloak import realm ครั้งเดียวตอน boot แรก (เพิ่มแถวใน README
-> Troubleshooting แล้ว) · ไม่ได้ลองซ้ำเพราะ brute force ล็อกที่ 5 ครั้ง
-> **ข้อควรรู้:** login ครั้งแรกบน clone ใหม่จะโดนบังคับตั้ง TOTP (`CONFIGURE_TOTP`) ต้องมีแอป authenticator
+ethers หลุดแบบนี้มาแล้ว **2 ครั้ง** (network detection ก่อนใส่ `staticNetwork` และ
+`NonceManager` รอบที่แล้ว) ทั้งคู่ฆ่าทั้ง process · ตอนนี้ไม่มี `process.on('unhandledRejection')`
+ใน `src/` เลย ถ้าจะใส่ ให้**จำกัดแค่ error ของ ethers** (มี `code` + `shortMessage`) log ระดับ
+ERROR + เพิ่ม metric แล้วไม่ตาย · error อื่นยังต้องตายเหมือนเดิม (fail fast) · อย่าใส่แบบกลืนทุกอย่าง
 
-ข้อความเดิม:
+## 3.2 `storeRoot` แยก "รอ confirm ไม่ทัน" กับ "RPC timeout ระหว่างรอ" ไม่ได้
 
-เป็นข้อเดียวในเกณฑ์ท้ายแผนเดิมที่ยังเปิดอยู่ ที่ตรวจไปแล้ว:
-client `logchain-frontend` + `redirect_uri=http://localhost:3003` ตั้งถูก และบังคับ PKCE
-(authorize endpoint ตอบ `Missing parameter: code_challenge_method` = ผ่าน client แล้ว)
+`src/blockchain/blockchain.service.ts:207` เช็ค `err?.code !== 'TIMEOUT'` — ethers ใช้ code
+`TIMEOUT` ทั้งกับ `wait()` ที่ครบเวลาและกับ HTTP request ที่ timeout · ผลตอนนี้ไม่เสียหาย
+(ทั้งคู่ได้ UNVERIFIED แล้ว verify รอบถัดไปตามผลเอง) แต่ log บอกว่า "not confirmed within
+120000ms" ทั้งที่จริงอาจเป็น RPC ล่ม · แก้ให้ log บอกตรงก็พอ
 
-เหลือแค่เปิด `http://localhost:3003` แล้วกรอก username/password จริง
-(บัญชีอยู่ใน realm `logchain` password = `KEYCLOAK_ADMIN_USER_PASSWORD` ใน `.env`)
+## 3.3 ลบ `~/Documents/logchain-detection`
 
-## 3.2 ⛔ สอง compose project อยู่พร้อมกันไม่ได้ (ชั่งแล้ว รอบ 2 — ไม่ทำ)
-
-> **ตัดสินใจไม่ทำ** — ถอด `container_name` แล้วชื่อจะกลายเป็น `logchain-backend-1` ทำให้คำสั่ง
-> `docker logs logchain-backend` / `docker exec logchain-postgres` ใน README, runbooks และเอกสาร
-> ~40 จุดใช้ไม่ได้ · และถึงถอดแล้ว stack ที่สองก็ยังชนพอร์ต 17 ตัวอยู่ดี ต้องตั้ง env 17 ตัวหรือมี
-> override file แยก — แลกกับการประหยัด `down`/`up` ~2 นาทีตอน smoke test ซึ่งนาน ๆ ทำที ไม่คุ้ม
-> ถ้าวันหนึ่งต้องรัน CI แบบขนาน ค่อยกลับมาดู (ใช้ `docker compose exec -T <service>` แทนชื่อ container ในสคริปต์ก่อน)
-
-ข้อความเดิม:
-
-`docker-compose.yml` ตั้ง `container_name:` ตายตัวทุก service (เช่น `logchain-postgres`)
-และพอร์ต 18 ตัวก็ hardcode → ยก 2 stack พร้อมกันไม่ได้แม้ตั้ง `COMPOSE_PROJECT_NAME`
-ต่างกัน ทำให้ smoke test ต้อง `docker compose down` ของเดิมก่อนทุกครั้ง
-
-**วิธีรัน smoke test ตอนนี้** (ถ้าจำเป็น):
-
-```bash
-cd ~/Documents/logchain
-docker compose down                      # ⚠️ ห้ามใส่ -v ไม่งั้นข้อมูลหาย
-cd /tmp && git clone https://github.com/ChanakanNalong/logchain.git smoke && cd smoke
-COMPOSE_PROJECT_NAME=logchain-smoke ./scripts/bootstrap.sh
-# ...ทดสอบ...
-COMPOSE_PROJECT_NAME=logchain-smoke docker compose down -v
-cd ~/Documents/logchain && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
-```
-
-**ถ้าจะแก้** — ถอด `container_name` ออกให้ compose ตั้งชื่อเอง (`<project>-<service>-1`)
-แล้วย้ายพอร์ตไปเป็น `${X_PORT:-3000}:3000` แต่ต้องไล่แก้ทุกที่ที่อ้างชื่อ container
-ตรง ๆ ด้วย — `scripts/demo-tamper.sh:8`, `scripts/demo-mtls.sh`, runbooks และ
-`docker exec logchain-postgres ...` ที่กระจายอยู่ในเอกสาร **งานนี้ใหญ่กว่าที่เห็น**
-ชั่งดูก่อนว่าคุ้มไหม
-
-## 3.3 ✅ Vault user lockout — มี `scripts/vault-unlock.sh` แล้ว (รอบ 2)
-
-> ทดสอบจริง: login ผิด 5 ครั้งจน role detection โดนล็อก (รหัสถูกก็ได้ `permission denied`)
-> → `./scripts/vault-unlock.sh detection` → consumer ขึ้น `Vault login OK` · ไม่ใส่ argument = ดูอย่างเดียว
-
-ข้อความเดิม:
-
-Vault 1.13+ เปิด lockout เป็น default (`threshold=5`, `duration=15m`) และแอปทั้งสองตัว
-retry login **5 ครั้ง** ตอน start พอดีเป๊ะ → ใส่ secret ผิดครั้งเดียวก็โดนแบน
-แล้ว `restart: unless-stopped` จะวน retry ต่ออายุ lockout **ไม่มีวันหลุดเอง**
-
-วิธีแก้เขียนไว้ครบใน README หัวข้อ **Vault user lockout** แล้ว (ต้องหยุด container
-ก่อน unlock ไม่งั้นโดนล็อกซ้ำทันที)
-
-**ยังไม่ได้ทำ (ตั้งใจ):** ไม่ปิด lockout เป็น default เพราะ account lockout เป็น
-control ตาม PCI DSS Req 8.3.4 ซึ่งเป็นแก่นของโปรเจกต์ — แต่ถ้าเจอซ้ำบ่อยจนเสียเวลา
-อาจทำ `scripts/vault-unlock.sh` ห่อคำสั่ง 3 บรรทัดนั้นไว้ให้เรียกง่าย
+remote ถูกลบแล้ว (ข้อ 2.1 เดิม) โฟลเดอร์ยังอยู่และตอนนี้ใหญ่ **11 GB** · ไฟล์ทั้ง 14 ตัวอยู่ใน
+`detection/` ครบและตรวจแล้วว่าตรงกันทุกไบต์ (worklog 2026-09-22) — ลบได้เลยถ้าไม่ต้องการ
+history ของ repo นั้น
 
 ---
 
 # ⛔ ห้ามทำ (ตัดสินใจไปแล้ว อย่าถกใหม่)
 
 - **ห้ามรวม `logchain-contracts` เข้ามา** — backend ใช้ inline ABI ที่
-  `src/blockchain/blockchain.service.ts` ไม่ได้ import artifact จาก repo นั้น
-  ผูกกันผ่าน `CONTRACT_ADDRESS` สตริงเดียว
-- **ห้ามเอา `SEALED` ไปนับรวมใน `batches.confirmed`** — `confirmed` ต้องแปลว่า
-  "anchor ขึ้น chain แล้ว" เท่านั้น
-- **ห้าม override `KEYCLOAK_URL` เป็นชื่อ service ใน compose** — เป็น issuer ที่ต้อง
-  ตรงกับ `iss` ในโทเคน ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL` แยกไว้แล้ว
-- **ห้ามเปลี่ยน `NEXT_PUBLIC_*` เป็นชื่อ service** — inline ตอน build และรันบน
-  เบราว์เซอร์ซึ่งอยู่นอก docker network
-- **ห้ามใช้ `${VAR:?...}` ใน `docker-compose.yml`** — compose จะ error ทั้งไฟล์
-  ทำให้ `up -d` ของ service อื่นพังตาม
+  `src/blockchain/blockchain.service.ts` ผูกกันผ่าน `CONTRACT_ADDRESS` สตริงเดียว
+- **ห้ามเอา `SEALED` ไปนับรวมใน `batches.confirmed`** — `confirmed` = "anchor ขึ้น chain แล้ว" เท่านั้น
+  (สูตร intact ใช้ `INTACT_STATUSES` ใน `src/logs/entities/batch.entity.ts` ที่เดียว)
+- **ห้ามกลับไปใช้ `ethers.NonceManager`** — crash ตอน RPC timeout + ทิ้งช่องว่าง nonce
+  (worklog หัวข้อ 12) · `src/blockchain/blockchain.nonce.spec.ts` จะพัง 3 เคส
+- **ห้ามทำให้สอง compose stack อยู่พร้อมกัน** (ถอด `container_name`) — ชั่งแล้วไม่คุ้ม:
+  ชื่อ container ในเอกสาร ~40 จุดใช้ไม่ได้ และยังชนพอร์ต 17 ตัว · กลับมาดูเมื่อต้องรัน CI ขนานเท่านั้น
+- **ห้ามปิด Vault user lockout เป็น default** — control ตาม PCI DSS Req 8.3.4 ใช้
+  `scripts/vault-unlock.sh` แทน
+- **ห้าม override `KEYCLOAK_URL` เป็นชื่อ service ใน compose** — เป็น issuer ที่ต้องตรงกับ `iss`
+  ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL`
+- **ห้ามเปลี่ยน `NEXT_PUBLIC_*` เป็นชื่อ service** — inline ตอน build รันบนเบราว์เซอร์นอก docker network
+- **ห้ามใช้ `${VAR:?...}` ใน `docker-compose.yml`** — compose error ทั้งไฟล์
 - **ห้าม `docker compose down -v`** ตอนทดสอบ ถ้ายังอยากได้ข้อมูล demo เดิม
+- **ห้ามเดารหัส `admin-user` / ห้ามตั้ง TOTP แทนเจ้าของ** — รหัสใน `.env` ไม่ใช่ของจริงบน stack
+  นี้แล้ว และ brute force ล็อกที่ 5 ครั้ง · ต้องการ token ที่มี role admin ให้ขอเจ้าของ
 
 ---
 
@@ -251,12 +160,14 @@ control ตาม PCI DSS Req 8.3.4 ซึ่งเป็นแก่นขอ�
 
 | อาการ | ที่จริงคือ |
 |---|---|
-| approle login ตอบ `permission denied` ทั้งที่ค่าใน `.env` ถูก | Vault user lockout — ดู `docker logs logchain-vault \| grep -i lockout` ไม่ใช่ log ของแอป |
-| `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` กันไว้ ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
-| consumer ไม่ขึ้น `Vault login OK` | image เก่าก่อนแก้ข้อ 2.3 — rebuild `detection-api` (consumer ใช้ image เดียวกัน) |
-| ยิง log ได้ 201 แต่ detection เงียบ | ดู `docker logs logchain-backend \| grep KafkaProducer` — image ก่อนแก้ข้อ 0 จะขึ้น `log publishing disabled` ถาวร |
-| `rm -rf infra/vault/.secrets` permission denied | โฟลเดอร์เป็นของ root — แก้แล้วด้วย `HOST_UID` chown ใน `unseal.sh` ถ้ายังเจอแปลว่า vault-unseal รันโดยไม่มี `HOST_UID` |
-| batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` จะตามไป anchor ให้เองเมื่อ config ครบ |
+| approle login ตอบ `permission denied` ทั้งที่ค่าใน `.env` ถูก | Vault user lockout — `./scripts/vault-unlock.sh` ดูและปลดได้ |
+| ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | ดูสองชั้น: (1) `docker logs logchain-backend \| grep KafkaProducer` ว่าต่อ Kafka ติดไหม (2) มี alert OPEN ของ `alert_type`+host เดียวกันค้างอยู่ไหม — ถูก dedup กลืน (ข้อ 1.1) |
+| login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | realm import ครั้งเดียวตอน boot แรก และเจ้าของเปลี่ยนรหัส + ตั้ง OTP ไปแล้ว — ไม่ใช่ Keycloak พัง |
+| `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
+| แก้ไฟล์ใน `infra/postgres/init/` แล้วไม่มีผล | รันเฉพาะตอน volume ว่าง — DB เดิมต้องรันเองหรือทำ migration |
+| rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — ต้อง `docker compose build detection-api` |
+| batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ |
+| เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
 
 ---
 
@@ -264,11 +175,13 @@ control ตาม PCI DSS Req 8.3.4 ซึ่งเป็นแก่นขอ�
 
 | ไฟล์ | เกี่ยวตรงไหน |
 |---|---|
-| `docs/worklog/2026-09-22.md` | บันทึกเต็มของงานรอบที่แล้ว 10 หัวข้อ |
-| `docs/plan/onboarding-and-repo-consolidation.md` | แผนเดิม (ปิดแล้ว) — เก็บไว้ดูเหตุผลการตัดสินใจ |
-| `src/integrity/integrity.service.ts` | สถานะ batch + seal/anchor (คอมเมนต์หัวไฟล์อธิบายครบ) |
-| `src/integrity/integrity.seal-without-anchor.spec.ts` | 7 เคสที่กัน regression ของงาน seal/anchor |
-| `src/stats/stats.service.ts:148` | `INTACT_STATUSES` — ตัวที่ข้อ 1.1 ต้องไป sync ด้วย |
-| `src/compliance/compliance.service.ts:85,112` | จุดที่ต้องแก้ในข้อ 1.1 |
-| `cylis-dashboard/src/views/Reports.tsx:79,316,321` | จุดที่ต้องแก้ในข้อ 1.2 |
+| `docs/worklog/2026-09-22.md` | บันทึกเต็ม หัวข้อ 1–13 (11–13 = รอบล่าสุด) |
+| `src/alerts/alerts.service.ts:17` | `createOrDedup` — ข้อ 1.1 |
+| `infra/postgres/init/03-alerts-dedup-index.sql` | unique index ของ dedup — ข้อ 1.1 |
+| `detection/rules/security_rules.yaml` | rule 5710 / 5715 ที่ใช้ทดสอบข้อ 1.1 |
+| `src/kafka/kafka-producer.service.ts:116` | จุดที่ log ถูกข้ามตอน Kafka ยังไม่พร้อม — ข้อ 2.1 |
+| `detection/app/rules.py` | threshold ใช้ `time.time()` ตอนรับ — ต้องคิดถ้าทำ replay ข้อ 2.1 |
+| `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง · บรรทัด 207 = ข้อ 3.2 |
+| `src/logs/entities/batch.entity.ts` | `INTACT_STATUSES` — แหล่งเดียวของสูตร integrity |
+| `scripts/vault-unlock.sh` | ปลด Vault lockout |
 | `README.md` หัวข้อ Troubleshooting + Vault user lockout | เคสที่เจอบ่อยพร้อมคำสั่งแก้ |
