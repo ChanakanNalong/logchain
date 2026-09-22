@@ -3,7 +3,7 @@
 > **เอกสารนี้คืออะไร:** งานค้างของ LogChain เขียนให้ session หน้า (คนหรือ Claude Code)
 > อ่านแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **อัปเดตล่าสุด:** 2026-09-23 (หลังทำ 1.1) · **ฐาน:** `main = aee939b` + งาน 1.1 ที่ยังไม่ commit
+> **อัปเดตล่าสุด:** 2026-09-23 (หลังทำ 1.2) · **ฐาน:** `main` + งาน 1.2 ที่ยังไม่ commit
 > **รอบที่แล้วปิดไปแล้ว:** ทุกข้อของแผนเดิม — รายละเอียดอยู่ใน `docs/worklog/2026-09-22.md`
 > หัวข้อ 11–13 (Reports/SEALED · Kafka producer retry · NonceManager crash · P3)
 > ข้อในไฟล์นี้**มาจากสิ่งที่เจอระหว่างทำรอบที่แล้ว** แต่ยังไม่ได้แก้
@@ -13,9 +13,10 @@
 ## ลำดับที่แนะนำ
 
 1. ~~**1.1 alert dedup กลืน rule อื่น**~~ ✅ เสร็จ 2026-09-23 (worklog `2026-09-23.md`)
-2. **2.2 ยืนยันงานบนของจริง** — dashboard rebuild แล้ว เหลือเปิดดูด้วยตา (ต้อง login ของเจ้าของ)
-3. **2.1 log ช่วง Kafka ล่มไม่ถึง detection** — ต้องออกแบบก่อนลงมือ
-4. ที่เหลือทำเมื่อว่าง
+2. ~~**1.2 เตือนซ้ำ**~~ ✅ เสร็จ 2026-09-23 (worklog หัวข้อ 6)
+3. **2.2 ยืนยันงานบนของจริง** — dashboard rebuild แล้ว เหลือเปิดดูด้วยตา (ต้อง login ของเจ้าของ)
+4. **2.1 log ช่วง Kafka ล่มไม่ถึง detection** — ต้องออกแบบก่อนลงมือ
+5. ที่เหลือทำเมื่อว่าง
 
 ---
 
@@ -30,14 +31,14 @@
 **สิ่งที่เปลี่ยนที่ session หน้าต้องรู้:** มี**ระบบ migration แล้ว** (`src/database/migrations/`
 + `migrationsRun: true`) — เปลี่ยน schema ต่อจากนี้ให้เพิ่ม migration ห้ามแก้ `infra/postgres/init/`
 
-## 1.2 ส่ง email ซ้ำเมื่อ CRITICAL เกิดซ้ำหลัง alert เปิดมานาน (แยกออกมาจาก 1.1)
+## 1.2 ✅ เตือนซ้ำเมื่อ alert ยังเกิดต่อเนื่อง — แก้แล้ว (2026-09-23)
 
-ตอนนี้ email ส่งเฉพาะตอนสร้าง alert ใหม่ · brute force ที่เกิดซ้ำอีกหลายชั่วโมงหลังจากนั้นแค่
-`occurrence_count` ขึ้น ไม่มีใครถูกเตือน ถ้าไม่มีคนเปิดหน้า Alerts
-**ทำอะไร** — migration เพิ่ม `last_notified_at` · ใน `recordRepeat()` ถ้า severity CRITICAL และ
-`now() - last_notified_at > 1 ชม.` ส่งอีกรอบแล้วอัปเดต (ทำใน UPDATE เดียวกันด้วย `RETURNING`
-กันส่งซ้ำตอนมาพร้อมกัน) · **ทดสอบจริงบนเครื่องนี้ไม่ได้** SMTP ใน Vault ว่าง — ใช้ unit test
-หรือตั้ง SMTP ทดสอบ (เช่น mailpit) ก่อน
+HIGH/CRITICAL ที่ยัง OPEN แล้วเกิดซ้ำ ส่ง email อีกรอบได้ถี่สุดทุก `ALERT_RENOTIFY_MINUTES` (60)
+· severity ขยับขึ้นเมื่อซ้ำด้วยตัวที่แรงกว่า (ML WARNING → CRITICAL ส่งทันที) · **email escape HTML แล้ว**
+(เดิมผู้โจมตีฝัง HTML ผ่าน log message ลง email ได้) · รายละเอียด worklog 2026-09-23 หัวข้อ 6
+
+**ยังไม่ได้เห็น email จริง** — SMTP ใน Vault ว่าง ถ้าจะยืนยันให้ครบ ตั้ง SMTP ทดสอบ (เช่น mailpit)
+แล้วรัน `demo-brute-force.sh` ห่างกันเกิน 60 นาที
 
 ---
 
@@ -156,7 +157,7 @@ history ของ repo นั้น
 |---|---|
 | `docs/worklog/2026-09-22.md` | บันทึกเต็ม หัวข้อ 1–13 (11–13 = รอบล่าสุด) |
 | `docs/worklog/2026-09-23.md` | งานข้อ 1.1 |
-| `src/alerts/alerts.service.ts` | `createOrDedup` + `recordRepeat` — ข้อ 1.2 ต่อจากตรงนี้ |
+| `src/alerts/alerts.service.ts` | `createOrDedup` + `recordRepeat` (dedup · นับซ้ำ · ขยับ severity · เตือนซ้ำ) |
 | `src/database/migrations/` | migration ของ schema (ตัวแรก = AlertsRuleDedup) |
 | `detection/rules/security_rules.yaml` | rule 5710 / 5715 ที่ใช้ทดสอบข้อ 1.1 |
 | `src/kafka/kafka-producer.service.ts:116` | จุดที่ log ถูกข้ามตอน Kafka ยังไม่พร้อม — ข้อ 2.1 |
