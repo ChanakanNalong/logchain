@@ -45,6 +45,9 @@ do_init() {
         echo "✗ parse ผล operator init ไม่ได้ — ลบ $SECRETS_FILE แล้วลองใหม่" >&2
         exit 1
     fi
+    if [ "${HOST_UID:-0}" != "0" ]; then
+        chown "${HOST_UID}:${HOST_GID:-$HOST_UID}" "$SECRETS_FILE" 2>/dev/null || true
+    fi
     echo "✓ เก็บ unseal keys + root token ไว้ที่ infra/vault/.secrets/init.env แล้ว"
 }
 
@@ -65,6 +68,18 @@ archive_secrets_file() {
     mv "$SECRETS_FILE" "$_bak"
     echo "! ย้าย $SECRETS_FILE ไป $_bak แล้ว" >&2
 }
+
+# คอนเทนเนอร์นี้รันเป็น root ของที่เขียนลง bind mount จึงเป็นของ root ทั้งหมด
+# รวมถึงตัวโฟลเดอร์เองที่ Docker สร้างให้ตอน mount ครั้งแรก (clone ใหม่ยังไม่มี
+# .secrets/ เพราะ gitignored) ผลคือเจ้าของเครื่อง:
+#   - อ่าน init.env ไม่ได้ (root token + unseal key ของตัวเองแท้ ๆ)
+#   - `rm -rf infra/vault/.secrets` ตอนจะ reset ไม่ผ่าน permission denied
+# compose ส่ง HOST_UID/HOST_GID มาให้ (default 0 = ไม่เปลี่ยน เท่าพฤติกรรมเดิม)
+if [ "${HOST_UID:-0}" != "0" ]; then
+    chown -R "${HOST_UID}:${HOST_GID:-$HOST_UID}" /vault/secrets 2>/dev/null \
+        && echo "✓ chown /vault/secrets -> ${HOST_UID}:${HOST_GID:-$HOST_UID}" \
+        || echo "! chown /vault/secrets ไม่สำเร็จ (ข้ามไป)"
+fi
 
 echo "▶ Waiting for Vault API..."
 while [ "$(vault_state)" = "down" ]; do

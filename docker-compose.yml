@@ -458,6 +458,10 @@ services:
       - vault
     environment:
       VAULT_ADDR: "http://vault:8200"
+      # chown ของใน .secrets กลับให้เจ้าของเครื่อง — ไม่งั้นอ่าน init.env เองไม่ได้
+      # และลบโฟลเดอร์ตอน reset ไม่ได้ (ดูคอมเมนต์ใน unseal.sh)
+      HOST_UID: ${HOST_UID:-0}
+      HOST_GID: ${HOST_GID:-0}
     volumes:
       - ./infra/vault/unseal.sh:/vault/unseal.sh:ro
       - ./infra/vault/.secrets:/vault/secrets  # gitignored — unseal keys + root token
