@@ -15,7 +15,12 @@ interface AlertRow {
   title: string;
   detail: Record<string, unknown> | null;
   status: string;
+  /** first occurrence */
   createdAt: string;
+  /** times this alert fired while OPEN (1 = once). Optional: older backends don't send it */
+  occurrenceCount?: number;
+  /** most recent occurrence — the list is ordered by this */
+  lastSeenAt?: string;
 }
 
 const ALL_STATUSES = "All statuses";
@@ -177,7 +182,7 @@ export default function Alerts() {
             : (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr>{["", "Severity", "Type", "Title", "Source", "Raised at", "Status", ""].map((h, i) => (
+                  <tr>{["", "Severity", "Type", "Title", "Source", "Last seen", "Status", ""].map((h, i) => (
                     <Th key={h + i}>{h}</Th>
                   ))}</tr>
                 </thead>
@@ -202,7 +207,18 @@ export default function Alerts() {
                           <Td style={{ ...monoFont }}>{a.alertType}</Td>
                           <Td style={{ maxWidth: 320 }}>{a.title}</Td>
                           <Td style={{ ...monoFont, color: t.muted }}>{a.source}</Td>
-                          <Td style={{ color: t.muted, ...monoFont }}>{fmtTime(a.createdAt)}</Td>
+                          <Td
+                            style={{ color: t.muted, ...monoFont, whiteSpace: "nowrap" }}
+                            title={`First seen ${fmtTime(a.createdAt)}`}
+                          >
+                            {fmtTime(a.lastSeenAt ?? a.createdAt)}
+                            {/* repeats are folded into the OPEN alert — show how many, or they vanish */}
+                            {(a.occurrenceCount ?? 1) > 1 && (
+                              <span style={{ marginLeft: 6 }}>
+                                <Badge tone={severityTone(a.severity)}>×{a.occurrenceCount}</Badge>
+                              </span>
+                            )}
+                          </Td>
                           <Td>
                             <Badge tone={a.status === "OPEN" ? "warn" : "good"}>{a.status}</Badge>
                           </Td>
@@ -227,6 +243,9 @@ export default function Alerts() {
                                   alert {a.id}
                                   {a.batchId ? ` · batch ${a.batchId}` : ""}
                                   {a.logId ? ` · log ${a.logId}` : ""}
+                                  {(a.occurrenceCount ?? 1) > 1
+                                    ? ` · fired ${a.occurrenceCount}× · first ${fmtTime(a.createdAt)}`
+                                    : ""}
                                 </div>
                                 <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", color: t.text }}>
                                   {a.detail ? JSON.stringify(a.detail, null, 2) : "no detail recorded"}

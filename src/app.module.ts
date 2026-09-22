@@ -27,6 +27,7 @@ import { IntegrityModule } from './integrity/integrity.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { StatsModule } from './stats/stats.module';
 import { AdminModule } from './admin/admin.module';
+import { AlertsRuleDedup1790121600000 } from './database/migrations/1790121600000-AlertsRuleDedup';
 
 @Module({
   imports: [
@@ -53,6 +54,10 @@ import { AdminModule } from './admin/admin.module';
           database: 'logchain',
           entities: [__dirname + '/**/*.entity{.ts,.js}'],
           synchronize: false,
+          // import class ตรง ๆ ไม่ใช้ glob — ไม่ต้องเดา path ของ dist ตอน build
+          // รันตอน boot ทุกครั้ง migration ที่รันไปแล้วถูกข้าม (จดไว้ในตาราง migrations)
+          migrations: [AlertsRuleDedup1790121600000],
+          migrationsRun: true,
         };
       },
     }),

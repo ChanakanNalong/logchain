@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { IsNull } from 'typeorm';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 import { NotificationService } from '../notification/notification.service';
@@ -8,13 +9,29 @@ describe('AlertsService', () => {
   let service: AlertsService;
   let mockRepo: any;
   let mockNotification: any;
+  let updateQb: any;
 
   beforeEach(async () => {
+    // UPDATE ... SET occurrence_count = occurrence_count + 1 RETURNING ...
+    updateQb = {
+      update: jest.fn(() => updateQb),
+      set: jest.fn(() => updateQb),
+      where: jest.fn(() => updateQb),
+      returning: jest.fn(() => updateQb),
+      execute: jest.fn(() =>
+        Promise.resolve({
+          raw: [
+            { occurrence_count: 2, last_seen_at: '2026-09-23T01:00:00.000Z' },
+          ],
+        }),
+      ),
+    };
     mockRepo = {
       findOne: jest.fn(),
       create: jest.fn((dto) => dto),
       save: jest.fn((dto) => Promise.resolve({ id: 'uuid-1', ...dto })),
       find: jest.fn(),
+      createQueryBuilder: jest.fn(() => updateQb),
     };
     mockNotification = { sendAlertEmail: jest.fn() };
 
@@ -92,5 +109,122 @@ describe('AlertsService', () => {
     });
 
     expect(mockNotification.sendAlertEmail).not.toHaveBeenCalled();
+  });
+
+  // ---- dedup key ต้องแยกตาม rule ----
+  // บั๊กที่คุม: key เดิมไม่มี rule_id → RULE_MATCH ที่ค้าง OPEN ของ host หนึ่งกลืนทุก rule
+  // อื่นบน host เดียวกัน เจอจริง: 5715 (login สำเร็จหลัง brute force) หายเข้า 5710
+
+  const bruteForce = {
+    alertType: 'RULE_MATCH',
+    severity: 'CRITICAL',
+    source: 'web-server-01',
+    title: 'Multiple authentication failures (brute force)',
+    detail: { rule_id: 5710 },
+  };
+  const loginAfterFailures = {
+    alertType: 'RULE_MATCH',
+    severity: 'WARNING',
+    source: 'web-server-01',
+    title: 'Successful login after multiple failures',
+    detail: { rule_id: 5715 },
+  };
+
+  it('looks up the OPEN duplicate by rule_id (from detail, as a string)', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+
+    await service.createOrDedup(bruteForce);
+
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        status: 'OPEN',
+        alertType: 'RULE_MATCH',
+        source: 'web-server-01',
+        batchId: IsNull(),
+        ruleId: '5710',
+      },
+    });
+    expect(mockRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleId: '5710' }),
+    );
+  });
+
+  it('a different rule on the same host is a NEW alert, not a repeat of the open one', async () => {
+    // findOne ตอบตาม where จริง — มีแค่ 5710 ค้าง OPEN อยู่
+    const open5710 = { id: 'a-5710', ...bruteForce, ruleId: '5710' };
+    mockRepo.findOne.mockImplementation(({ where }) =>
+      Promise.resolve(where.ruleId === '5710' ? open5710 : null),
+    );
+
+    const result = await service.createOrDedup(loginAfterFailures);
+
+    expect(mockRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleId: '5715', status: 'OPEN' }),
+    );
+    expect(result.id).not.toBe('a-5710');
+    expect(updateQb.execute).not.toHaveBeenCalled();
+  });
+
+  it('alerts without a rule (ML_ANOMALY) dedup with rule_id IS NULL', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+
+    await service.createOrDedup({
+      alertType: 'ML_ANOMALY',
+      severity: 'WARNING',
+      source: 'web-app',
+      title: 'anomaly',
+      detail: { rule_id: null, confidence: 0.9 },
+    });
+
+    expect(mockRepo.findOne.mock.calls[0][0].where.ruleId).toEqual(IsNull());
+  });
+
+  // ---- เกิดซ้ำต้องนับ ไม่ใช่ทิ้งเงียบ ----
+
+  it('a repeat of the same rule bumps occurrence_count in SQL and does not insert or email', async () => {
+    const existing = { id: 'a-5710', ...bruteForce, occurrenceCount: 1 };
+    mockRepo.findOne.mockResolvedValue(existing);
+
+    const result = await service.createOrDedup(bruteForce);
+
+    expect(updateQb.set).toHaveBeenCalledWith({
+      occurrenceCount: expect.any(Function),
+      lastSeenAt: expect.any(Function),
+    });
+    // บวกฝั่ง DB — ถ้าอ่านค่ามา +1 ในแอป alert ที่มาพร้อมกันจะนับหาย
+    expect(updateQb.set.mock.calls[0][0].occurrenceCount()).toBe(
+      'occurrence_count + 1',
+    );
+    expect(updateQb.where).toHaveBeenCalledWith('id = :id', { id: 'a-5710' });
+    expect(result.occurrenceCount).toBe(2);
+    expect(result.lastSeenAt).toEqual(new Date('2026-09-23T01:00:00.000Z'));
+    expect(mockRepo.save).not.toHaveBeenCalled();
+    expect(mockNotification.sendAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('losing the insert race (23505) counts as a repeat of the winner', async () => {
+    const winner = { id: 'winner', ...bruteForce, occurrenceCount: 1 };
+    mockRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
+    mockRepo.save.mockRejectedValue({ code: '23505' });
+
+    const result = await service.createOrDedup(bruteForce);
+
+    expect(result.id).toBe('winner');
+    expect(updateQb.where).toHaveBeenCalledWith('id = :id', { id: 'winner' });
+    expect(mockNotification.sendAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('ignores occurrenceCount / lastSeenAt sent in the POST body', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+
+    await service.createOrDedup({
+      ...bruteForce,
+      occurrenceCount: 999,
+      lastSeenAt: new Date('2000-01-01'),
+    });
+
+    expect(mockRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ occurrenceCount: 1, lastSeenAt: undefined }),
+    );
   });
 });

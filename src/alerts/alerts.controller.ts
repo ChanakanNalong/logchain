@@ -39,7 +39,7 @@ export class AlertsController {
 
   @Get()
   @Roles('analyst', 'operator', 'admin')
-  @ApiOperation({ summary: 'List every alert, newest first' })
+  @ApiOperation({ summary: 'List every alert, most recently seen first' })
   findAll() {
     return this.alertsService.findAll();
   }

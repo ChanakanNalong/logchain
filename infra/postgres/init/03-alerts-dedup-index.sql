@@ -1,3 +1,7 @@
+-- ⚠️ SUPERSEDED: index นี้ถูก drop แล้วแทนด้วย idx_alerts_open_dedup_rule (เพิ่ม rule_id)
+-- โดย migration src/database/migrations/1790121600000-AlertsRuleDedup.ts ซึ่ง backend
+-- รันเองตอน boot — ไฟล์นี้เก็บไว้เป็น baseline ของ DB ใหม่เท่านั้น อย่าแก้ key ที่นี่
+--
 -- Dedup guard for open alerts.
 -- findOne-then-save in AlertsService.createOrDedup is not atomic: two alerts
 -- arriving milliseconds apart can both see "no existing OPEN" and both insert.
