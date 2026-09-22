@@ -48,8 +48,9 @@ export class ComplianceService {
 
   // ---- date range helpers ----
   private resolveRange(from?: string, to?: string) {
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    const resolvedTo = to ?? iso(new Date());
+    // "วันนี้" ต้องเป็นวันของไทย ให้ตรงกับที่ query จัดกลุ่มตาม Asia/Bangkok — เดิมใช้วันของ UTC
+    // ทำให้ 00:00–07:00 ทุกวัน ค่า default ไม่รวมข้อมูลของวันนี้เลย (เจอตอน smoke test 00:55 น.)
+    const resolvedTo = to ?? this.bangkokDay(new Date());
     const resolvedFrom = from ?? this.addDays(resolvedTo, -6); // 7-day inclusive window
     if (resolvedFrom > resolvedTo)
       throw new BadRequestException('`from` must be on or before `to`');

@@ -234,11 +234,26 @@ describe('ComplianceService.getReports', () => {
   });
 
   it('crosses a month boundary correctly when defaulting the window', async () => {
-    jest.useFakeTimers().setSystemTime(new Date('2026-03-02T23:59:00Z'));
+    // 2026-03-02 12:00 ในไทย — กลางวัน ไม่ติดเรื่องโซนเวลา
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-02T05:00:00Z'));
 
     const report = await service.getReports();
 
     expect(report.period).toEqual({ from: '2026-02-24', to: '2026-03-02' });
+  });
+
+  it('"today" is the Bangkok day — 00:55 in Thailand still counts as the new day', async () => {
+    // 2026-09-22 17:55 UTC = 2026-09-23 00:55 ICT — batch ที่ seal ตอนนี้ถูกจัดกลุ่มเป็นวันที่ 23
+    // เดิมใช้วันของ UTC ได้ to=2026-09-22 → ข้อมูลของวันนี้หายจาก default (เจอตอน smoke test)
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-22T17:55:00Z'));
+
+    const report = await service.getReports();
+
+    expect(report.period).toEqual({ from: '2026-09-17', to: '2026-09-23' });
+    expect(batchQb.whereParams[0]).toEqual({
+      from: '2026-09-17',
+      toExclusive: '2026-09-24',
+    });
   });
 
   it('honours an explicit from/to range', async () => {

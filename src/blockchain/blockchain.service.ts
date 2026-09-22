@@ -50,6 +50,13 @@ export const DEFAULT_TX_TIMEOUT_MS = 120_000;
  */
 const NONCE_HINT_TTL_MS = 60_000;
 
+/** ค่าที่แปลว่า "ยังไม่ได้ตั้ง": ว่าง · CHANGE_ME* ของ .env.example · zero address */
+function isUnsetPlaceholder(value: string | undefined | null): boolean {
+  if (!value || value.trim() === '') return true;
+  if (/^(0x)?CHANGE_ME/i.test(value.trim())) return true;
+  return /^0x0{40}$/i.test(value.trim());
+}
+
 export function classifyChainError(err: unknown): ChainWriteError {
   const e = err as any;
   // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
@@ -101,8 +108,16 @@ export class BlockchainService implements OnModuleInit {
     const pk = this.vaultService.get().blockchain.privateKey;
     const address = this.configService.get<string>('CONTRACT_ADDRESS');
 
-    if (!pk || !address) {
-      this.logger.warn('Blockchain config missing - integrity disabled');
+    // ค่าตั้งต้นของ clone ใหม่ไม่ใช่ "ว่าง": bootstrap ปล่อย BLOCKCHAIN_PRIVATE_KEY=CHANGE_ME
+    // (vault-init เก็บลง Vault ตามนั้น) และ .env.example ตั้ง CONTRACT_ADDRESS เป็น zero address
+    // ถ้าไม่ดักตรงนี้ new Wallet("CHANGE_ME") โยน error → log ERROR พร้อม stack ทุกครั้งที่
+    // เพื่อน clone ไปรัน ทั้งที่ระบบทำงานปกติ (batch เป็น SEALED) — ค่าที่ตั้งจริงแต่ผิดรูปแบบ
+    // ยังต้องพังดังเหมือนเดิม จึงดักแค่ placeholder สองแบบนี้
+    if (isUnsetPlaceholder(pk) || isUnsetPlaceholder(address)) {
+      this.logger.warn(
+        'Blockchain not configured — batches stay SEALED (Merkle proof + tamper detection work; ' +
+          'roots are not anchored on-chain). Set BLOCKCHAIN_PRIVATE_KEY + CONTRACT_ADDRESS to enable',
+      );
       return;
     }
 

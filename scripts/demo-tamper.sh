@@ -31,7 +31,9 @@ if [ "$MODE" = "restore" ]; then
                ${STARTED_AT:+AND created_at >= '$STARTED_AT'::timestamptz}"
   RESOLVED=0
   BATCH_STATUS=$(PSQL "SELECT status FROM batches WHERE id='$BATCH_ID'")
-  if [ "$BATCH_STATUS" = "CONFIRMED" ]; then
+  # SEALED = ผ่านการตรวจแบบ local แล้ว (stack ที่ไม่ได้ต่อ blockchain) สะอาดเท่ากับ CONFIRMED
+  # เดิมเช็คแค่ CONFIRMED → บน clone ใหม่ restore สำเร็จแต่ขึ้น ⚠ แล้ว exit 1 ทุกครั้ง
+  if [ "$BATCH_STATUS" = "CONFIRMED" ] || [ "$BATCH_STATUS" = "SEALED" ]; then
     RESOLVED=$(PSQL "WITH r AS (
                        UPDATE alerts SET status='RESOLVED'
                         WHERE $DEMO_ALERTS AND status='OPEN'
@@ -40,7 +42,7 @@ if [ "$MODE" = "restore" ]; then
   else
     # verify ยังไม่ผ่าน (backend ล่ม / token ผิด ฯลฯ) → alert ยังจริงอยู่ ห้ามปิดทิ้ง
     # เก็บไฟล์สำรองไว้ให้รัน restore ซ้ำได้
-    echo "⚠ batch $BATCH_ID ยังเป็น ${BATCH_STATUS:-?} (ไม่ใช่ CONFIRMED) — ไม่ resolve alert"
+    echo "⚠ batch $BATCH_ID ยังเป็น ${BATCH_STATUS:-?} (ไม่ใช่ CONFIRMED/SEALED) — ไม่ resolve alert"
     echo "  แก้สาเหตุแล้วรัน restore ซ้ำได้ (ไฟล์สำรองยังอยู่ที่ $BAK)"
     exit 1
   fi
