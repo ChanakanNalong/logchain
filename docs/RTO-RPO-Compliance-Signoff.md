@@ -122,8 +122,11 @@ logchain + keycloak → ตรวจด้วย `pg_restore --list` → ย้�
 **ดิสก์เดียวกัน:** `./backups/` อยู่ดิสก์เดียวกับ docker volume ของ DB — กันลบ/ข้อมูลเสียได้ แต่ดิสก์พัง = หายพร้อมกัน
 → service `backup-offsite` ส่งสำเนาเข้ารหัส (rclone crypt) ขึ้น cloud ทุกชั่วโมง เก็บ 30 วัน · alert `OffsiteBackupStale` /
 `OffsiteBackupFailing` · ทดสอบกับ crypt remote จำลอง: ชื่อ + เนื้อไฟล์บน cloud อ่านไม่ออก · cryptcheck ตรง · ดึงกลับ sha256 ตรง ·
-ลบชุดเก่ากว่า 30 วัน · ส่งไม่ได้ → metric 0 · **ใช้งานได้จริงเมื่อเจ้าของตั้ง rclone กับบัญชี cloud แล้ว** (README) ·
-password ของ crypt ต้องเก็บนอกเครื่อง ไม่งั้นเครื่องหาย = ถอดสำเนาไม่ได้
+ลบชุดเก่ากว่า 30 วัน · ส่งไม่ได้ → metric 0 · password ของ crypt ต้องเก็บนอกเครื่อง ไม่งั้นเครื่องหาย = ถอดสำเนาไม่ได้
+
+**ทดสอบกับ Google Drive จริง (2026-09-23):** ส่ง 2 ชุด 6 ไฟล์ (54 วินาที) · cryptcheck 0 differences · ชื่อบน Drive เข้ารหัส ·
+**ดึงกลับจาก Drive → sha256 ตรง → restore ลง postgres ที่เหมือน compose → ข้อมูลตรงกับ DB จริงทุกไบต์ (logchain 7/7 ·
+keycloak 92/92) · owner ถูก · append-only ทำงาน** = กู้คืนจาก cloud ได้จริงทั้งสาย
 
 ## 4. Compliance Sign-off Checklist
 

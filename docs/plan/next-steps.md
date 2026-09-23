@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–30) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–31) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -15,7 +15,7 @@
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule 13 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
-- งานในแผนปิดครบ · backup อัตโนมัติมีแล้ว · เหลือ 5.1 (สำเนาบน cloud — โค้ดพร้อม รอเจ้าของตั้ง rclone)
+- **งานในแผนปิดครบ ไม่มีงานค้าง** · backup รายวันในเครื่อง + สำเนาเข้ารหัสบน Google Drive (ทดสอบกู้คืนจาก Drive แล้ว)
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -135,11 +135,11 @@ service `postgres-backup` (`infra/postgres-backup/backup.sh`) · วันละ
 keycloak · 0600 · gitignored · เก็บ 7 ชุด) · alert `PostgresBackupStale` / `Failing` / `Missing` ผ่าน node-exporter textfile ·
 **กู้จากไฟล์ที่ job สร้างจริงผ่านแล้ว** (worklog หัวข้อ 29) · สั่งเพิ่ม: `docker exec logchain-postgres-backup sh /backup.sh once`
 
-### 5.1 🟡 สำเนา backup บน cloud — โค้ดเสร็จ (2026-09-23) · **รอเจ้าของตั้ง rclone กับ Google Drive**
-service `backup-offsite` (`infra/backup-offsite/offsite.sh`) · rclone crypt → cloud ทุกชั่วโมง · cryptcheck · เก็บ 30 วัน ·
-alert `OffsiteBackupStale` / `Failing` (มี series เฉพาะเมื่อตั้งแล้ว) · ทดสอบครบกับ crypt remote จำลอง (worklog หัวข้อ 30)
-**ต้องทำ (เจ้าของ — ต้องกดอนุญาต OAuth เอง):** README หัวข้อ "สำเนาบน cloud" → แล้ว `docker exec logchain-backup-offsite sh /offsite.sh once`
-→ Claude ทดสอบดึงกลับจาก cloud จริง + restore 1 รอบ · **password ของ crypt ต้องอยู่ใน password manager**
+### 5.1 ✅ สำเนา backup บน Google Drive — ใช้งานจริงแล้ว (2026-09-23)
+service `backup-offsite` · rclone crypt → `gdrive:logchain-backups` ทุกชั่วโมง · cryptcheck · เก็บ 30 วัน · alert Offsite* ·
+ตั้งด้วย `./scripts/setup-offsite-backup.sh` · **ทดสอบดึงกลับจาก Drive + restore ครบทั้งสายแล้ว** (worklog หัวข้อ 31)
+config + token: `infra/rclone/.secrets/rclone.conf` (gitignored) · password ของ crypt อยู่กับเจ้าของ (password manager)
+ถ้า token หมดอายุ / ถูกถอนสิทธิ์ → `OffsiteBackupFailing` → รัน script ใหม่ (reconnect เอง password crypt ไม่เปลี่ยน)
 
 ---
 
@@ -185,6 +185,7 @@ alert `OffsiteBackupStale` / `Failing` (มี series เฉพาะเมื�
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
 | รัน e2e ในเครื่องแล้ว integrity ตกจาก 100% | e2e ทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) — ลบทิ้งหลังรัน · ลืมลบ 30 นาทีจะได้ email `BatchStuckUnverified` |
 | รันแอปบน host (`npm run start:dev`) แล้ว Prometheus/Grafana ไม่มีข้อมูล | target ชี้ชื่อ service ใน compose อย่างเดียว — เปลี่ยน target ของ job นั้นเป็น `host.docker.internal:<port>` แล้ว `curl -X POST localhost:9090/-/reload` (อย่าใส่คู่กัน = scrape ซ้ำ worklog หัวข้อ 20) |
+| `setup-offsite-backup.sh` ขึ้น `access_denied` / 403 insufficient scopes | หน้า Google hasn't verified → Advanced → Go to rclone · คำถาม Shared Drive ตอบ `n` (worklog หัวข้อ 31) |
 | alert ขึ้นใน `:9090/alerts` แต่ไม่มีใครได้ email | `docker logs logchain-alertmanager | head -1` — ถ้าขึ้น "ยังไม่ได้ตั้งอีเมล" ดู README หัวข้อ Alert แจ้งทาง email · แก้ `.env`/ไฟล์รหัสแล้วต้อง `--force-recreate alertmanager` |
 
 ---

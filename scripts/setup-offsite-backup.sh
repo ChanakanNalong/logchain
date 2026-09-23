@@ -22,17 +22,38 @@ has_remote() { rc "${RC_BASE[@]}" "$IMAGE" listremotes 2>/dev/null | grep -qx "$
 echo "config: $CONF_DIR/rclone.conf"
 
 # ── 1. Google Drive ──────────────────────────────────────────────────────────
-if has_remote gdrive; then
-  echo "✓ remote gdrive มีแล้ว — ข้าม"
-else
+# เช็คว่า "ต่อได้จริง" ไม่ใช่แค่ "มีชื่อ remote" — auth ที่พังกลางทางยังทิ้ง remote ไม่มี token ไว้ใน config
+# (เจอจริง: รอบแรก Auth Error แล้วรอบสองข้ามขั้นนี้ไปเพราะเห็นว่ามี gdrive แล้ว)
+drive_ok() { rc "${RC_BASE[@]}" "$IMAGE" lsd gdrive: > /dev/null 2>&1; }
+auth_hint() {
   echo
   echo "1/3  เชื่อม Google Drive — จะมีลิงก์ http://127.0.0.1:53682/... ขึ้นมา"
-  echo "     เปิดในเบราว์เซอร์ของเครื่องนี้ → login → กด Allow → กลับมาที่นี่"
+  echo "     เปิด **ครั้งเดียว** ในเบราว์เซอร์ของเครื่องนี้ → เลือกบัญชี → กด Continue / Allow ทุกหน้าจนขึ้น \"Success\""
+  echo "     (กด Cancel / ปิดหน้า / เปิดลิงก์ซ้ำ = \"No code returned by remote server\")"
+  echo "     หน้า \"Google hasn't verified this app\" → Advanced → Go to rclone (unsafe) → Continue"
+  echo "       (ปุ่ม Back to safety = access_denied · client ที่ rclone แชร์ทั้งโลก · scope drive.file เห็นเฉพาะไฟล์ของ rclone)"
+  echo "     rclone ถาม \"Configure this as a Shared Drive (Team Drive)?\" → ตอบ n"
+  echo "       (Gmail ส่วนตัวไม่มี Shared Drive · ตอบ y = 403 insufficient authentication scopes)"
   echo
+}
+
+if drive_ok; then
+  echo "✓ gdrive ต่อ Google Drive ได้แล้ว — ข้าม"
+elif has_remote gdrive; then
+  auth_hint
+  # มี remote แต่ไม่มี/หมด token → ขอสิทธิ์ใหม่ ค่าอื่น (scope) คงเดิม
+  rc -it --network host "${RC_BASE[@]}" "$IMAGE" config reconnect gdrive: \
+    || { echo "✗ เชื่อม Google ไม่สำเร็จ — รัน script นี้ใหม่ได้เลย"; exit 1; }
+  drive_ok || { echo "✗ ยังต่อ Google Drive ไม่ได้ — รัน script นี้ใหม่"; exit 1; }
+  echo "✓ gdrive"
+else
+  auth_hint
   # --network host: ให้หน้า callback ของ Google กลับมาถึง rclone ใน container ได้
-  rc -it --network host "${RC_BASE[@]}" "$IMAGE" \
-    config create gdrive drive scope=drive.file
-  has_remote gdrive || { echo "✗ สร้าง gdrive ไม่สำเร็จ (ดู error ด้านบน)"; exit 1; }
+  if ! rc -it --network host "${RC_BASE[@]}" "$IMAGE" config create gdrive drive scope=drive.file; then
+    rc "${RC_BASE[@]}" "$IMAGE" config delete gdrive > /dev/null 2>&1 || true   # ไม่ทิ้ง remote ครึ่ง ๆ
+    echo "✗ เชื่อม Google ไม่สำเร็จ — รัน script นี้ใหม่ได้เลย"; exit 1
+  fi
+  drive_ok || { echo "✗ ยังต่อ Google Drive ไม่ได้ — รัน script นี้ใหม่"; exit 1; }
   echo "✓ gdrive"
 fi
 

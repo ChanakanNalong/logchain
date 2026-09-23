@@ -174,6 +174,12 @@ docker logs logchain-postgres-backup --tail 5
 docker exec logchain-backup-offsite sh /offsite.sh once
 ```
 
+ระหว่างเชื่อม Google (เจอจริงตอนตั้งครั้งแรก):
+- หน้า **"Google hasn't verified this app"** → **Advanced → Go to rclone (unsafe) → Continue** · กด Back to safety = `access_denied`
+  (rclone ใช้ OAuth client ที่แชร์ทั้งโลก · scope `drive.file` เห็นเฉพาะไฟล์ที่ rclone สร้าง · ถอนสิทธิ์ได้ที่
+  https://myaccount.google.com/permissions)
+- rclone ถาม **"Configure this as a Shared Drive (Team Drive)?"** → **`n`** · ตอบ `y` = 403 insufficient authentication scopes
+
 ตั้งด้วยเมนูของ rclone เอง (ทางเลือก — เคยพลาดเพราะออกจากเมนูก่อนกด `y` บันทึก แล้วไม่มีไฟล์ config):
 
 ```bash
