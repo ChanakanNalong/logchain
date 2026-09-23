@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
 import { VaultService } from '../vault/vault.service';
@@ -50,6 +55,10 @@ export const DEFAULT_TX_TIMEOUT_MS = 120_000;
  */
 const NONCE_HINT_TTL_MS = 60_000;
 
+/** ต่อ RPC ไม่ติดตอน boot → ลองใหม่ 5s, 10s, 20s, ... ตันที่ 5 นาที (ไม่ยอมแพ้) */
+export const INIT_RETRY_BASE_MS = 5_000;
+export const INIT_RETRY_MAX_MS = 300_000;
+
 /** ค่าที่แปลว่า "ยังไม่ได้ตั้ง": ว่าง · CHANGE_ME* ของ .env.example · zero address */
 function isUnsetPlaceholder(value: string | undefined | null): boolean {
   if (!value || value.trim() === '') return true;
@@ -71,7 +80,7 @@ export function classifyChainError(err: unknown): ChainWriteError {
 }
 
 @Injectable()
-export class BlockchainService implements OnModuleInit {
+export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BlockchainService.name);
   private provider: ethers.JsonRpcProvider;
   /**
@@ -88,6 +97,7 @@ export class BlockchainService implements OnModuleInit {
   private wallet: ethers.Wallet;
   private contract: ethers.Contract;
   private isReady = false;
+  private retryTimer: NodeJS.Timeout | null = null;
   /** เพดานเวลารอ tx confirm — public RPC ช้ากว่า Hardhat มาก ปล่อยรอไม่มีเพดานไม่ได้ */
   private txTimeoutMs = DEFAULT_TX_TIMEOUT_MS;
   /**
@@ -143,18 +153,40 @@ export class BlockchainService implements OnModuleInit {
       );
     }
 
+    await this.connect(rpcUrl, pk, address, 1);
+  }
+
+  onModuleDestroy() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  /**
+   * ต่อ RPC — พลาดแล้วลองใหม่ไปเรื่อย ๆ แบบ backoff (หลักเดียวกับ Kafka producer)
+   *
+   * เดิมลองครั้งเดียวตอน boot: RPC สะดุดแค่ครั้งเดียว (เจอจริง: "Client network socket
+   * disconnected before secure TLS connection was established") → isReady=false ค้างทั้ง
+   * process · batch ค้าง SEALED เงียบ ๆ จนกว่าจะ restart · ต่อติดแล้ว anchorSealedBatches()
+   * ตาม anchor ของที่ค้างให้เองในรอบ cron ถัดไป
+   */
+  private async connect(
+    rpcUrl: string,
+    pk: string,
+    address: string,
+    attempt: number,
+  ): Promise<void> {
+    this.retryTimer = null;
+    // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
+    //
+    // ต้องล็อค network ไว้ (staticNetwork) ไม่งั้น ethers จะ re-detect เอง
+    // เบื้องหลังทุกครั้งที่ RPC ตอบช้า/พลาด แล้ว error จาก retry loop นั้น
+    // ไม่ผูกกับ promise ที่เรา await -> หลุดเป็น uncaught exception ฆ่าทั้ง
+    // process (เจอจริงบน public RPC: "failed to detect network ... TIMEOUT")
+    // ล็อคแล้ว RPC พลาดจะ reject ในสาย await ปกติ ให้ try/catch ของ
+    // sealPendingLogs จัดการ: batch เป็น FAILED แล้วรอบ cron ถัดไป retry
+    const probe = new ethers.JsonRpcProvider(rpcUrl);
     try {
-      // provider - เชื่อมกับ RPC node (Hardhat local หรือ Polygon Amoy)
-      //
-      // ต้องล็อค network ไว้ (staticNetwork) ไม่งั้น ethers จะ re-detect เอง
-      // เบื้องหลังทุกครั้งที่ RPC ตอบช้า/พลาด แล้ว error จาก retry loop นั้น
-      // ไม่ผูกกับ promise ที่เรา await -> หลุดเป็น uncaught exception ฆ่าทั้ง
-      // process (เจอจริงบน public RPC: "failed to detect network ... TIMEOUT")
-      // ล็อคแล้ว RPC พลาดจะ reject ในสาย await ปกติ ให้ try/catch ของ
-      // sealPendingLogs จัดการ: batch เป็น FAILED แล้วรอบ cron ถัดไป retry
-      const probe = new ethers.JsonRpcProvider(rpcUrl);
       const network = await probe.getNetwork();
-      probe.destroy();
 
       this.provider = new ethers.JsonRpcProvider(rpcUrl, network, {
         staticNetwork: network,
@@ -173,7 +205,23 @@ export class BlockchainService implements OnModuleInit {
         `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms`,
       );
     } catch (err) {
-      this.logger.error('Blockchain init failed', err);
+      const delay = Math.min(
+        INIT_RETRY_BASE_MS * 2 ** (attempt - 1),
+        INIT_RETRY_MAX_MS,
+      );
+      this.logger.error(
+        `Blockchain init failed (attempt ${attempt}) — retrying in ${delay / 1000}s; ` +
+          'batches stay SEALED until connected',
+        err,
+      );
+      this.retryTimer = setTimeout(
+        () => void this.connect(rpcUrl, pk, address, attempt + 1),
+        delay,
+      );
+      this.retryTimer.unref();
+    } finally {
+      // ไม่ destroy ตอนพัง = probe วน detect network ต่อเบื้องหลัง (ปัญหาเดียวกับข้างบน)
+      probe.destroy();
     }
   }
 

@@ -1,6 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BlockchainService, classifyChainError } from './blockchain.service';
+import { ethers } from 'ethers';
+import {
+  BlockchainService,
+  classifyChainError,
+  INIT_RETRY_BASE_MS,
+} from './blockchain.service';
 import { VaultService } from '../vault/vault.service';
 
 /**
@@ -112,4 +117,77 @@ describe('BlockchainService.onModuleInit — unconfigured placeholders', () => {
       );
     },
   );
+});
+
+/**
+ * RPC สะดุดตอน boot ครั้งเดียว (เจอจริง: TLS หลุด) เดิมทำให้ isReady=false ทั้ง process
+ * batch ค้าง SEALED เงียบ ๆ จนกว่าจะ restart — ต้องลองใหม่เองจนต่อติด
+ */
+describe('BlockchainService.onModuleInit — RPC unavailable at boot', () => {
+  const PK = '0x' + '01'.repeat(32);
+  const ADDR = '0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5';
+
+  function make() {
+    const cfg = {
+      get: (k: string) =>
+        ({
+          CONTRACT_ADDRESS: ADDR,
+          BLOCKCHAIN_RPC_URL: 'http://127.0.0.1:1',
+        })[k],
+    } as unknown as ConfigService;
+    const vault = {
+      get: () => ({ blockchain: { privateKey: PK } }),
+    } as unknown as VaultService;
+    return new BlockchainService(cfg, vault);
+  }
+
+  let getNetwork: jest.SpyInstance;
+  let destroy: jest.SpyInstance;
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    getNetwork = jest.spyOn(ethers.JsonRpcProvider.prototype, 'getNetwork');
+    destroy = jest.spyOn(ethers.JsonRpcProvider.prototype, 'destroy');
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('retries after a failed connect and becomes ready', async () => {
+    getNetwork
+      .mockRejectedValueOnce(new Error('socket disconnected before TLS'))
+      .mockResolvedValueOnce(ethers.Network.from(80002));
+    const svc = make();
+
+    await svc.onModuleInit();
+    expect(svc.ready).toBe(false);
+    // probe ที่พังต้องถูกปิด ไม่งั้นวน detect network ต่อเบื้องหลัง
+    expect(destroy).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(INIT_RETRY_BASE_MS);
+    expect(getNetwork).toHaveBeenCalledTimes(2);
+    expect(svc.ready).toBe(true);
+    svc.onModuleDestroy();
+  });
+
+  it('backs off between attempts and stops retrying on destroy', async () => {
+    getNetwork.mockRejectedValue(new Error('down'));
+    const svc = make();
+
+    await svc.onModuleInit();
+    await jest.advanceTimersByTimeAsync(INIT_RETRY_BASE_MS);
+    expect(getNetwork).toHaveBeenCalledTimes(2);
+    // ครั้งถัดไปรอ 2 เท่า — ยังไม่ถึงเวลา
+    await jest.advanceTimersByTimeAsync(INIT_RETRY_BASE_MS);
+    expect(getNetwork).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(INIT_RETRY_BASE_MS);
+    expect(getNetwork).toHaveBeenCalledTimes(3);
+
+    svc.onModuleDestroy();
+    await jest.advanceTimersByTimeAsync(10 * INIT_RETRY_BASE_MS);
+    expect(getNetwork).toHaveBeenCalledTimes(3);
+    expect(svc.ready).toBe(false);
+  });
 });
