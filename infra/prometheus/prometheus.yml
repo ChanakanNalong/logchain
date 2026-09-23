@@ -3,6 +3,10 @@ global:
   scrape_interval:      15s
   evaluation_interval:  15s
 
+# alert rule (+ unit test ใน alerts.test.yml) — ยังไม่มี Alertmanager ดูที่ /alerts
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   # Prometheus เอง
   - job_name: 'prometheus'

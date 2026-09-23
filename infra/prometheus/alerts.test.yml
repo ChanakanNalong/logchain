@@ -1,0 +1,52 @@
+# unit test ของ alerts.yml — promtool test rules alerts.test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ไม่มี rejection เลย (counter ยังไม่มี series — prom-client ไม่สร้างจนกว่าจะ inc ครั้งแรก)
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: UnhandledEthersRejection
+        exp_alerts: []
+
+  # ครั้งเดียวที่นาทีที่ 10 → เตือนทันที · พ้น 1 ชม. แล้วหายเอง
+  # backend ตัวเดียวถูก scrape 2 target → ต้องได้ alert ตัวเดียว ไม่ใช่ 2
+  - interval: 1m
+    input_series:
+      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:3000",code="TIMEOUT"}'
+        values: '0x10 1x120'
+      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="host.docker.internal:3000",code="TIMEOUT"}'
+        values: '0x10 1x120'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: UnhandledEthersRejection
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: UnhandledEthersRejection
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              code: TIMEOUT
+            exp_annotations:
+              summary: 'ethers rejection หลุดนอก await (TIMEOUT) บน backend'
+              description: >-
+                1 ครั้งใน 1 ชม. ที่ผ่านมา — process ยังไม่ตาย (guard รับไว้)
+                แต่เป็นบั๊ก: ดู log ERROR "Unhandled ethers rejection" ของ backend แล้วหาว่า promise ไหน
+                ไม่มีใคร await (ประวัติ: network detection ก่อนใส่ staticNetwork · NonceManager)
+      - eval_time: 75m
+        alertname: UnhandledEthersRejection
+        exp_alerts: []
+
+  # counter เป็นค่าคงที่ตั้งแต่ต้น (backend เพิ่ง boot มาพร้อมค่าเดิม) → ไม่เตือน
+  - interval: 1m
+    input_series:
+      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:3000",code="NETWORK_ERROR"}'
+        values: '3x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: UnhandledEthersRejection
+        exp_alerts: []

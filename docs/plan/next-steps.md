@@ -82,7 +82,7 @@ docker logs --since 12h logchain-detection-consumer 2>&1 | grep -c "Task is alre
 ### 3.1 ✅ กัน ethers หลุด unhandled rejection — เสร็จแล้ว (2026-09-23)
 `src/common/process/unhandled-rejection.ts` ติดใน `main.ts` ก่อน `NestFactory.create` · error ของ ethers
 (มี `code` + `shortMessage`) → log ERROR + `logchain_unhandled_ethers_rejections_total{code}` แล้วไม่ตาย ·
-อย่างอื่นโยนต่อให้ Node ตายเหมือนเดิม · ยังไม่มี Prometheus alert rule ในโปรเจกต์ — ถ้าจะทำ ให้เตือนเมื่อค่านี้ > 0
+อย่างอื่นโยนต่อให้ Node ตายเหมือนเดิม · alert rule `UnhandledEthersRejection` ใน `infra/prometheus/alerts.yml` (worklog หัวข้อ 19 · ยังไม่มี Alertmanager ดูที่ :9090/alerts)
 
 ### 3.2 ✅ `storeRoot` แยก "รอ confirm ไม่ทัน" กับ "RPC timeout ระหว่างรอ" — เสร็จแล้ว (2026-09-23)
 `isWaitDeadline()` ดู `shortMessage === 'wait for transaction timeout'` (ethers 6.17 `provider.js`) · log บอก

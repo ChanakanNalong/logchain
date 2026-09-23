@@ -1,0 +1,22 @@
+# alert rule ของ LogChain — โหลดผ่าน rule_files ใน prometheus.yml
+# ยังไม่มี Alertmanager: alert ขึ้นที่ http://localhost:9090/alerts และ metric ALERTS (Grafana อ่านได้)
+# ทดสอบ: docker run --rm -v $PWD/infra/prometheus:/p -w /p --entrypoint promtool \
+#          prom/prometheus:v2.55.0 test rules alerts.test.yml
+groups:
+  - name: logchain-backend
+    rules:
+      # guard ใน src/common/process/unhandled-rejection.ts กัน process ตายไว้แล้ว แต่แต่ละครั้งคือ
+      # promise ของ ethers ที่หลุดนอกสาย await = บั๊กที่ต้องตามหา (เคยฆ่าทั้ง process มาแล้ว 2 ครั้ง)
+      # เกิดครั้งเดียวก็ต้องรู้ จึงไม่มี `for:` — ค้างอยู่ 1 ชม. หลังครั้งล่าสุดแล้วหายเอง
+      # max by (code): backend ตัวเดียวถูก scrape 2 target (backend:3000 + host.docker.internal:3000
+      # เพราะ publish port ไว้) — ไม่รวมจะเด้ง alert ซ้ำ 2 ตัวต่อเหตุการณ์เดียว
+      - alert: UnhandledEthersRejection
+        expr: max by (code) (increase(logchain_unhandled_ethers_rejections_total[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: 'ethers rejection หลุดนอก await ({{ $labels.code }}) บน backend'
+          description: >-
+            {{ $value | printf "%.0f" }} ครั้งใน 1 ชม. ที่ผ่านมา — process ยังไม่ตาย (guard รับไว้)
+            แต่เป็นบั๊ก: ดู log ERROR "Unhandled ethers rejection" ของ backend แล้วหาว่า promise ไหน
+            ไม่มีใคร await (ประวัติ: network detection ก่อนใส่ staticNetwork · NonceManager)

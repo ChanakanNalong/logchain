@@ -78,6 +78,24 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
 
+  prometheus:
+    name: Prometheus — config + alert rule tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # promtool มากับ image ที่ compose ใช้ — เวอร์ชันเดียวกัน ไม่ต้องลงอะไรเพิ่ม
+      - name: Check config + rules
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/etc/prometheus:ro" \
+            --entrypoint promtool prom/prometheus:v2.55.0 \
+            check config /etc/prometheus/prometheus.yml
+      - name: Alert rule unit tests
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/p:ro" -w /p \
+            --entrypoint promtool prom/prometheus:v2.55.0 \
+            test rules alerts.test.yml
+
   integration:
     name: Integration — Postgres + Vault
     runs-on: ubuntu-latest
