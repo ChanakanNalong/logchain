@@ -8,8 +8,8 @@ groups:
       # guard ใน src/common/process/unhandled-rejection.ts กัน process ตายไว้แล้ว แต่แต่ละครั้งคือ
       # promise ของ ethers ที่หลุดนอกสาย await = บั๊กที่ต้องตามหา (เคยฆ่าทั้ง process มาแล้ว 2 ครั้ง)
       # เกิดครั้งเดียวก็ต้องรู้ จึงไม่มี `for:` — ค้างอยู่ 1 ชม. หลังครั้งล่าสุดแล้วหายเอง
-      # max by (code): backend ตัวเดียวถูก scrape 2 target (backend:3000 + host.docker.internal:3000
-      # เพราะ publish port ไว้) — ไม่รวมจะเด้ง alert ซ้ำ 2 ตัวต่อเหตุการณ์เดียว
+      # max by (code): เผื่อ backend ถูก scrape มากกว่า 1 target (เคยเป็นแบบนั้น — ดู prometheus.yml
+      # และตอนรันบน host) — ไม่รวมจะเด้ง alert ซ้ำต่อเหตุการณ์เดียว
       - alert: UnhandledEthersRejection
         expr: max by (code) (increase(logchain_unhandled_ethers_rejections_total[1h])) > 0
         labels:

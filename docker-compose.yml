@@ -330,7 +330,8 @@ services:
       - "9090:9090"
     networks:
       - default
-    # ให้ Prometheus เห็น service บน host (ตอนนี้ NestJS/FastAPI ยังบน host)
+    # ให้ Prometheus เห็น service บน host — ใช้เฉพาะตอนรันแอปบน host แทน container
+    # (ดูคอมเมนต์ใน infra/prometheus/prometheus.yml)
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

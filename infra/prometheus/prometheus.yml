@@ -18,26 +18,31 @@ scrape_configs:
     static_configs:
       - targets: ['node-exporter:9100']
 
-  # แอปทั้ง 3 ตัวรันได้ 2 โหมด: ในคอมโพส (ชื่อ service) หรือบน host
-  # (host.docker.internal) — ใส่ทั้งคู่ไว้เลย โหมดที่ไม่ได้ใช้จะขึ้น DOWN ใน
-  # /targets ซึ่งถูกต้องตามความเป็นจริง ดีกว่าต้องแก้ไฟล์นี้ทุกครั้งที่สลับโหมด
+  # แอปทั้ง 3 ตัว scrape ผ่านชื่อ service ใน compose เท่านั้น
+  # เดิมใส่ host.docker.internal:<port> คู่ไว้ด้วย (เผื่อรันแอปบน host) แต่ compose publish port
+  # 3000/8000 ออก host → target ฝั่ง host วนกลับมาเจอ container ตัวเดียวกัน = scrape ซ้ำ 2 ครั้ง
+  # (Grafana เส้นซ้ำ · alert เด้งซ้ำ) และ 9101 ไม่ได้ publish จึงขึ้น DOWN ทั้งที่ consumer ปกติ
+  #
+  # รันแอปบน host แทน container (เช่น `npm run start:dev`): หยุด container ตัวนั้น แล้วเปลี่ยน
+  # target ของ job นั้นเป็น host.docker.internal:<port> จากนั้น
+  #   curl -X POST localhost:9090/-/reload
 
   # NestJS api-gateway
   - job_name: 'nestjs-api'
     static_configs:
-      - targets: ['backend:3000', 'host.docker.internal:3000']
+      - targets: ['backend:3000']
     metrics_path: '/metrics'
 
   # FastAPI detection service
   - job_name: 'fastapi-detect'
     static_configs:
-      - targets: ['detection-api:8000', 'host.docker.internal:8000']
+      - targets: ['detection-api:8000']
     metrics_path: '/metrics'
 
   # Python Kafka consumer - prometheus_client start_http_server(9101)
   - job_name: 'detection-consumer'
     static_configs:
-      - targets: ['detection-consumer:9101', 'host.docker.internal:9101']
+      - targets: ['detection-consumer:9101']
     metrics_path: '/metrics'
 
   # Kafka cluster metrics (ISR, replication lag, consumer offsets)
