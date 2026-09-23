@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `3d15107` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–20) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–25) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -14,7 +14,7 @@
   + `Security Scan` แยก workflow
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
-- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว**
+- Prometheus มี alert rule 6 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว**
 - **งานในแผนปิดครบทุกข้อ ไม่มีงานค้าง**
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
@@ -191,7 +191,7 @@ CI job `prometheus` ตรวจ config ทั้งสองแบบด้ว�
 | `detection/app/rules.py` | rule engine + `_event_time()` |
 | `detection/app/dedup.py` | `SeenIds` กัน event ซ้ำ (เทสต์ `detection/tests/`) |
 | `src/common/process/unhandled-rejection.ts` | guard ethers unhandled rejection + metric |
-| `infra/prometheus/alerts.yml` | alert rule (เทสต์ `alerts.test.yml`) |
+| `infra/prometheus/alerts.yml` | alert rule 6 ตัว (เทสต์ `alerts.test.yml` — เพิ่ม rule ต้องเพิ่มเทสต์ CI รัน promtool) |
 | `.github/workflows/ci.yml` | CI 5 job — ขั้น Seed Vault อ่าน AppRole จาก `infra/vault/.secrets/approle.env` |
 | `scripts/vault-unlock.sh` | ปลด Vault lockout |
 | `README.md` Troubleshooting + Vault user lockout | เคสที่เจอบ่อยพร้อมคำสั่งแก้ |

@@ -50,3 +50,137 @@ tests:
       - eval_time: 80m
         alertname: UnhandledEthersRejection
         exp_alerts: []
+
+  # ---- DetectionAlertPublishFailed ----
+  # ส่งไม่สำเร็จ 2 ครั้งที่นาที 5 → เตือนทันที · พ้น 15 นาทีแล้วหาย
+  - interval: 1m
+    input_series:
+      - series: 'consumer_alert_publish_failures_total{job="detection-consumer",instance="detection-consumer:9101",topic="alerts.raw"}'
+        values: '0x5 2x30'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DetectionAlertPublishFailed
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: DetectionAlertPublishFailed
+        exp_alerts:
+          - exp_labels: { severity: critical, topic: alerts.raw }
+            exp_annotations:
+              summary: 'detection ส่ง alert ขึ้น alerts.raw ไม่สำเร็จ'
+              description: >-
+                2 alert ใน 15 นาทีที่ตรวจเจอแล้วแต่ไม่ถึง backend (ไม่เข้า DB / dashboard)
+                ดู `docker logs logchain-detection-consumer 2>&1 | grep "PUBLISH FAILED"` · เช็ค topic และ broker
+      - eval_time: 25m
+        alertname: DetectionAlertPublishFailed
+        exp_alerts: []
+
+  # ---- KafkaConsumerStuck ----
+  # detection เดินปกติ 10 นาทีแล้วค้างที่นาที 10 (lag 5 · offset หยุดที่ 30)
+  # → หน้าต่าง [10m] ไม่เห็นการขยับตั้งแต่นาที 20 + for 5m = เด้งนาที 25 (ค้างจริง 15 นาที)
+  # persister: lag > 0 แต่ offset ขยับตลอด (มี traffic) → ไม่เด้ง
+  - interval: 1m
+    input_series:
+      - series: 'kafka_consumergroup_lag_sum{consumergroup="detection-service",topic="logs.raw"}'
+        values: '0x10 5x40'
+      - series: 'kafka_consumergroup_current_offset_sum{consumergroup="detection-service",topic="logs.raw"}'
+        values: '0+3x10 30x40'
+      - series: 'kafka_consumergroup_lag_sum{consumergroup="nestjs-alerts-persister",topic="alerts.raw"}'
+        values: '2x40'
+      - series: 'kafka_consumergroup_current_offset_sum{consumergroup="nestjs-alerts-persister",topic="alerts.raw"}'
+        values: '0+3x40'
+    alert_rule_test:
+      - eval_time: 23m
+        alertname: KafkaConsumerStuck
+        exp_alerts: []
+      - eval_time: 26m
+        alertname: KafkaConsumerStuck
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              consumergroup: detection-service
+              topic: logs.raw
+            exp_annotations:
+              summary: 'consumer detection-service ค้างบน logs.raw (lag 5)'
+              description: >-
+                มี message รอ 5 ใบ แต่ offset ไม่ขยับมา 10 นาทีขึ้นไป
+                `docker exec logchain-kafka-1 /opt/bitnami/kafka/bin/kafka-consumer-groups.sh
+                --bootstrap-server localhost:9092 --describe --group detection-service`
+
+  # lag 0 และ offset คงที่ (ระบบเงียบ ไม่มี log เข้า) → ไม่ใช่ค้าง
+  - interval: 1m
+    input_series:
+      - series: 'kafka_consumergroup_lag_sum{consumergroup="detection-service",topic="logs.raw"}'
+        values: '0x40'
+      - series: 'kafka_consumergroup_current_offset_sum{consumergroup="detection-service",topic="logs.raw"}'
+        values: '151x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: KafkaConsumerStuck
+        exp_alerts: []
+
+  # ---- ServiceDown ----
+  # ล่ม 1 นาทีแล้วกลับ → ไม่เด้ง · ล่มยาว → เด้งหลัง 2 นาที
+  - interval: 1m
+    input_series:
+      - series: 'up{job="nestjs-api",instance="backend:3000"}'
+        values: '1 1 0 1 1 1 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: nestjs-api
+              instance: backend:3000
+            exp_annotations:
+              summary: 'nestjs-api (backend:3000) ไม่ตอบ'
+              description: >-
+                Prometheus scrape backend:3000 ไม่ได้มา 2 นาที ·
+                `docker compose ps` แล้วดู log ของ service นั้น
+
+  # ---- PostgresDown ----
+  - interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres-exporter",instance="postgres-exporter:9187"}'
+        values: '1 1 1 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PostgresDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: PostgresDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: postgres-exporter
+              instance: postgres-exporter:9187
+            exp_annotations:
+              summary: 'Postgres ไม่ตอบ (postgres-exporter ต่อไม่ได้)'
+              description: >-
+                ingest ใหม่พัง (log เข้า DB ไม่ได้) · `docker logs logchain-postgres --tail 50`
+
+  # ---- KafkaBrokerMissing ----
+  # restart broker สั้น ๆ (1 นาที) → ไม่เด้ง · หายไปนาน → เด้ง
+  - interval: 1m
+    input_series:
+      - series: 'kafka_brokers{job="kafka-exporter",instance="kafka-exporter:9308"}'
+        values: '3 3 2 3 3 3 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KafkaBrokerMissing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: KafkaBrokerMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: kafka-exporter
+              instance: kafka-exporter:9308
+            exp_annotations:
+              summary: 'Kafka เหลือ 2 จาก 3 broker'
+              description: >-
+                `docker compose ps kafka-1 kafka-2 kafka-3` · ถ้าเหลือไม่ถึง min.insync.replicas ส่ง log ไม่ได้
+                (backend เก็บลง kafka_pending_logs รอ replay ให้เอง)

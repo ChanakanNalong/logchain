@@ -63,7 +63,7 @@ git clone https://github.com/ChanakanNalong/logchain.git && cd logchain
 |---|---|---|
 | 1 | `cp .env.example .env` + สุ่มค่าที่เป็น `CHANGE_ME` | ข้าม `BLOCKCHAIN_PRIVATE_KEY` ให้ใส่เอง |
 | 2 | `infra/kafka/gen-certs.sh` | CA + broker cert 3 ใบ + client cert (nestjs, detection) |
-| 3 | `docker compose up -d` เฉพาะ infra | postgres, keycloak, kafka×3, vault, prometheus, grafana |
+| 3 | `docker compose up -d` เฉพาะ infra | postgres, keycloak, kafka×3, vault, prometheus, alertmanager, grafana |
 | 4 | รอ `vault-init` แล้ว merge AppRole เข้า `.env` | `infra/vault/.secrets/approle.env` |
 | 5 | `docker compose up -d --build` ฝั่งแอป | backend, dashboard, detection×2 |
 | 6 | `scripts/harden-master-admin.sh` | master realm: strong cred + MFA + automation SA |
@@ -91,6 +91,11 @@ docker compose stop backend                 # กันชนพอร์ต 300
 nvm use                                     # อ่าน .nvmrc -> node 22.19.0
 npm install && npm run start:dev
 ```
+
+> **Prometheus:** target ของ backend ชี้ `backend:3000` (container) — หยุด container แล้ว alert `ServiceDown`
+> จะเด้ง (และส่ง email ถ้าตั้งไว้) ใน 2 นาที · เปลี่ยน target ของ job `nestjs-api` ใน
+> `infra/prometheus/prometheus.yml` เป็น `host.docker.internal:3000` แล้ว `curl -X POST localhost:9090/-/reload`
+> (อย่าใส่ทั้งสองคู่กัน — scrape ซ้ำ) หรือ silence ที่ http://localhost:9093
 
 `.env` เขียนค่าไว้สำหรับโหมดนี้ (`localhost:5433`, `localhost:29092`, …)
 โหมด compose ใช้ `environment:` ใน `docker-compose.yml` override เป็นชื่อ service ให้เอง
@@ -132,6 +137,7 @@ npm install && npm run start:dev
 | keycloak | http://localhost:8080 | admin console |
 | grafana | http://localhost:3002 | user `admin` |
 | prometheus | http://localhost:9090 | |
+| alertmanager | http://localhost:9093 | ส่ง email เมื่อตั้งค่า — ดู [Alert แจ้งทาง email](#alert-แจ้งทาง-email) |
 | vault | http://localhost:8200 | |
 | postgres | `localhost:5433` | 5432 ถูก native postgres จองไว้บนเครื่อง dev |
 | postgres-standby | `localhost:5434` | hot standby (pg_basebackup) |
@@ -146,13 +152,14 @@ npm install && npm run start:dev
 
 ## Alert แจ้งทาง email
 
-Prometheus ส่ง alert (rule ใน `infra/prometheus/alerts.yml`) ต่อให้ Alertmanager ที่ http://localhost:9093
+Prometheus ส่ง alert (rule ใน `infra/prometheus/alerts.yml` — service ล่ม, Postgres ล่ม, Kafka broker ขาด,
+consumer ค้าง, detection ส่ง alert ไม่ถึง backend, ethers rejection หลุด) ต่อให้ Alertmanager ที่ http://localhost:9093
 ค่าเริ่มต้น **ยังไม่ส่งไปไหน** — รับไว้ให้ดูเฉย ๆ จนกว่าจะตั้ง 3 อย่างนี้ครบ:
 
 ```bash
-# 1. รหัส — Gmail: Google Account → Security → 2-Step Verification → App passwords
-#    ใส่ในไฟล์ (gitignored) ไม่ใช่ .env · ใช้ printf ไม่ให้มี newline ท้าย
-printf '%s' 'xxxx xxxx xxxx xxxx' > infra/alertmanager/.secrets/smtp_password
+# 1. รหัส — Gmail: เปิด 2-Step Verification ก่อน แล้วสร้างที่ https://myaccount.google.com/apppasswords
+#    ใส่ในไฟล์ (gitignored) ไม่ใช่ .env · read -rs = ไม่โชว์บนจอ ไม่ลง shell history · ตัดช่องว่างให้เอง
+read -rs PW && printf '%s' "${PW// /}" > infra/alertmanager/.secrets/smtp_password && unset PW
 chmod 600 infra/alertmanager/.secrets/smtp_password
 
 # 2. ใน .env

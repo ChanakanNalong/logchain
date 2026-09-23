@@ -20,3 +20,72 @@ groups:
             {{ $value | printf "%.0f" }} ครั้งใน 1 ชม. ที่ผ่านมา — process ยังไม่ตาย (guard รับไว้)
             แต่เป็นบั๊ก: ดู log ERROR "Unhandled ethers rejection" ของ backend แล้วหาว่า promise ไหน
             ไม่มีใคร await (ประวัติ: network detection ก่อนใส่ staticNetwork · NonceManager)
+
+  - name: logchain-pipeline
+    rules:
+      # detection เจอการโจมตีแล้ว แต่ส่ง alert ขึ้น Kafka ไม่สำเร็จ = alert นั้นไม่เข้า DB ไม่ขึ้น dashboard
+      # (เคยเกิดจริงหลัง down -v — alerts.raw หายไปเงียบ ๆ) · ครั้งเดียวก็ต้องรู้
+      - alert: DetectionAlertPublishFailed
+        expr: sum by (topic) (increase(consumer_alert_publish_failures_total[15m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: 'detection ส่ง alert ขึ้น {{ $labels.topic }} ไม่สำเร็จ'
+          description: >-
+            {{ $value | printf "%.0f" }} alert ใน 15 นาทีที่ตรวจเจอแล้วแต่ไม่ถึง backend (ไม่เข้า DB / dashboard)
+            ดู `docker logs logchain-detection-consumer 2>&1 | grep "PUBLISH FAILED"` · เช็ค topic และ broker
+
+      # consumer ค้าง: มี message รอ แต่ offset ไม่ขยับเลย 10 นาที (lag > 0 ชั่วคราวตอนมี traffic เป็นเรื่องปกติ)
+      # detection-service = ตรวจจับหยุด · nestjs-alerts-persister = alert ไม่ถูกบันทึกลง DB
+      - alert: KafkaConsumerStuck
+        expr: >-
+          kafka_consumergroup_lag_sum > 0
+          and on (consumergroup, topic)
+          delta(kafka_consumergroup_current_offset_sum[10m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'consumer {{ $labels.consumergroup }} ค้างบน {{ $labels.topic }} (lag {{ $value }})'
+          description: >-
+            มี message รอ {{ $value }} ใบ แต่ offset ไม่ขยับมา 10 นาทีขึ้นไป
+            `docker exec logchain-kafka-1 /opt/bitnami/kafka/bin/kafka-consumer-groups.sh
+            --bootstrap-server localhost:9092 --describe --group {{ $labels.consumergroup }}`
+
+  - name: logchain-infra
+    rules:
+      # target ที่ Prometheus scrape ไม่ได้ = service ล่ม (หรือ exporter ล่ม) · prometheus.yml มี target ละตัวเดียว
+      # ต่อแอปแล้ว (worklog 2026-09-23 หัวข้อ 20) ถ้ากลับไปใส่ host.docker.internal คู่กัน rule นี้จะเด้งตลอด
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.job }} ({{ $labels.instance }}) ไม่ตอบ'
+          description: >-
+            Prometheus scrape {{ $labels.instance }} ไม่ได้มา 2 นาที ·
+            `docker compose ps` แล้วดู log ของ service นั้น
+
+      # exporter ยังตอบแต่ต่อ Postgres ไม่ได้ — ServiceDown จับไม่ได้เพราะ up ของ exporter ยังเป็น 1
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Postgres ไม่ตอบ (postgres-exporter ต่อไม่ได้)'
+          description: >-
+            ingest ใหม่พัง (log เข้า DB ไม่ได้) · `docker logs logchain-postgres --tail 50`
+
+      # cluster มี 3 broker (replication 3) — ขาดตัวเดียวยังทำงานได้แต่ความทนทานลดลง
+      - alert: KafkaBrokerMissing
+        expr: kafka_brokers < 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Kafka เหลือ {{ $value }} จาก 3 broker'
+          description: >-
+            `docker compose ps kafka-1 kafka-2 kafka-3` · ถ้าเหลือไม่ถึง min.insync.replicas ส่ง log ไม่ได้
+            (backend เก็บลง kafka_pending_logs รอ replay ให้เอง)
