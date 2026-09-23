@@ -41,7 +41,7 @@
 ### E03 — Blockchain Integrity
 - Smart contract stores SHA-256 hash per log batch
 - Immutable record on Polygon Amoy testnet
-- Contract: `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD` (ตรวจสอบได้ที่ amoy.polygonscan.com)
+- Contract: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5` (ตรวจสอบได้ที่ amoy.polygonscan.com)
 - Verification ทำโดย IntegrityService (NestJS) + smart contract
 
 ### E04 — Vulnerability Scanning

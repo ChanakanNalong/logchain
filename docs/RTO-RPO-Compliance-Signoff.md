@@ -34,7 +34,7 @@
 ### Blockchain Failure
 1. ตรวจ RPC endpoint ของ Polygon Amoy testnet
 2. Redeploy contract ถ้าจำเป็น
-3. Verify contract `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD` ที่ amoy.polygonscan.com
+3. Verify contract `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5` ที่ amoy.polygonscan.com
 
 ---
 

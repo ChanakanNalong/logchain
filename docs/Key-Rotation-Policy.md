@@ -61,7 +61,7 @@ secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain
 
 rotate deployment key จริงก่อนส่งมอบ — contract เดิมถูกแทนที่ด้วย deployment ใหม่
 ที่ใช้คีย์ที่ไม่เคยเปิดเผย (contract ปัจจุบัน:
-`0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`, ตรวจสอบได้ที่ amoy.polygonscan.com)
+`0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`, ตรวจสอบได้ที่ amoy.polygonscan.com)
 
 **บทเรียน:** secret ที่มีหลายแหล่ง (`.env` + Vault) ต้อง sync ให้ครบทุกที่
 ถ้าแก้แค่ที่เดียว ระบบจะพังเงียบ ๆ ตอน cache หมดอายุ — เจอจริง 2 ครั้ง
@@ -75,6 +75,7 @@ rotate deployment key จริงก่อนส่งมอบ — contract �
 | ______ | (initial) | ______ | Vault production mode setup |
 | 2026-08-18 | Keycloak `logchain-admin-svc` client secret | Chanakan | Regenerate → sync Vault + `.env` → restart backend; verified `GET /admin/users` = 200 |
 | 2026-09-06 | Blockchain deployment key | Chanakan | คีย์เดิมเคยแสดงเป็น plaintext ระหว่างพัฒนา → wallet ใหม่ + redeploy contract `0xE2502FC1…` + re-seal batch |
+| 2026-09-17 | Blockchain deployment key (+ secret อื่นทั้งชุด) | Chanakan | wallet ใหม่ `0x8cBCfC04…4C55` + redeploy contract `0xE2502FC1…` → `0x5dC86975…` (contract ไม่มี `transferOwnership`) · batch เดิม re-anchor root เดิมลง contract ใหม่ → `CONFIRMED` ที่ block 47802992 · รายละเอียด `docs/worklog/2026-09-17.md` หัวข้อ 4.3 |
 
 ---
 

@@ -35,8 +35,10 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 - **Node.js 22** — เฉพาะตอนจะรัน backend บน host เอง (ดู `.nvmrc`)
   `package.json` engines = `^20.19.0 || ^22.12.0 || >=23.0.0` — node 18 พังตอน boot
   ด้วย `ERR_REQUIRE_ESM` เพราะ `jwks-rsa@4` ลาก `jose@6` ที่เป็น ESM-only
-- (optional) Polygon Amoy testnet — contract `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`
-  (ตรวจสอบได้ที่ amoy.polygonscan.com)
+- (optional) Polygon Amoy testnet — contract `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
+  (ตรวจสอบได้ที่ amoy.polygonscan.com) · **เขียนได้เฉพาะ wallet ที่เป็น owner** — clone ไปใช้เองให้
+  deploy `LogIntegrity.sol` ด้วย wallet ของตัวเองแล้วใส่ address นั้นแทน ไม่ตั้งเลยก็ได้ (batch เป็น `SEALED`
+  proof + tamper detection ยังทำงานครบ)
 
 > **ไม่ต้อง clone `logchain-contracts`** ถ้าใช้ contract ที่ deploy ไว้แล้วข้างบน —
 > backend ฝัง minimal ABI 3 function ไว้เองที่ `src/blockchain/blockchain.service.ts`

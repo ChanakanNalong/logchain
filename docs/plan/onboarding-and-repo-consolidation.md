@@ -176,7 +176,8 @@ prometheus-fastapi-instrumentator==8.0.2
 3 function ไว้เองที่ `src/blockchain/blockchain.service.ts:8`
 
 เชื่อมกันผ่าน **string เดียว** คือ `CONTRACT_ADDRESS` ใน `.env`
-contract ที่ deploy ไว้แล้วบน Polygon Amoy: `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`
+contract ที่ deploy ไว้แล้วบน Polygon Amoy: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
+(แก้ 2026-09-23 — เดิมเขียน `0xE2502FC1…` ซึ่งถูกแทนตั้งแต่ rotate key 2026-09-17)
 
 blockchain เป็น optional — `blockchain.service.ts:77` ถ้าไม่มี key หรือ address จะ log
 `"Blockchain config missing - integrity disabled"` แล้วไปต่อ ไม่ crash

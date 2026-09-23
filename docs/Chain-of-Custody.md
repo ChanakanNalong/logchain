@@ -18,7 +18,7 @@
 | 6 | Retention | Log retained for 365 days | RetentionService | Cron Job | - |
 | 7 | Erasure | Log erased on PDPA request | ErasureService | API | Tombstone hash recorded |
 
-Contract ที่ใช้ anchor: `0xE2502FC14B55a6bA0925C53bC4FFd2744CeA15CD`
+Contract ที่ใช้ anchor: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
 (ตรวจสอบได้ที่ amoy.polygonscan.com)
 
 ---
