@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
+import { isEthersError } from '../common/process/unhandled-rejection';
 import { VaultService } from '../vault/vault.service';
 
 // ABI แบบ minimal — แค่ 3 function ที่ใช้จริง
@@ -65,6 +66,13 @@ function isUnsetPlaceholder(value: string | undefined | null): boolean {
   if (/^(0x)?CHANGE_ME/i.test(value.trim())) return true;
   return /^0x0{40}$/i.test(value.trim());
 }
+
+/**
+ * error จาก tx.wait() ที่แปลว่า "รู้ผลแล้ว" ไม่ใช่ "ยังไม่รู้"
+ * CALL_EXCEPTION       = tx ลง chain แต่ revert (receipt.status 0) — root ไม่ถูกเก็บ
+ * TRANSACTION_REPLACED = nonce นี้ถูก tx อื่นใช้ไป — tx ของเราไม่มีวันลง
+ */
+const TX_OUTCOME_KNOWN = new Set(['CALL_EXCEPTION', 'TRANSACTION_REPLACED']);
 
 /**
  * TIMEOUT จาก tx.wait(confirms, timeout) เพราะรอครบเพดานแล้ว (ไม่ใช่ RPC ไม่ตอบ)
@@ -279,20 +287,21 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         confirmed: true,
       };
     } catch (err: unknown) {
-      const e = err as {
-        code?: unknown;
-        shortMessage?: unknown;
-        message?: unknown;
-      } | null;
-      if (e?.code !== 'TIMEOUT') throw err;
+      // ผลของ tx รู้แน่แล้ว (revert บน chain / ถูกแทนที่) → caller ตั้ง FAILED เหมือนเดิม
+      // ไม่ใช่ error ของ ethers = บั๊กในโค้ดเรา → โยนต่อ ไม่กลบเป็น "ยังไม่ confirm"
+      if (!isEthersError(err) || TX_OUTCOME_KNOWN.has(err.code)) throw err;
 
-      // tx ส่งไปแล้ว ผลยังไม่รู้ — ไม่ใช่ความล้มเหลว ทั้งสองแบบ
+      // tx ส่งไปแล้ว แต่ถาม receipt ไม่ได้ (รอครบเพดาน / RPC timeout / RPC พัง) = ผลยังไม่รู้
+      // ไม่ใช่ความล้มเหลว — เดิม RPC พังแบบอื่นที่ไม่ใช่ TIMEOUT ถูกโยนเป็น FAILED แล้ว log ถูก
+      // seal ซ้ำใน batch ใหม่ (ส่ง tx ซ้ำ เสีย gas ทั้งที่ tx แรกอาจลง chain แล้ว)
       // คืน hash ไปให้ caller บันทึก แล้วให้รอบ verify ถัดไปตามผลเอง
       // ethers ใช้ code TIMEOUT ทั้ง "รอครบเพดานแล้วยังไม่ mine" และ "RPC ไม่ตอบระหว่างถาม receipt"
       // ต้องแยกใน log ไม่งั้นอ่านแล้วนึกว่า chain ช้า ทั้งที่ RPC ต่างหากที่มีปัญหา
       const why = isWaitDeadline(err)
         ? `not confirmed within ${this.txTimeoutMs}ms`
-        : `RPC timed out while waiting for the receipt (${String(e.shortMessage ?? e.message)})`;
+        : err.code === 'TIMEOUT'
+          ? `RPC timed out while waiting for the receipt (${err.shortMessage})`
+          : `RPC error while waiting for the receipt (${err.code}: ${err.shortMessage})`;
       this.logger.warn(
         `Root tx=${tx.hash} for batch ${batchId} ${why} — leaving it for the next verify round`,
       );

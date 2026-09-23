@@ -34,9 +34,11 @@ const BLOCK = {
 };
 
 type RpcCall = { id: number; method: string; params: unknown[] };
-/** คืน undefined = ตอบค่าปกติ · 'DROP' = ตอบ 502 ทั้ง batch (เหมือน RPC timeout) · object = JSON-RPC error */
+/** คืน undefined = ตอบค่าปกติ · 'DROP' = ตอบ 502 ทั้ง batch (เหมือน RPC timeout) · { error } = JSON-RPC error · { result } = ตอบค่านี้แทน */
 type JsonRpcError = { code: number; message: string };
-type Override = (call: RpcCall) => undefined | 'DROP' | { error: JsonRpcError };
+type Override = (
+  call: RpcCall,
+) => undefined | 'DROP' | { error: JsonRpcError } | { result: unknown };
 
 describe('BlockchainService — nonce handling', () => {
   let server: http.Server;
@@ -92,9 +94,13 @@ describe('BlockchainService — nonce handling', () => {
             return;
           }
           results.push(
-            o
+            o && 'error' in o
               ? { jsonrpc: '2.0', id: call.id, error: o.error }
-              : { jsonrpc: '2.0', id: call.id, result: answer(call) },
+              : {
+                  jsonrpc: '2.0',
+                  id: call.id,
+                  result: o ? o.result : answer(call),
+                },
           );
         }
         res.setHeader('content-type', 'application/json');
@@ -222,6 +228,59 @@ describe('BlockchainService — nonce handling', () => {
       .join('\n');
     expect(msg).toContain('RPC timed out while waiting for the receipt');
     expect(msg).not.toContain('not confirmed within');
+  });
+
+  it('RPC พังแบบอื่น (502) ระหว่างถาม receipt — tx ส่งไปแล้ว คืน confirmed:false ไม่โยน (เดิมกลายเป็น FAILED)', async () => {
+    const warn = Logger.prototype.warn as jest.Mock;
+    override = (c) =>
+      c.method === 'eth_getTransactionReceipt' ? 'DROP' : undefined;
+
+    await expect(store('b1')).resolves.toMatchObject({
+      confirmed: false,
+      blockNumber: null,
+    });
+
+    expect(sentNonces).toEqual([CHAIN_NONCE]);
+    const msg = (warn.mock.calls as unknown[][])
+      .map((c) => String(c[0]))
+      .join('\n');
+    expect(msg).toContain('RPC error while waiting for the receipt');
+  });
+
+  it('tx ลง chain แต่ revert (receipt status 0) — รู้ผลแล้ว ต้องโยนให้ caller ตั้ง FAILED', async () => {
+    override = (c) =>
+      c.method === 'eth_getTransactionReceipt'
+        ? {
+            result: {
+              transactionHash: c.params[0],
+              blockHash: '0x' + '33'.repeat(32),
+              blockNumber: '0x10',
+              transactionIndex: '0x0',
+              from: new ethers.Wallet('0x' + '01'.repeat(32)).address,
+              to: '0x' + '44'.repeat(20),
+              contractAddress: null,
+              cumulativeGasUsed: '0x5208',
+              gasUsed: '0x5208',
+              effectiveGasPrice: '0x3b9aca00',
+              logs: [],
+              logsBloom: '0x' + '00'.repeat(256),
+              status: '0x0',
+              type: '0x2',
+            },
+          }
+        : undefined;
+
+    await expect(store('b1')).rejects.toMatchObject({
+      code: 'CALL_EXCEPTION',
+    });
+  });
+
+  it('error ที่ไม่ใช่ของ ethers ระหว่างรอ (บั๊กในโค้ด) — โยนต่อ ไม่กลบเป็น "ยังไม่ confirm"', async () => {
+    jest
+      .spyOn(ethers.ContractTransactionResponse.prototype, 'wait')
+      .mockRejectedValueOnce(new TypeError('bug'));
+
+    await expect(store('b1')).rejects.toThrow(TypeError);
   });
 
   it('ยิงพร้อมกันสองตัว (cron seal + cron anchor) — ได้ nonce ไม่ชนกัน แม้ RPC ตอบ pending ล้าหลัง', async () => {

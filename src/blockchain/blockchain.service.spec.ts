@@ -223,7 +223,9 @@ describe('isWaitDeadline', () => {
     // providers/abstract-provider.js (waitForBlock)
     expect(
       isWaitDeadline(
-        ethers.makeError('timeout', 'TIMEOUT', { reason: 'timeout' }),
+        ethers.makeError('timeout', 'TIMEOUT', {
+          reason: 'timeout',
+        } as never),
       ),
     ).toBe(false);
     expect(isWaitDeadline(new Error('wait for transaction timeout'))).toBe(

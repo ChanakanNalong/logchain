@@ -100,6 +100,10 @@ mount ไป `/app/data/GeoLite2-City.mmdb` ถ้าอยากเปิด ge
 rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้อจำกัด:** restart consumer แล้วลืม
 (ซ้ำจาก Kafka redeliver หลัง restart ยังหลุดได้) · เทสต์ Python รันใน CI job `detection` แล้ว
 
+### 3.5 ✅ RPC error อื่นระหว่างรอ receipt → UNVERIFIED ไม่ใช่ FAILED (2026-09-23)
+เดิมเฉพาะ TIMEOUT ที่นับเป็น "ยังไม่รู้ผล" · ตอนนี้ error ของ ethers ทุกตัวยกเว้น `CALL_EXCEPTION` /
+`TRANSACTION_REPLACED` คืน `confirmed:false` · error ที่ไม่ใช่ของ ethers ยังโยนต่อ (worklog หัวข้อ 18)
+
 ---
 
 # ⛔ ห้ามทำ (ตัดสินใจไปแล้ว อย่าถกใหม่)
