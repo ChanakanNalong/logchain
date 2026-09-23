@@ -98,7 +98,7 @@ mount ไป `/app/data/GeoLite2-City.mmdb` ถ้าอยากเปิด ge
 ### 3.4 ✅ detection กัน event ซ้ำด้วย `log_id` — เสร็จแล้ว (2026-09-23)
 `detection/app/dedup.py` (`SeenIds` จำ 10,000 id ล่าสุดในหน่วยความจำ) · consumer ข้าม id ที่เคยเห็นก่อนเข้า
 rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้อจำกัด:** restart consumer แล้วลืม
-(ซ้ำจาก Kafka redeliver หลัง restart ยังหลุดได้) · เทสต์ Python ยังไม่อยู่ใน CI — รันเองตามหัวข้อ 16 ของ worklog
+(ซ้ำจาก Kafka redeliver หลัง restart ยังหลุดได้) · เทสต์ Python รันใน CI job `detection` แล้ว
 
 ---
 

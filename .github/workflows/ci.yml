@@ -59,6 +59,25 @@ jobs:
           NEXT_PUBLIC_KEYCLOAK_REALM: logchain
           NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: logchain-frontend
 
+  detection:
+    name: Detection — Python unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: detection
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12' # ตรงกับ base image ใน detection/Dockerfile
+      # ลงแค่ที่เทสต์ใช้ ไม่ลง requirements.txt ทั้งไฟล์ (มี torch ~GB)
+      # เวอร์ชันอ่านจาก requirements.txt ให้ตรงกับ image เสมอ
+      - name: Install test deps
+        run: pip install "$(grep -E '^PyYAML==' requirements.txt)"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
+
   integration:
     name: Integration — Postgres + Vault
     runs-on: ubuntu-latest

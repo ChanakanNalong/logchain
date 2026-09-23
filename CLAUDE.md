@@ -18,6 +18,7 @@ rule engine + DeepLog) → alert · integrity ใช้ Merkle root ต่อ ba
 - **ตาราง `logs` เป็น append-only** — trigger `trg_logs_no_update` บล็อก UPDATE/DELETE
 - **ก่อน commit ให้รัน `npm run lint:ci`** (มีเพดาน warning 668) ไม่ใช่ `npm run lint`
   ชุดที่ CI รันจริง: `lint:ci` + `npm test` + `npm run build` + `npx jest --config test/jest-e2e.json`
+  + ฝั่ง detection: `cd detection && python -m unittest discover -s tests -t . -v` (ต้องมี PyYAML)
 - **e2e ยิง DB จริงและทิ้ง batch UNVERIFIED ไว้** (`tx_hash` ขึ้นต้น `0xaaaa…`) ลบทุกครั้งหลังรัน
 - **`docker compose` ต้องมี `HOST_UID=$(id -u) HOST_GID=$(id -g)` เสมอ** ไม่งั้นไฟล์ของ Vault เป็นของ root
 - **ห้าม `docker compose down -v`** ถ้ายังอยากได้ข้อมูล demo เดิม
