@@ -184,3 +184,64 @@ tests:
               description: >-
                 `docker compose ps kafka-1 kafka-2 kafka-3` · ถ้าเหลือไม่ถึง min.insync.replicas ส่ง log ไม่ได้
                 (backend เก็บลง kafka_pending_logs รอ replay ให้เอง)
+
+  # ---- BatchStuckUnverified ----
+  # อายุ 20 นาทีตอนเริ่ม ขึ้นทีละ 60 วิ → เกิน 30 นาทีที่นาที 11 + for 5m = เด้งนาที 16
+  # CONFIRMED เก่าแค่ไหนก็ไม่เกี่ยว
+  - interval: 1m
+    input_series:
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="UNVERIFIED"}'
+        values: '1200+60x30'
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="CONFIRMED"}'
+        values: '600000+60x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: BatchStuckUnverified
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: BatchStuckUnverified
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: nestjs-api
+              instance: backend:3000
+              status: UNVERIFIED
+            exp_annotations:
+              summary: 'batch ค้าง UNVERIFIED มา 36m 0s'
+              description: >-
+                root ของ batch ไม่อยู่บน chain และระบบไม่ส่งใหม่เอง (INTEGRITY_AUTO_REANCHOR=false) ·
+                ตรวจว่าไม่มีใครแก้ DB แล้วเปิด re-anchor ชั่วคราว — README Troubleshooting
+                "batch ค้าง UNVERIFIED เป็นชั่วโมง"
+
+  # UNVERIFIED สั้น ๆ แล้วหาย (tx confirm ทีหลัง = ปกติ) → series หายไป → ไม่เด้ง
+  - interval: 1m
+    input_series:
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="UNVERIFIED"}'
+        values: '0+60x3 _x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: BatchStuckUnverified
+        exp_alerts: []
+
+  # ---- BatchStuckPending ----
+  - interval: 1m
+    input_series:
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="PENDING"}'
+        values: '0+60x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: BatchStuckPending
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: BatchStuckPending
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: nestjs-api
+              instance: backend:3000
+              status: PENDING
+            exp_annotations:
+              summary: 'batch ค้าง PENDING มา 16m 0s'
+              description: >-
+                seal ไม่จบ · `docker logs logchain-backend 2>&1 | grep -i -E "batch|seal"` ·
+                `select id, status, sealed_at, tx_hash from batches where status='PENDING'`

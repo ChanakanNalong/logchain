@@ -89,3 +89,33 @@ groups:
           description: >-
             `docker compose ps kafka-1 kafka-2 kafka-3` · ถ้าเหลือไม่ถึง min.insync.replicas ส่ง log ไม่ได้
             (backend เก็บลง kafka_pending_logs รอ replay ให้เอง)
+
+  - name: logchain-integrity
+    rules:
+      # tx ส่งแล้วแต่ไม่เคยลง chain (drop / chain reset) → verify ได้ MISSING → ค้าง UNVERIFIED
+      # INTEGRITY_AUTO_REANCHOR=false (ค่าเริ่มต้น ตั้งใจ) = ไม่มีใครส่งใหม่ ต้องมีคนตัดสินใจ
+      # ปกติ UNVERIFIED หายเองในไม่กี่นาที (tx timeout 2 นาที + verify ทุก 1 นาที) — 30 นาทีคือผิดปกติแน่
+      - alert: BatchStuckUnverified
+        expr: logchain_batch_oldest_age_seconds{status="UNVERIFIED"} > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'batch ค้าง UNVERIFIED มา {{ $value | humanizeDuration }}'
+          description: >-
+            root ของ batch ไม่อยู่บน chain และระบบไม่ส่งใหม่เอง (INTEGRITY_AUTO_REANCHOR=false) ·
+            ตรวจว่าไม่มีใครแก้ DB แล้วเปิด re-anchor ชั่วคราว — README Troubleshooting
+            "batch ค้าง UNVERIFIED เป็นชั่วโมง"
+
+      # PENDING = ระหว่าง seal (สร้าง batch → anchor → เขียน mapping) ปกติจบในไม่ถึง 2 นาที
+      # ค้างนาน = seal พังกลางทาง (เช่น process ตายระหว่างรอ tx) — batch ใบนี้ไม่มีใครเก็บต่อ
+      - alert: BatchStuckPending
+        expr: logchain_batch_oldest_age_seconds{status="PENDING"} > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'batch ค้าง PENDING มา {{ $value | humanizeDuration }}'
+          description: >-
+            seal ไม่จบ · `docker logs logchain-backend 2>&1 | grep -i -E "batch|seal"` ·
+            `select id, status, sealed_at, tx_hash from batches where status='PENDING'`
