@@ -245,3 +245,79 @@ tests:
               description: >-
                 seal ไม่จบ · `docker logs logchain-backend 2>&1 | grep -i -E "batch|seal"` ·
                 `select id, status, sealed_at, tx_hash from batches where status='PENDING'`
+
+  # ---- PostgresBackupStale ----
+  # backup สำเร็จที่ t=0 (timestamp 0) แล้วไม่มีอีก → เกิน 26 ชม. ที่ 1560m + for 10m
+  # interval ต้อง ≤ 5m (lookback ของ Prometheus) ไม่งั้นระหว่างจุดข้อมูล series หาย แล้ว `for` นับใหม่
+  - interval: 1m
+    input_series:
+      - series: 'logchain_backup_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0x1700'
+    alert_rule_test:
+      - eval_time: 1500m
+        alertname: PostgresBackupStale
+        exp_alerts: []
+      - eval_time: 1580m
+        alertname: PostgresBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: node-exporter
+              instance: node-exporter:9100
+            exp_annotations:
+              summary: 'backup Postgres ล่าสุดเก่า 1d 2h 20m 0s'
+              description: >-
+                RPO 24 ชม. ไม่เป็นจริงแล้ว · `docker logs logchain-postgres-backup --tail 20` ·
+                สั่งรอบพิเศษ `docker exec logchain-postgres-backup sh /backup.sh once`
+
+  # backup ทุก 24 ชม. ตามปกติ (timestamp ขยับที่ 1440m, 2880m) → นาที 1600/3040 ถ้าไม่ขยับจะเด้งไปแล้ว แต่นี่ไม่เด้ง
+  - interval: 1m
+    input_series:
+      - series: 'logchain_backup_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0x1439 86400x1440 172800x300'
+    alert_rule_test:
+      - eval_time: 1600m
+        alertname: PostgresBackupStale
+        exp_alerts: []
+      - eval_time: 3040m
+        alertname: PostgresBackupStale
+        exp_alerts: []
+
+  # ---- PostgresBackupFailing ----
+  # พังรอบเดียวแล้วรอบถัดไปผ่าน → ไม่เด้ง · พังยาว → เด้งหลัง 30 นาที
+  - interval: 5m
+    input_series:
+      - series: 'logchain_backup_last_run_success{job="node-exporter",instance="node-exporter:9100"}'
+        values: '1 0 1 1 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PostgresBackupFailing
+        exp_alerts: []
+      - eval_time: 55m
+        alertname: PostgresBackupFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: node-exporter
+              instance: node-exporter:9100
+            exp_annotations:
+              summary: 'backup Postgres พังติดกัน 30 นาทีขึ้นไป'
+              description: >-
+                `docker logs logchain-postgres-backup --tail 20` · เช็คพื้นที่ดิสก์ของ ./backups และ POSTGRES_PASSWORD ใน .env
+
+  # ---- PostgresBackupMissing ----
+  - interval: 5m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PostgresBackupMissing
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: PostgresBackupMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 'ไม่มีสถานะ backup Postgres'
+              description: >-
+                `docker compose ps postgres-backup node-exporter` · ไฟล์ ./backups/metrics/backup.prom ต้องมีอยู่

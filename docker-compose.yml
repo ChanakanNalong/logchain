@@ -335,6 +335,30 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # ---- Postgres backup อัตโนมัติ (logical dump วันละครั้ง) ----
+  # standby กันเครื่องพังได้ แต่ลบ/ข้อมูลเสีย replicate ตามไปด้วย — ต้องมี dump แยก
+  # ไฟล์: ./backups/postgres/<UTC>/ (0600 · gitignored) · กู้คืน: docs/RTO-RPO-Compliance-Signoff.md
+  postgres-backup:
+    image: postgres:16-alpine          # ตัวเดียวกับ DB → pg_dump เวอร์ชันตรงกัน
+    container_name: logchain-postgres-backup
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"   # ไฟล์ backup เป็นของเรา ไม่ใช่ root
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: logchain
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+    volumes:
+      - ./infra/postgres-backup/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+
   # ---- Alertmanager (ส่ง alert ของ Prometheus ออกทาง email) ----
   # ยังไม่ตั้งอีเมล = รับ alert ไว้เฉย ๆ (ดูที่ :9093) · วิธีตั้ง: README หัวข้อ Alert แจ้งทาง email
   alertmanager:
@@ -389,7 +413,10 @@ services:
     restart: unless-stopped
     command: 
       - '--path.rootfs=/host'
+      # สถานะ backup ที่ postgres-backup เขียนไว้ → metric logchain_backup_*
+      - '--collector.textfile.directory=/textfile'
     volumes:
+      - ./backups/metrics:/textfile:ro
       # rslave ตัดออก — Docker Desktop (Windows/Mac) VM root ไม่รองรับ shared/slave
       # mount propagation ("path / is mounted on / but it is not a shared or slave mount")
       - /:/host:ro

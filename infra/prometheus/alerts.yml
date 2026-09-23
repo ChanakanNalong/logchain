@@ -119,3 +119,41 @@ groups:
           description: >-
             seal ไม่จบ · `docker logs logchain-backend 2>&1 | grep -i -E "batch|seal"` ·
             `select id, status, sealed_at, tx_hash from batches where status='PENDING'`
+
+  - name: logchain-backup
+    rules:
+      # backup รอบละ 24 ชม. — เผื่อ 2 ชม. ให้รอบที่ช้า/ลองใหม่ · เกินนี้ = RPO 24 ชม. ในเอกสาร DR ไม่เป็นจริงแล้ว
+      - alert: PostgresBackupStale
+        expr: time() - logchain_backup_last_success_timestamp_seconds > 26 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'backup Postgres ล่าสุดเก่า {{ $value | humanizeDuration }}'
+          description: >-
+            RPO 24 ชม. ไม่เป็นจริงแล้ว · `docker logs logchain-postgres-backup --tail 20` ·
+            สั่งรอบพิเศษ `docker exec logchain-postgres-backup sh /backup.sh once`
+
+      # ลองใหม่ทุก 5 นาทีเอง — พังติดกันครึ่งชั่วโมงคือไม่ใช่ชั่วคราวแล้ว (รหัส / DB / ดิสก์เต็ม)
+      # เตือนก่อน Stale ~1 วัน
+      - alert: PostgresBackupFailing
+        expr: logchain_backup_last_run_success == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'backup Postgres พังติดกัน 30 นาทีขึ้นไป'
+          description: >-
+            `docker logs logchain-postgres-backup --tail 20` · เช็คพื้นที่ดิสก์ของ ./backups และ POSTGRES_PASSWORD ใน .env
+
+      # ไม่มี metric เลย = service postgres-backup ไม่ได้รัน หรือ node-exporter อ่าน ./backups/metrics ไม่ได้
+      # (Stale/Failing เงียบในกรณีนี้ เพราะไม่มี series ให้เทียบ)
+      - alert: PostgresBackupMissing
+        expr: absent(logchain_backup_last_success_timestamp_seconds)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: 'ไม่มีสถานะ backup Postgres'
+          description: >-
+            `docker compose ps postgres-backup node-exporter` · ไฟล์ ./backups/metrics/backup.prom ต้องมีอยู่

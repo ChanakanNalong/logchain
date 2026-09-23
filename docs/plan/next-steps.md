@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–28) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–29) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -14,8 +14,8 @@
   + `Security Scan` แยก workflow
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
-- Prometheus มี alert rule 8 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
-- งานในแผนเดิมปิดครบ · **ข้อ 5 ใหม่: ยังไม่มี backup อัตโนมัติของ Postgres**
+- Prometheus มี alert rule 11 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
+- งานในแผนปิดครบ · backup อัตโนมัติมีแล้ว · เหลือ 5.1 (สำเนานอกเครื่อง — รอเจ้าของเลือกปลายทาง)
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -129,13 +129,15 @@ CI job `prometheus` ตรวจ config ทั้งสองแบบด้ว�
 เครื่องนี้ยังเป็น `true` ตามเดิม
 
 
-## 5. 🟡 backup อัตโนมัติของ Postgres — ยังไม่มี (เจอ 2026-09-23 ตอนทดสอบกู้คืน)
+## 5. ✅ backup อัตโนมัติของ Postgres — เสร็จ (2026-09-23)
 
-เอกสาร RTO/RPO สัญญา RPO 24 ชม. จาก daily backup แต่ไม่มี backup job เลย · **ขั้นตอน restore ทดสอบผ่านแล้ว**
-(worklog หัวข้อ 28 · คำสั่งอยู่ใน `docs/RTO-RPO-Compliance-Signoff.md` หัวข้อ Database Failure)
-ต้องทำ: script dump `globals` + `logchain` + `keycloak` ตามคำสั่งในเอกสาร · เก็บนอก docker volume · ตั้งเวลาวันละครั้ง
-(cron / systemd timer ของเครื่อง หรือ service ใน compose) · เก็บย้อนหลัง N วัน · **dump มี hash รหัส role + log → เก็บแบบ 0600
-และไม่เข้า git** · alert เมื่อ backup ล่าสุดเก่ากว่า 26 ชม. · ทดสอบ restore จากไฟล์ที่ job สร้างจริง 1 รอบ
+service `postgres-backup` (`infra/postgres-backup/backup.sh`) · วันละครั้ง → `./backups/postgres/<UTC>/` (globals + logchain +
+keycloak · 0600 · gitignored · เก็บ 7 ชุด) · alert `PostgresBackupStale` / `Failing` / `Missing` ผ่าน node-exporter textfile ·
+**กู้จากไฟล์ที่ job สร้างจริงผ่านแล้ว** (worklog หัวข้อ 29) · สั่งเพิ่ม: `docker exec logchain-postgres-backup sh /backup.sh once`
+
+### 5.1 🟢 สำเนา backup นอกเครื่อง — ยังไม่ทำ (ต้องให้เจ้าของเลือกปลายทาง)
+`./backups/` อยู่ดิสก์เดียวกับ docker volume ของ DB → กันลบ/ข้อมูลเสียได้ แต่ดิสก์พัง/เครื่องหาย = หายพร้อมกัน
+ต้องเลือก: external drive / NAS / cloud (rclone → Google Drive ฯลฯ) · dump มี hash รหัส role + ข้อมูล log → ต้องเข้ารหัสก่อนส่งออก
 
 ---
 
@@ -200,7 +202,8 @@ CI job `prometheus` ตรวจ config ทั้งสองแบบด้ว�
 | `detection/app/rules.py` | rule engine + `_event_time()` |
 | `detection/app/dedup.py` | `SeenIds` กัน event ซ้ำ (เทสต์ `detection/tests/`) |
 | `src/common/process/unhandled-rejection.ts` | guard ethers unhandled rejection + metric |
-| `infra/prometheus/alerts.yml` | alert rule 8 ตัว (เทสต์ `alerts.test.yml` — เพิ่ม rule ต้องเพิ่มเทสต์ CI รัน promtool) |
+| `infra/postgres-backup/backup.sh` | backup อัตโนมัติ (service `postgres-backup`) |
+| `infra/prometheus/alerts.yml` | alert rule 11 ตัว (เทสต์ `alerts.test.yml` — เพิ่ม rule ต้องเพิ่มเทสต์ CI รัน promtool) |
 | `.github/workflows/ci.yml` | CI 5 job — ขั้น Seed Vault อ่าน AppRole จาก `infra/vault/.secrets/approle.env` |
 | `scripts/vault-unlock.sh` | ปลด Vault lockout |
 | `README.md` Troubleshooting + Vault user lockout | เคสที่เจอบ่อยพร้อมคำสั่งแก้ |

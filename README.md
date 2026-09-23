@@ -150,6 +150,20 @@ npm install && npm run start:dev
 
 ---
 
+## Backup ฐานข้อมูล
+
+service `postgres-backup` dump Postgres (role + DB `logchain` + DB `keycloak` ที่มี users/OTP) **วันละครั้งอัตโนมัติ**
+ลง `./backups/postgres/<UTC timestamp>/` เก็บ 7 ชุดล่าสุด (ไฟล์ 0600 · ไม่เข้า git) · backup เก่าเกิน 26 ชม. หรือพังติดกัน → alert
+
+```bash
+ls backups/postgres/                                        # ชุดที่มี
+docker exec logchain-postgres-backup sh /backup.sh once     # ทำเพิ่มทันที (เช่นก่อนแก้ข้อมูลใหญ่)
+docker logs logchain-postgres-backup --tail 5
+```
+
+กู้คืน: `docs/RTO-RPO-Compliance-Signoff.md` หัวข้อ Database Failure (ทดสอบกู้จากไฟล์ที่ job สร้างจริงแล้ว)
+⚠️ `./backups/` อยู่เครื่องเดียวกับ DB — ดิสก์พังหายพร้อมกัน ควรคัดลอกไปเก็บที่อื่นเป็นระยะ
+
 ## Alert แจ้งทาง email
 
 Prometheus ส่ง alert (rule ใน `infra/prometheus/alerts.yml` — service ล่ม, Postgres ล่ม, Kafka broker ขาด,

@@ -11,7 +11,7 @@
 | Component | RTO | RPO | Recovery Strategy |
 |-----------|-----|-----|-------------------|
 | NestJS Backend | 30 min | 1 hour | Restart container, restore from backup |
-| PostgreSQL | 1 hour | 24 hours ⚠️ | pg_restore from daily backup — **ยังไม่มี backup อัตโนมัติ** (ดูหัวข้อ 3.1) |
+| PostgreSQL | 1 hour | 24 hours | pg_restore จาก dump รายวันของ service `postgres-backup` (`./backups/postgres/` · เก็บ 7 ชุด · alert เมื่อเก่าเกิน 26 ชม.) ⚠️ อยู่ดิสก์เดียวกับ DB — ดูหัวข้อ 3.2 |
 | Kafka | 30 min | 1 hour | Restart broker, replay from offset |
 | Blockchain (Polygon Amoy testnet) | 4 hours | N/A | ต่อ RPC ใหม่ / redeploy contract |
 | Anomaly Detection (FastAPI) | 30 min | N/A | Restart container |
@@ -32,7 +32,9 @@
 
 ```bash
 docker logs logchain-postgres --tail 50
-# สร้าง dump (ต้องทำไว้ก่อนเกิดเหตุ — ยังไม่มี job อัตโนมัติ)
+# dump อัตโนมัติวันละครั้งอยู่ที่ ./backups/postgres/<UTC>/ (globals.sql · logchain.dump · keycloak.dump)
+# ทำเพิ่มเอง/ก่อนเปลี่ยนแปลงใหญ่: docker exec logchain-postgres-backup sh /backup.sh once
+# หรือด้วยมือ:
 docker exec logchain-postgres pg_dumpall -U logchain --globals-only > globals.sql
 docker exec logchain-postgres pg_dump -U logchain -Fc logchain > logchain.dump
 docker exec logchain-postgres pg_dump -U logchain -Fc keycloak > keycloak.dump   # users + OTP
@@ -106,6 +108,19 @@ RPO 24 ชม. ในตารางข้างบนจึง **ยังไ�
 standby (streaming replication) กันเครื่องพังได้ แต่ **กันการลบ/ข้อมูลเสียไม่ได้** เพราะ replicate ตามไปด้วย
 
 ---
+
+### 3.2 Backup อัตโนมัติ — 2026-09-23
+
+service `postgres-backup` ใน compose (`infra/postgres-backup/backup.sh`) · เช็คทุก 5 นาที ครบ 24 ชม. → dump globals +
+logchain + keycloak → ตรวจด้วย `pg_restore --list` → ย้ายเข้า `./backups/postgres/<UTC>/` (0600 · gitignored) · เก็บ 7 ชุด ·
+พังแล้วลองใหม่ใน 5 นาที · สถานะ → node-exporter textfile → alert `PostgresBackupStale` (> 26 ชม.) /
+`PostgresBackupFailing` (พัง 30 นาที) / `PostgresBackupMissing` (ไม่มีสถานะ 1 ชม.) → email
+
+ทดสอบแล้ว: ชุดแรกสร้างทันทีที่ service ขึ้น · รหัสผิด → metric = 0 ไม่มีไฟล์ค้าง ชุดเดิมอยู่ครบ · เก็บ N ชุดลบตัวเก่าถูก ·
+**กู้จากไฟล์ที่ job สร้างจริง** ด้วยขั้นตอนข้างบนลง postgres ที่เหมือน compose → ข้อมูลตรงทุกไบต์ · owner ถูก · append-only ทำงาน
+
+**ข้อจำกัด:** `./backups/` อยู่ **ดิสก์เดียวกับ docker volume ของ DB** — กันลบ/ข้อมูลเสียได้ แต่ดิสก์พัง = DB + backup หายพร้อมกัน
+ยังไม่มีสำเนานอกเครื่อง (off-site) · ต้องทำเพิ่มถ้าจะนับ RPO กรณีเครื่องหาย
 
 ## 4. Compliance Sign-off Checklist
 

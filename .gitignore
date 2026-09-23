@@ -91,3 +91,6 @@ detection/data/GeoLite2-City.mmdb
 detection/venv/
 __pycache__/
 *.py[cod]
+
+# Postgres dump อัตโนมัติ (มี hash รหัส role + ข้อมูล log) — ห้ามเข้า git
+/backups/

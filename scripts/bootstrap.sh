@@ -33,7 +33,7 @@ INFRA_SERVICES=(postgres postgres-standby postgres-exporter
                 keycloak-config keycloak
                 kafka-1 kafka-2 kafka-3 kafka-init kafka-exporter
                 vault vault-unseal vault-init
-                prometheus alertmanager grafana node-exporter)
+                prometheus alertmanager grafana node-exporter postgres-backup)
 APP_SERVICES=(backend cylis-dashboard detection-api detection-consumer)
 
 say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
@@ -109,6 +109,8 @@ fi
 # โฟลเดอร์รหัส SMTP ของ Alertmanager (gitignored) — ต้องมีก่อน compose up ไม่งั้น docker สร้าง
 # bind mount ให้เองเป็นของ root แล้วเราเขียนไฟล์รหัสลงไปไม่ได้
 mkdir -p infra/alertmanager/.secrets && chmod 700 infra/alertmanager/.secrets
+# ปลายทางของ postgres-backup (dump 0600 · gitignored) + textfile ให้ node-exporter — เหตุผลเดียวกัน
+mkdir -p backups/postgres backups/metrics && chmod 700 backups backups/postgres && chmod 755 backups/metrics
 
 # ── 3. infra ───────────────────────────────────────────────────────────────
 say "3/6  ยก infrastructure"
