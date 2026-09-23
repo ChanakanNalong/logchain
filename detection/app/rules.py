@@ -6,6 +6,7 @@ Wazuh-style rule engine
 import logging
 import re
 import time
+from datetime import datetime, timezone
 import yaml
 from collections import defaultdict, deque
 from pathlib import Path
@@ -48,7 +49,10 @@ class RuleEngine:
         event_type  = log_event.get("eventType", "")
         cde_scope   = log_event.get("cdeScope", False)
         source      = log_event.get("source", "unknown")
-        now         = time.time()
+        # ใช้เวลาของ event ไม่ใช่เวลาที่รับเข้ามา — backend replay log ที่ค้างคิวตอน Kafka ล่ม
+        # ทีเดียวทั้งก้อน ถ้านับหน้าต่างเวลาจากตอนรับ log ที่ห่างกันเป็นชั่วโมงจะกลายเป็น
+        # "5 ครั้งใน 60 วินาที" ทันที (rule 5710 เด้งทั้งที่ไม่มีอะไรเกิดขึ้นตอนนี้)
+        now         = _event_time(log_event)
 
         for rule in self.rules:
             # filter: event_type
@@ -103,3 +107,17 @@ class RuleEngine:
             }
         
         return None
+
+
+def _event_time(log_event: dict) -> float:
+    """
+    เวลาของ event เป็น epoch seconds — อ่านจาก createdAt ที่ backend ใส่มา (ISO-8601 UTC)
+    ไม่มี/พังก็ถอยไปใช้เวลาปัจจุบัน ดีกว่าโยน error ทิ้ง log ทั้งใบ
+    """
+    raw = log_event.get("createdAt")
+    if isinstance(raw, str) and raw:
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            log.warning(f"createdAt อ่านไม่ออก ใช้เวลาปัจจุบันแทน: {raw!r}")
+    return time.time()

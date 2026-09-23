@@ -29,6 +29,7 @@ import { StatsModule } from './stats/stats.module';
 import { AdminModule } from './admin/admin.module';
 import { AlertsRuleDedup1790121600000 } from './database/migrations/1790121600000-AlertsRuleDedup';
 import { AlertsLastNotified1790208000000 } from './database/migrations/1790208000000-AlertsLastNotified';
+import { KafkaPendingLogs1790294400000 } from './database/migrations/1790294400000-KafkaPendingLogs';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { AlertsLastNotified1790208000000 } from './database/migrations/179020800
           migrations: [
             AlertsRuleDedup1790121600000,
             AlertsLastNotified1790208000000,
+            KafkaPendingLogs1790294400000,
           ],
           migrationsRun: true,
         };
