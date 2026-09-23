@@ -13,6 +13,7 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
+from app.dedup import SeenIds
 from app.enrichment import enrich_ip
 from app.rules import RuleEngine
 from app.vault import get_vault
@@ -34,7 +35,7 @@ _vault = get_vault()
 MESSAGE_COUNT = Counter(
     "consumer_messages_total",
     "Messages processed by consumer",
-    ["status"], # success / failed / rule_match / ml_anomaly / normal
+    ["status"], # success / failed / rule_match / ml_anomaly / normal / duplicate
 )
 
 ALERT_COUNT = Counter(
@@ -215,10 +216,17 @@ consumer = KafkaConsumer(
 
 log.info(f"Listening on logs.raw at {KAFKA_BROKER}")
 
+# replay ของ backend เป็น at-least-once — log ใบเดิมมาซ้ำได้ ต้องไม่ถูกนับซ้ำ (ดู app/dedup.py)
+seen_ids = SeenIds()
+
 for msg in consumer:
     with PROCESS_DURATION.time():
         try:
             event = msg.value
+            if seen_ids.is_duplicate(event.get("id")):
+                log.info(f"skip duplicate log id={event.get('id')}")
+                MESSAGE_COUNT.labels(status="duplicate").inc()
+                continue
             message = event.get("message", "")
             source = event.get("source", "unknown")
             source_ip = event.get("sourceIp")
