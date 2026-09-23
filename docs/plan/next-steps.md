@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–31) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–32) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -15,9 +15,9 @@
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule 13 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
-- **งานในแผนปิดครบ ไม่มีงานค้าง** · backup รายวันในเครื่อง + สำเนาเข้ารหัสบน Google Drive (ทดสอบกู้คืนจาก Drive แล้ว)
-- มี migration แล้ว 3 ตัว รันเองตอน backend boot:
-  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
+- งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 ใหม่: ช่องว่าง compliance จากการทบทวน**
+- มี migration แล้ว 4 ตัว รันเองตอน backend boot:
+  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog`
 
 ### คำสั่งที่ใช้บ่อย
 
@@ -141,6 +141,23 @@ service `backup-offsite` · rclone crypt → `gdrive:logchain-backups` ทุก
 config + token: `infra/rclone/.secrets/rclone.conf` (gitignored) · password ของ crypt อยู่กับเจ้าของ (password manager)
 ถ้า token หมดอายุ / ถูกถอนสิทธิ์ → `OffsiteBackupFailing` → รัน script ใหม่ (reconnect เอง password crypt ไม่เปลี่ยน)
 
+
+## 6. 🟡 ทำระบบให้ตรงเอกสาร compliance — จากการทบทวน 2026-09-23
+
+รายงานเต็ม + หลักฐาน: `docs/compliance-review-2026-09-23.md` · เอกสารต้นฉบับแก้ให้ตรงความจริงแล้ว (PASS ที่ไม่จริง →
+PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว · ที่เหลือคือทำให้ระบบผ่าน เรียงตามความคุ้ม:
+
+| # | เรื่อง | review | ขนาดงาน |
+|---|---|---|---|
+| 6.1 | port ที่ publish bind `127.0.0.1` แทน `0.0.0.0` (Postgres, Kafka, Vault, Prometheus, Alertmanager ฯลฯ เปิดให้ LAN) | B15 | เล็ก — แก้ `ports:` ใน compose |
+| 6.2 | ใส่ Gmail app password ลง Vault `secret/logchain/notification` เปิด email ของ security alert | B11 | เล็ก — เจ้าของใส่รหัสเอง |
+| 6.3 | เปิด Kafka mTLS ใน compose (`KAFKA_SSL_ENABLED=true` + listener 39092) | B3 | กลาง — cert มีแล้ว |
+| 6.4 | dashboard + kafka-exporter รันเป็น non-root | B8 | เล็ก–กลาง |
+| 6.5 | pip audit ใน CI · ให้ npm audit / Trivy vuln block ที่ HIGH+ | B7 B6 | เล็ก แต่อาจเจอ vuln ค้างต้องไล่แก้ |
+| 6.6 | HTTPS หน้า backend / dashboard / Keycloak (reverse proxy + cert) | B2 | ใหญ่ — กระทบ Keycloak issuer + `NEXT_PUBLIC_*` |
+| 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
+| 6.8 | erasure ลบ `audit_access` ขัด PCI 10.5.1 (เก็บ audit ≥ 12 เดือน)? — พิจารณา pseudonymize แทนลบ | B10 | ต้องตัดสินใจก่อน |
+
 ---
 
 # ⛔ ห้ามทำ (ตัดสินใจไปแล้ว อย่าถกใหม่)
@@ -199,7 +216,8 @@ config + token: `infra/rclone/.secrets/rclone.conf` (gitignored) · password ข
 | `src/kafka/kafka-producer.service.ts` | producer + outbox/replay (`enqueue` · `drainPending`) |
 | `src/kafka/entities/pending-log.entity.ts` | ตาราง `kafka_pending_logs` |
 | `src/alerts/alerts.service.ts` | dedup ตาม rule · นับซ้ำ · ขยับ severity · เตือนซ้ำ |
-| `src/database/migrations/` | migration ของ schema ทั้งหมด (3 ตัว) |
+| `src/database/migrations/` | migration ของ schema ทั้งหมด (4 ตัว) |
+| `docs/compliance-review-2026-09-23.md` | ผลทบทวนเอกสาร compliance + หลักฐาน (ข้อ 6) |
 | `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง (ห้ามกลับไปใช้ NonceManager) |
 | `src/logs/entities/batch.entity.ts` | `INTACT_STATUSES` — แหล่งเดียวของสูตร integrity |
 | `detection/app/rules.py` | rule engine + `_event_time()` |

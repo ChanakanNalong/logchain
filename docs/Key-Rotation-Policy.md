@@ -12,8 +12,10 @@
 
 ## 1. Keys in Scope
 
-secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain/*`) — ไม่ใช่ `.env`
-(`.env` เก็บแค่ Vault AppRole credentials + container bootstrap values)
+secret ของแอป (backend / detection) อยู่ใน HashiCorp Vault (`secret/logchain/*`)
+`.env` ยังเก็บค่า bootstrap ของ container ที่เป็นความลับด้วย: `POSTGRES_PASSWORD`, `KC_DB_PASSWORD`,
+`REPLICATION_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_ADMIN_USER_PASSWORD`, client secrets, Vault AppRole
+(ทบทวน 2026-09-23 — เดิมเขียนว่า "ไม่ใช่ `.env`")
 
 | Secret | Vault Path | Rotation Frequency | Owner |
 |--------|-----------|--------------------|-------|
@@ -24,6 +26,10 @@ secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain
 | Gmail App Password (SMTP) | `secret/logchain/notification` | 180 days | Person C |
 | Vault root token | `infra/vault/.secrets/init.env` | 90 days (or on personnel change) | Person B |
 | Vault unseal keys (5) | `infra/vault/.secrets/init.env` | On compromise only | Person B |
+| Postgres / Keycloak / Grafana bootstrap passwords | `.env` | 90 days | Person B |
+| Alertmanager SMTP (Gmail App Password) | `infra/alertmanager/.secrets/smtp_password` | 180 days | Person C |
+| rclone Google Drive token | `infra/rclone/.secrets/rclone.conf` | เมื่อถูกถอนสิทธิ์ / หมดอายุ (`OffsiteBackupFailing`) — `scripts/setup-offsite-backup.sh` | Person B |
+| rclone crypt password ×2 | `infra/rclone/.secrets/rclone.conf` + password manager ของเจ้าของ | **ห้าม rotate โดยไม่ re-encrypt** — สำเนาเดิมบน cloud จะถอดไม่ได้ | Person B |
 
 ---
 
@@ -44,8 +50,8 @@ secret ทั้งหมดเก็บใน HashiCorp Vault (`secret/logchain
 - Rotate ผ่าน Keycloak admin → regenerate client secret → update Vault → restart NestJS
 
 ### Blockchain private key
-- Generate wallet ใหม่ → fund test MATIC (Amoy faucet) → redeploy/transfer contract ownership
-- Update `secret/logchain/blockchain` → update CONTRACT_ADDRESS ถ้า redeploy
+- Generate wallet ใหม่ → fund test MATIC (Amoy faucet) → **redeploy contract** (LogIntegrity ไม่มี `transferOwnership`)
+- Update `secret/logchain/blockchain` → update `CONTRACT_ADDRESS` → batch เดิมจะ `UNVERIFIED` → re-anchor root เดิม (`INTEGRITY_AUTO_REANCHOR=true` ชั่วคราว)
 
 ### Database password
 - ALTER USER ใน Postgres → update `secret/logchain/database` → restart NestJS

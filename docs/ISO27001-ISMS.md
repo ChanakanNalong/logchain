@@ -4,6 +4,7 @@
 **Version:** 1.0
 **Date:** 2026-06-04
 **Prepared by:** Logchain Team
+**Reviewed:** 2026-09-23 — ปรับให้ตรงกับระบบจริง (`docs/compliance-review-2026-09-23.md`)
 
 ---
 
@@ -27,12 +28,12 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 |----|-------|--------|------------|--------|------------|---------|
 | R01 | Log data | Unauthorized modification | Medium | High | HIGH | Blockchain hash verification |
 | R02 | API endpoints | Unauthorized access | Medium | High | HIGH | JWT authentication |
-| R03 | Database | Data breach | Low | Critical | HIGH | Encryption at rest, access control |
+| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest และ port 5433 เปิดบน `0.0.0.0` |
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
-| R07 | Container | Privilege escalation | Low | High | MEDIUM | Non-root container enforcement |
-| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | Trivy + npm/pip audit CI |
+| R07 | Container | Privilege escalation | Low | High | MEDIUM | ส่วนใหญ่ non-root (backend, detection, kafka, keycloak, prometheus, backup) · ⚠️ dashboard + kafka-exporter รันเป็น root |
+| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | Trivy + npm audit ใน CI (ไม่ block) · ไม่มี pip audit |
 
 ---
 
@@ -41,15 +42,15 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | Control | Description | Implementation |
 |---------|-------------|----------------|
 | A.8.1 | Asset Management | Log entries tracked with UUID, timestamp, source |
-| A.9.1 | Access Control Policy | JWT-based authentication on all API endpoints |
+| A.9.1 | Access Control Policy | JWT (Keycloak RS256) ทุก endpoint ใต้ `/api/v1` · `/health` `/metrics` เปิดสาธารณะ |
 | A.9.2 | User Access Management | admin จัดการสิทธิ์ผ่าน Keycloak + guard 3 ชั้น (ดูหัวข้อ 6) |
 | A.9.4 | System Access Control | RBAC 5 roles (admin / operator / ingestor / analyst / auditor), audit interceptor logs all access |
 | A.10.1 | Cryptographic Controls | SHA-256 hash stored on blockchain per log batch |
-| A.12.4 | Logging and Monitoring | PostgreSQL + YAML rule engine (แนว Wazuh) + ML anomaly detection |
-| A.12.6 | Vulnerability Management | Trivy scan + npm audit + pip audit in CI/CD |
-| A.13.2.1 | Information Transfer | Kafka mutual TLS ระหว่าง Detection Service กับ API Gateway (ดูหัวข้อ 5) |
-| A.16.1 | Incident Management | Alert system with severity routing + email notify |
-| A.17.1 | Business Continuity | RTO/RPO defined in continuity plan |
+| A.12.4 | Logging and Monitoring | PostgreSQL + YAML rule engine (แนว Wazuh) + ML anomaly detection · Prometheus alert 13 rule → email (Alertmanager) |
+| A.12.6 | Vulnerability Management | Trivy scan + npm audit in CI/CD (ไม่ block) · ไม่มี pip audit |
+| A.13.2.1 | Information Transfer | Kafka mutual TLS — ทำได้แต่ **ปิดอยู่** · ไม่มี HTTPS (ดูหัวข้อ 5) |
+| A.16.1 | Incident Management | Alert system with severity routing · email ของ security alert **ปิดอยู่** (SMTP ใน Vault ว่าง) · infra alert ส่ง email ผ่าน Alertmanager แล้ว |
+| A.17.1 | Business Continuity | RTO/RPO + backup รายวัน + สำเนาเข้ารหัสบน Google Drive · ทดสอบกู้คืนแล้ว (RTO-RPO หัวข้อ 3.1–3.2) |
 | A.18.1 | Legal Compliance | PDPA right-to-erasure, 365-day retention policy |
 
 ---
@@ -72,6 +73,9 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | Client ไม่มี certificate | ถูกปฏิเสธที่ TLS handshake (`bad_certificate`) |
 
 ตรวจซ้ำได้ด้วย `scripts/demo-mtls.sh`
+
+**สถานะจริง (2026-09-23):** ความสามารถมีและทดสอบผ่าน แต่ stack ที่รันอยู่ **ปิด mTLS** (`KAFKA_SSL_ENABLED=false`
+ทั้ง `.env` และ compose) — backend / detection ใช้ listener plaintext `:9092`
 
 ---
 
@@ -98,7 +102,7 @@ admin จัดการสิทธิ์ผู้ใช้ผ่าน Keycloa
 | Audit Item | Frequency | Responsible |
 |------------|-----------|-------------|
 | Access log review | Monthly | Person 2 |
-| Blockchain hash verification | Weekly | Person 1 |
+| Blockchain hash verification | ทุก 1 นาที อัตโนมัติ (+ alert batch ค้าง) · ทบทวน Weekly | Person 1 |
 | Vulnerability scan (Trivy) | Every push | GitHub Actions |
 | Retention policy enforcement | Daily cron | Person 2 |
 | Alert review | Daily | Person 2 |

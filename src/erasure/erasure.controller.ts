@@ -1,4 +1,11 @@
-import { Controller, Delete, Param, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  ForbiddenException,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import { ErasureService } from './erasure.service';
@@ -10,11 +17,20 @@ import { ErasureService } from './erasure.service';
 export class ErasureController {
   constructor(private readonly erasureService: ErasureService) {}
 
+  /**
+   * `requestedBy` ใน tombstone มาจาก JWT (JwtStrategy.validate) ไม่ใช่ body
+   * เดิมรับจาก body — ผู้ส่งคำขอพิมพ์ชื่อใครก็ได้ลงหลักฐานการลบ (และไม่ส่ง = "unknown")
+   */
   @Delete('user/:userId')
   erase(
     @Param('userId') userId: string,
-    @Body('requestedBy') requestedBy: string,
+    @Req() req: { user?: { userId?: string; username?: string } },
   ) {
-    return this.erasureService.eraseUser(userId, requestedBy ?? 'unknown');
+    const requestedBy = req.user?.username ?? req.user?.userId;
+    // ถึงตรงนี้ AuthGuard ผ่านแล้ว req.user ต้องมีเสมอ — เช็คไว้กันกรณี guard ถูกถอด
+    if (!requestedBy) {
+      throw new ForbiddenException('Missing authenticated identity');
+    }
+    return this.erasureService.eraseUser(userId, requestedBy);
   }
 }

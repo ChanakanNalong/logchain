@@ -133,10 +133,10 @@ keycloak 92/92) · owner ถูก · append-only ทำงาน** = กู้�
 | Item | Status | Verified By | Date |
 |------|--------|-------------|------|
 | Alert dedup + severity routing | DONE | Cyn903 | 2026-06-04 |
-| Email notification (HIGH/CRITICAL) | DONE | Cyn903 | 2026-06-04 |
+| Email notification (HIGH/CRITICAL) | DONE — ⚠️ ปิดอยู่บน deployment นี้ (SMTP ใน Vault ว่าง · review 2026-09-23 B11) | Cyn903 | 2026-06-04 |
 | RetentionService cron 365 days | DONE | Cyn903 | 2026-06-04 |
 | Next.js dashboard 3 pages | DONE | Cyn903 | 2026-06-04 |
-| PDPA right-to-erasure endpoint | DONE | Cyn903 | 2026-06-04 |
+| PDPA right-to-erasure endpoint | DONE — แก้ 2026-09-23: tombstone ย้ายเข้าตาราง `erasure_log` (เดิมเขียนไฟล์ไม่ได้ใน container → ลบแล้วไม่มีหลักฐาน) | Cyn903 | 2026-06-04 |
 | Trivy CI + GitHub Actions | DONE | Cyn903 | 2026-06-04 |
 | ISO 27001 ISMS document | DONE | Cyn903 | 2026-06-04 |
 | PCI SAQ evidence package | DONE | Cyn903 | 2026-06-04 |

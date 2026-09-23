@@ -1,62 +1,49 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { AuditAccess } from '../audit/entities/audit-access.entity';
+import { ErasureLog } from './entities/erasure-log.entity';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class ErasureService {
   private readonly logger = new Logger(ErasureService.name);
-  private readonly logPath = path.join(process.cwd(), 'erasure-log.json');
 
-  constructor(
-    @InjectRepository(AuditAccess)
-    private auditRepo: Repository<AuditAccess>,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
+  /**
+   * ลบข้อมูลของ user + บันทึก tombstone ใน transaction เดียว — บันทึกหลักฐานไม่ได้ = ไม่ลบ
+   * (เดิมลบก่อนแล้วเขียนไฟล์ทีหลัง ไฟล์เขียนไม่ได้ใน container → ข้อมูลหายแต่ไม่มีหลักฐาน)
+   */
   async eraseUser(userId: string, requestedBy: string): Promise<object> {
-    const auditRecords = await this.auditRepo.find({ where: { userId } });
-    if (auditRecords.length === 0) {
-      throw new NotFoundException(`No records found for userId: ${userId}`);
-    }
-
-    await this.auditRepo.delete({ userId });
-    this.logger.log(
-      `Deleted ${auditRecords.length} audit records for user ${userId}`,
-    );
-
-    // Tombstone = proof of erasure (PDPA compliance evidence)
-    const deletedAt = new Date().toISOString();
-    const tombstone = {
-      userId,
-      requestedBy,
-      deletedAt,
-      recordsDeleted: auditRecords.length,
-      hash: crypto
-        .createHash('sha256')
-        .update(userId + deletedAt)
-        .digest('hex'),
-    };
-    this.appendErasureLog(tombstone);
-
-    return {
-      message: 'User data erased successfully',
-      tombstone,
-    };
-  }
-
-  private appendErasureLog(entry: object) {
-    let logs: object[] = [];
-    if (fs.existsSync(this.logPath)) {
-      try {
-        logs = JSON.parse(fs.readFileSync(this.logPath, 'utf-8'));
-      } catch {
-        // ไฟล์เสีย — เริ่มใหม่ (ไม่ throw เพราะ erasure สำเร็จแล้ว)
+    return this.dataSource.transaction(async (m) => {
+      // ใช้จำนวนที่ลบได้จริง ไม่ใช่ find ก่อนลบ — audit ของ user อาจเพิ่มระหว่างสองคำสั่ง
+      const { affected } = await m.delete(AuditAccess, { userId });
+      const recordsDeleted = affected ?? 0;
+      if (recordsDeleted === 0) {
+        throw new NotFoundException(`No records found for userId: ${userId}`);
       }
-    }
-    logs.push(entry);
-    fs.writeFileSync(this.logPath, JSON.stringify(logs, null, 2));
+
+      // Tombstone = proof of erasure (PDPA compliance evidence)
+      const deletedAt = new Date();
+      const tombstone = {
+        userId,
+        requestedBy,
+        deletedAt: deletedAt.toISOString(),
+        recordsDeleted,
+        hash: crypto
+          .createHash('sha256')
+          .update(userId + deletedAt.toISOString())
+          .digest('hex'),
+      };
+      await m.insert(ErasureLog, { ...tombstone, deletedAt });
+      this.logger.log(
+        `Deleted ${recordsDeleted} audit records for user ${userId} (tombstone recorded)`,
+      );
+
+      return {
+        message: 'User data erased successfully',
+        tombstone,
+      };
+    });
   }
 }

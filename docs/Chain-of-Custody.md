@@ -8,15 +8,17 @@
 
 ## Log Evidence Chain of Custody
 
+> ทบทวน 2026-09-23: ลำดับเดิมวาง Kafka ก่อน Storage ซึ่งกลับกับโค้ด (`src/logs/logs.service.ts` insert ก่อน publish)
+
 | # | Timestamp | Action | Actor | System | Hash/TxHash |
 |---|-----------|--------|-------|--------|-------------|
 | 1 | Collection | Log เข้าระบบผ่าน `POST /api/v1/logs` | Log source (client) | API Gateway (NestJS) | - |
-| 2 | Ingestion | Log forwarded via Kafka | Kafka Producer | Kafka Broker | - |
-| 3 | Storage | Log stored in PostgreSQL | NestJS Backend | Database | SHA-256 hash computed |
+| 2 | Storage | PII mask → คำนวณ `raw_hash` → insert ลง PostgreSQL (append-only) | NestJS Backend | Database | SHA-256 hash computed |
+| 3 | Forwarding | publish ขึ้น Kafka `logs.raw` ให้ detection (Kafka ล่ม → เข้าคิว `kafka_pending_logs` แล้ว replay) | NestJS Backend (producer) | Kafka Broker | - |
 | 4 | Anchoring | Hash batch anchored on blockchain | Smart Contract | Polygon Amoy testnet | txHash recorded |
 | 5 | Verification | Integrity verified via API | Verifier | IntegrityService (NestJS) + smart contract | Verified/Tampered |
-| 6 | Retention | Log retained for 365 days | RetentionService | Cron Job | - |
-| 7 | Erasure | Log erased on PDPA request | ErasureService | API | Tombstone hash recorded |
+| 6 | Retention | `logs` ไม่ถูกลบ (append-only) · `alerts` / `audit_access` ลบเมื่อเกิน 365 วัน | RetentionService | Cron Job | - |
+| 7 | Erasure | ลบ `audit_access` ของ user ตามคำขอ PDPA (`logs` ไม่ถูกแตะ — PII mask แล้ว) | ErasureService | API | Tombstone ลง `erasure_log` (append-only) ใน transaction เดียวกับการลบ |
 
 Contract ที่ใช้ anchor: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
 (ตรวจสอบได้ที่ amoy.polygonscan.com)
@@ -50,7 +52,7 @@ Contract ที่ใช้ anchor: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
 | Transfer # | From | To | Date | Authorized By | Notes |
 |------------|------|----|------|---------------|-------|
 | T001 | Log Source | API Gateway | ______ | ______ | Initial collection via `POST /api/v1/logs` |
-| T002 | Kafka | NestJS Backend | ______ | ______ | Message consumed |
+| T002 | NestJS Backend | Kafka → Detection Service | ______ | ______ | Backend publish `logs.raw` · detection consume แล้วส่ง alert กลับทาง `alerts.raw` / `alerts.cde` |
 | T003 | NestJS Backend | Blockchain | ______ | ______ | Hash anchored บน Polygon Amoy testnet |
 
 ---

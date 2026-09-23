@@ -1,14 +1,11 @@
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException } from '@nestjs/common';
-import * as fs from 'fs';
 import { ComplianceService } from './compliance.service';
 import { Batch } from '../logs/entities/batch.entity';
 import { Log } from '../logs/entities/log.entity';
 import { AuditAccess } from '../audit/entities/audit-access.entity';
-
-jest.mock('fs');
-const mockedFs = fs as jest.Mocked<typeof fs>;
+import { ErasureLog } from '../erasure/entities/erasure-log.entity';
 
 /**
  * Query-builder double. Every chained call returns `this`; the terminal
@@ -32,6 +29,7 @@ function makeQueryBuilder() {
     orderBy: jest.fn(() => qb),
     getRawMany: jest.fn(() => Promise.resolve(qb.rawMany)),
     getRawOne: jest.fn(() => Promise.resolve(qb.rawOne)),
+    getMany: jest.fn(() => Promise.resolve(qb.rawMany)),
   };
   return qb;
 }
@@ -70,6 +68,7 @@ describe('ComplianceService.getReports', () => {
   let batchQb: any;
   let logQb: any;
   let auditQb: any;
+  let erasureQb: any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -77,11 +76,9 @@ describe('ComplianceService.getReports', () => {
     batchQb = makeQueryBuilder();
     logQb = makeQueryBuilder();
     auditQb = makeQueryBuilder();
+    erasureQb = makeQueryBuilder();
 
     logQb.rawOne = EMPTY_RETENTION;
-
-    // ไม่มีไฟล์ erasure-log.json เป็น default — เทสที่ต้องใช้ค่อย override
-    mockedFs.existsSync.mockReturnValue(false);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -98,6 +95,10 @@ describe('ComplianceService.getReports', () => {
           provide: getRepositoryToken(AuditAccess),
           useValue: { createQueryBuilder: jest.fn(() => auditQb) },
         },
+        {
+          provide: getRepositoryToken(ErasureLog),
+          useValue: { createQueryBuilder: jest.fn(() => erasureQb) },
+        },
       ],
     }).compile();
 
@@ -108,10 +109,26 @@ describe('ComplianceService.getReports', () => {
     jest.useRealTimers();
   });
 
-  /** เขียน fixture ให้ fs.readFileSync คืน erasure-log.json ตามที่กำหนด */
-  function withErasureLog(records: any[]) {
-    mockedFs.existsSync.mockReturnValue(true);
-    mockedFs.readFileSync.mockReturnValue(JSON.stringify(records));
+  /** แถวจากตาราง erasure_log (entity) — กรองช่วงวันทำใน SQL แล้ว เทสต์นี้จึงให้เฉพาะแถวในช่วง */
+  function tombstone(userId: string, deletedAt: string) {
+    return {
+      id: `id-${userId}`,
+      userId,
+      requestedBy: 'admin-dpo',
+      deletedAt: new Date(deletedAt),
+      recordsDeleted: 2,
+      hash: 'a'.repeat(64),
+    };
+  }
+  /** รูปแบบที่ API คืน = รูปแบบเดียวกับ tombstone ของ ErasureService (Reports.tsx / CSV ใช้) */
+  function asRecord(t: ReturnType<typeof tombstone>) {
+    return {
+      userId: t.userId,
+      requestedBy: t.requestedBy,
+      deletedAt: t.deletedAt.toISOString(),
+      recordsDeleted: t.recordsDeleted,
+      hash: t.hash,
+    };
   }
 
   // ---- integrity ----
@@ -276,95 +293,55 @@ describe('ComplianceService.getReports', () => {
 
   // ---- erasure ----
 
-  it('keeps only erasure records inside the range and groups them by Bangkok day', async () => {
-    // ทั้ง 6 record เขียนเป็นเวลา UTC — วันที่ที่คาดหวังคิดตามปฏิทินไทย (UTC+7)
-    const beforeWindow = {
-      subject: 'before-window',
-      erasedAt: '2026-07-31T10:00:00Z',
-    }; // 31 ก.ค. 17:00 ICT
-    const ictAug01 = {
-      subject: 'utc-jul31-ict-aug01',
-      erasedAt: '2026-07-31T23:00:00Z',
-    }; // 1 ส.ค. 06:00 ICT
-    const middayAug01 = {
-      subject: 'midday-aug01',
-      erasedAt: '2026-08-01T02:00:00Z',
-    }; // 1 ส.ค. 09:00 ICT
-    const middayAug03 = {
-      subject: 'midday-aug03',
-      erasedAt: '2026-08-03T10:00:00Z',
-    }; // 3 ส.ค. 17:00 ICT
-    const ictAug04 = {
-      subject: 'utc-aug03-ict-aug04',
-      erasedAt: '2026-08-03T18:30:00Z',
-    }; // 4 ส.ค. 01:30 ICT
-    const afterWindow = {
-      subject: 'after-window',
-      erasedAt: '2026-08-04T10:00:00Z',
-    }; // 4 ส.ค. 17:00 ICT
-
-    withErasureLog([
-      beforeWindow,
-      ictAug01,
-      middayAug01,
-      middayAug03,
-      ictAug04,
-      afterWindow,
-    ]);
+  it('groups tombstones by Bangkok day in the shape ErasureService writes (deletedAt)', async () => {
+    // เวลาเป็น UTC — วันที่คาดหวังคิดตามปฏิทินไทย (UTC+7)
+    const ictAug01 = tombstone('utc-jul31-ict-aug01', '2026-07-31T23:00:00Z'); // 1 ส.ค. 06:00 ICT
+    const middayAug01 = tombstone('midday-aug01', '2026-08-01T02:00:00Z'); // 1 ส.ค. 09:00 ICT
+    const middayAug03 = tombstone('midday-aug03', '2026-08-03T10:00:00Z'); // 3 ส.ค. 17:00 ICT
+    erasureQb.rawMany = [ictAug01, middayAug01, middayAug03];
 
     const report = await service.getReports('2026-08-01', '2026-08-03');
 
     expect(report.erasure).toEqual([
-      { day: '2026-08-01', requests: 2, records: [ictAug01, middayAug01] },
-      { day: '2026-08-03', requests: 1, records: [middayAug03] },
+      {
+        day: '2026-08-01',
+        requests: 2,
+        records: [asRecord(ictAug01), asRecord(middayAug01)],
+      },
+      { day: '2026-08-03', requests: 1, records: [asRecord(middayAug03)] },
     ]);
+  });
 
-    const subjects = report.erasure.flatMap((d) =>
-      d.records.map((r: any) => r.subject),
+  it('filters the erasure range in SQL by Bangkok day (same bounds as integrity/audit)', async () => {
+    await service.getReports('2026-08-01', '2026-08-03');
+
+    expect(erasureQb.where).toHaveBeenCalledWith(
+      expect.stringContaining("e.deleted_at AT TIME ZONE 'Asia/Bangkok'"),
+      { from: '2026-08-01', toExclusive: '2026-08-04' },
     );
-    expect(subjects).not.toContain('before-window');
-    expect(subjects).not.toContain('after-window');
-    // ตกช่วง 00:00–07:00 ICT ของวันที่ 4 -> อยู่นอกหน้าต่าง แม้วัน UTC จะยังเป็นวันที่ 3
-    expect(subjects).not.toContain('utc-aug03-ict-aug04');
   });
 
   it.each([
     ['2026-07-31T16:59:59Z', '2026-07-31'], // 23:59:59 ICT ของวันก่อนหน้า
     ['2026-07-31T17:00:00Z', '2026-08-01'], // เที่ยงคืน ICT พอดี
-    ['2026-07-31T23:59:59Z', '2026-08-01'], // 06:59:59 ICT — เดิม UTC จะนับเป็นวันที่ 31
-    ['2026-08-01T00:00:00Z', '2026-08-01'], // 07:00 ICT
+    ['2026-07-31T23:59:59Z', '2026-08-01'], // 06:59:59 ICT — ถ้าใช้ UTC จะนับเป็นวันที่ 31
     ['2026-08-01T16:59:59Z', '2026-08-01'], // 23:59:59 ICT
     ['2026-08-01T17:00:00Z', '2026-08-02'], // ข้ามไปวันถัดไปตาม ICT
   ])(
-    'buckets an erasure record at %s into Bangkok day %s',
-    async (erasedAt, expectedDay) => {
-      withErasureLog([{ subject: 'boundary', erasedAt }]);
+    'buckets a tombstone at %s into Bangkok day %s',
+    async (deletedAt, expectedDay) => {
+      const t = tombstone('boundary', deletedAt);
+      erasureQb.rawMany = [t];
 
       const report = await service.getReports('2026-07-31', '2026-08-02');
 
       expect(report.erasure).toEqual([
-        {
-          day: expectedDay,
-          requests: 1,
-          records: [{ subject: 'boundary', erasedAt }],
-        },
+        { day: expectedDay, requests: 1, records: [asRecord(t)] },
       ]);
     },
   );
 
-  it('returns an empty erasure list when the log file is missing', async () => {
-    mockedFs.existsSync.mockReturnValue(false);
-
-    const report = await service.getReports('2026-08-01', '2026-08-03');
-
-    expect(report.erasure).toEqual([]);
-    expect(mockedFs.readFileSync).not.toHaveBeenCalled();
-  });
-
-  it('survives a corrupt erasure log instead of throwing', async () => {
-    mockedFs.existsSync.mockReturnValue(true);
-    mockedFs.readFileSync.mockReturnValue('{not json');
-
+  it('returns an empty erasure list when there are no tombstones', async () => {
     const report = await service.getReports('2026-08-01', '2026-08-03');
 
     expect(report.erasure).toEqual([]);

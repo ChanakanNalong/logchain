@@ -2,11 +2,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as fs from 'fs';
-import * as path from 'path';
 import { Batch, INTACT_STATUSES } from '../logs/entities/batch.entity';
 import { Log } from '../logs/entities/log.entity';
 import { AuditAccess } from '../audit/entities/audit-access.entity';
+import { ErasureLog } from '../erasure/entities/erasure-log.entity';
 
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 
@@ -35,40 +34,25 @@ interface AuditRawRow {
   action: string;
   count: string;
 }
-/** record ใน erasure-log.json — เขียนโดย ErasureService คนละรูปแบบตามรุ่น */
-export interface ErasureRecord {
-  erasedAt?: string;
-  requestedAt?: string;
-  date?: string;
-  at?: string;
-  timestamp?: string;
-  [key: string]: unknown;
-}
-
 @Injectable()
 export class ComplianceService {
-  private readonly erasureLogPath = path.join(
-    process.cwd(),
-    'erasure-log.json',
-  );
-
   constructor(
     @InjectRepository(Batch) private batchesRepo: Repository<Batch>,
     @InjectRepository(Log) private logsRepo: Repository<Log>,
     @InjectRepository(AuditAccess) private auditRepo: Repository<AuditAccess>,
+    @InjectRepository(ErasureLog)
+    private erasureRepo: Repository<ErasureLog>,
   ) {}
 
   async getReports(fromInput?: string, toInput?: string) {
     const { from, to } = this.resolveRange(fromInput, toInput);
     const toExclusive = this.addDays(to, 1);
 
-    // getErasureByDay อ่านไฟล์แบบ sync — ใส่ใน Promise.all ไม่ได้ทำให้ขนานจริง
-    // แค่ทำให้ดูเหมือนรอ I/O อยู่ ดึงออกมาเรียกตรง ๆ ตามที่มันเป็น
-    const erasure = this.getErasureByDay(from, toExclusive);
-    const [integrity, retention, audit] = await Promise.all([
+    const [integrity, retention, audit, erasure] = await Promise.all([
       this.getIntegrityByDay(from, toExclusive),
       this.getRetentionSnapshot(),
       this.getAuditByDay(from, toExclusive),
+      this.getErasureByDay(from, toExclusive),
     ]);
 
     return {
@@ -182,33 +166,43 @@ export class ComplianceService {
     };
   }
 
-  // ---- ③ erasure per day (JSON file) ----
-  private getErasureByDay(from: string, toExclusive: string) {
-    const records = this.readErasureLog();
-    const dateOf = (r: ErasureRecord) =>
-      r.erasedAt ?? r.requestedAt ?? r.date ?? r.at ?? r.timestamp;
-    const byDay = new Map<string, ErasureRecord[]>();
-    for (const rec of records) {
-      const raw = dateOf(rec);
-      if (!raw) continue;
-      const day = this.bangkokDay(raw);
-      if (day < from || day >= toExclusive) continue;
-      (byDay.get(day) ?? byDay.set(day, []).get(day)!).push(rec);
+  // ---- ③ erasure per day (ตาราง erasure_log) ----
+  // เดิมอ่านจาก erasure-log.json ซึ่งใน container ไม่เคยถูกเขียน (EACCES) และจัดกลุ่มตาม `erasedAt`
+  // ขณะที่ ErasureService เขียน `deletedAt` → หน้า Reports แสดง 0 เสมอ
+  private async getErasureByDay(from: string, toExclusive: string) {
+    const rows = await this.erasureRepo
+      .createQueryBuilder('e')
+      .where(
+        `(e.deleted_at AT TIME ZONE 'Asia/Bangkok') >= :from::timestamp
+              AND (e.deleted_at AT TIME ZONE 'Asia/Bangkok') < :toExclusive::timestamp`,
+        { from, toExclusive },
+      )
+      .orderBy('e.deleted_at', 'ASC')
+      .getMany();
+
+    // รูปแบบเดียวกับ tombstone ที่ ErasureService คืนให้ client (หน้า Reports / CSV ใช้ field พวกนี้)
+    type Tombstone = {
+      userId: string;
+      requestedBy: string;
+      deletedAt: string;
+      recordsDeleted: number;
+      hash: string;
+    };
+    const byDay = new Map<string, Tombstone[]>();
+    for (const r of rows) {
+      const day = this.bangkokDay(r.deletedAt);
+      const list = byDay.get(day) ?? byDay.set(day, []).get(day)!;
+      list.push({
+        userId: r.userId,
+        requestedBy: r.requestedBy,
+        deletedAt: r.deletedAt.toISOString(),
+        recordsDeleted: r.recordsDeleted,
+        hash: r.hash,
+      });
     }
     return [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([day, recs]) => ({ day, requests: recs.length, records: recs }));
-  }
-  private readErasureLog(): ErasureRecord[] {
-    if (!fs.existsSync(this.erasureLogPath)) return [];
-    try {
-      const p: unknown = JSON.parse(
-        fs.readFileSync(this.erasureLogPath, 'utf-8'),
-      );
-      return Array.isArray(p) ? (p as ErasureRecord[]) : [];
-    } catch {
-      return [];
-    }
   }
 
   // ---- ④ audit per day ----
