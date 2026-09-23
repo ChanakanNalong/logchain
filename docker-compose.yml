@@ -307,6 +307,8 @@ services:
   # ---- Kafka exporter (metrics for Prometheus) ----
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0
+    # image ไม่ตั้ง USER = root · binary เดียว ไม่เขียนไฟล์ → รันเป็น nobody ได้ (compliance review B8)
+    user: "65534:65534"
     container_name: logchain-kafka-exporter
     restart: unless-stopped
     command:

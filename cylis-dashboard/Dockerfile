@@ -27,9 +27,12 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
+# รันเป็น user `node` (uid 1000 มีใน node:alpine อยู่แล้ว) ไม่ใช่ root — compliance review 2026-09-23 B8
+# --chown: Next.js เขียน .next/cache ตอนรัน (image optimization / ISR) ต้องเป็นเจ้าของ
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
 
+USER node
 EXPOSE 3000
 CMD ["node", "server.js"]

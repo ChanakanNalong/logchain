@@ -32,7 +32,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
-| R07 | Container | Privilege escalation | Low | High | MEDIUM | ส่วนใหญ่ non-root (backend, detection, kafka, keycloak, prometheus, backup) · ⚠️ dashboard + kafka-exporter รันเป็น root |
+| R07 | Container | Privilege escalation | Low | High | MEDIUM | service ทุกตัวรัน process หลักเป็น non-root (ตรวจด้วย `docker top` 2026-09-23) · postgres / vault เริ่มด้วย root แล้วลดสิทธิ์เอง (มาตรฐานของ image) · ยกเว้น `vault-unseal` / `vault-init` (ต้อง chown ไฟล์ secret ให้ user บน host ตอน clone ใหม่) |
 | R08 | Dependencies | Supply chain attack | Medium | High | HIGH | Trivy + npm audit ใน CI (ไม่ block) · ไม่มี pip audit |
 
 ---

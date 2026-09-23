@@ -36,7 +36,7 @@
 | B5 | PCI 8.1 · E01 · ISO A.9.1 | "JWT authentication on all endpoints" | ทุก endpoint ใต้ `/api/v1` ✅ แต่ `/`, `/health`, `/metrics` เปิดสาธารณะ (ตั้งใจ) · `/metrics` เปิดเผยจำนวน batch/สถานะ | controller ที่ไม่มี `UseGuards`: app · health · metrics |
 | B6 | PCI 5.1 | "Anti-malware — Trivy" | Trivy เป็น vulnerability/secret scanner ไม่ใช่ anti-malware · vuln scan ตั้ง `exit-code: 0` (ไม่ block) | `.github/workflows/security.yml` |
 | B7 | PCI 6.2 · E04 · ISO A.12.6 | "Trivy + npm audit + **pip audit**" | **ไม่มี pip audit** ใน CI · npm audit `continue-on-error: true` (ไม่ block) | `security.yml` |
-| B8 | ISO R07 | "Non-root container enforcement" | ส่วนใหญ่ non-root แต่ **dashboard และ kafka-exporter รัน process เป็น root** (postgres/vault เริ่ม root แล้วลดสิทธิ์เอง) | `docker top cylis-dashboard-app` → root |
+| B8 ✅ | ISO R07 | "Non-root container enforcement" | ส่วนใหญ่ non-root แต่ **dashboard และ kafka-exporter รัน process เป็น root** (postgres/vault เริ่ม root แล้วลดสิทธิ์เอง) | `docker top cylis-dashboard-app` → root |
 | B9 | PCI E05 · 10.2 · Chain #6 | "Cron deletes records older than 365 days (`logs.retention_days`)" | cron ลบเฉพาะ **alerts + audit_access** เก่ากว่า 365 วัน · **ตาราง `logs` ไม่ถูกลบ** (append-only trigger) · คอลัมน์ `retention_days` มีแต่ job ไม่ได้ใช้ | `src/retention/retention.service.ts` |
 | B10 | PCI E06 | "removes all personal data" | ลบเฉพาะ `audit_access` ของ userId · `logs` ไม่ถูกแตะ (PII ถูก mask ตั้งแต่ ingest) · + บั๊ก A1 | `erasure.service.ts` |
 | B11 ✅ | PCI E07 · ISO A.16.1 | "HIGH/CRITICAL alerts trigger email" | โค้ดมี แต่**ปิดอยู่บน deployment นี้** — SMTP ใน Vault `secret/logchain/notification` ว่าง | backend log `Notification disabled — SMTP not configured in Vault` |
@@ -60,6 +60,7 @@
   RTO-RPO (สถานะ PASS ที่ไม่จริงเปลี่ยนเป็น PARTIAL / FAIL / N/A พร้อมหมายเหตุ · Attestation ระบุข้อยกเว้น)
 - การทำระบบให้ผ่านทีละข้อ → `docs/plan/next-steps.md` ข้อ 6
 - **B15 แก้แล้ว** (ข้อ 6.1): port ทั้ง 19 ตัว bind `127.0.0.1` · PCI 1.1 → PASS
+- **B8 แก้แล้ว** (ข้อ 6.4): dashboard → `USER node` · kafka-exporter → `user: 65534` · เหลือ root ตั้งใจ: vault-unseal / vault-init (chown ไฟล์ secret) · dumb-init PID 1 ของ vault
 - **B3 แก้แล้ว** (ข้อ 6.3): Kafka mTLS เปิดใช้ (listener `DOCKER_SSL :9094`) · PCI 4.1 FAIL → PARTIAL (เหลือ HTTPS)
 - **B11 แก้แล้ว** (ข้อ 6.2): email ของ security alert เปิดใช้ + ทดสอบส่งจริง · เจอเพิ่ม: `.env` เป็น 664 → แก้เป็น 600 (script + bootstrap)
 
