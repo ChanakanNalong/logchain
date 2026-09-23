@@ -43,7 +43,7 @@ docker exec logchain-postgres psql -U logchain -d logchain -c "select ..."
 ### ชุดตรวจก่อน commit (ตรงกับที่ CI รัน)
 
 ```bash
-npm run lint:ci   # ← สำคัญ: มีเพดาน warning 668 · `npm run lint` ไม่เช็คเพดาน
+npm run lint:ci   # ← สำคัญ: มีเพดาน warning 667 · `npm run lint` ไม่เช็คเพดาน
 npm test
 npm run build
 npx jest --config test/jest-e2e.json    # ต้องมี stack รันอยู่
@@ -127,7 +127,7 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้
 
 | อาการ | ที่จริงคือ |
 |---|---|
-| lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 668`) |
+| lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 667`) |
 | ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | (1) `select count(*) from kafka_pending_logs` — ค้างคิวเพราะ Kafka ล่มไหม (2) มี alert OPEN ของ rule + host เดียวกันอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
 | rule แบบ threshold ไม่เด้งทั้งที่ยิง log ครบ | rule นับหน้าต่างเวลาจาก **`createdAt` ของ event** ไม่ใช่เวลาที่รับ — ยิงห่างกันเกิน 60 วิ ก็ไม่เข้าเกณฑ์ (ตั้งใจ ดู `detection/app/rules.py::_event_time`) |
 | login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | 2026-09-23 ตั้งให้ตรงกันแล้ว · ถ้าไม่ผ่านอีก = มีคนเปลี่ยนรหัสผ่านหน้าเว็บ · realm policy ต้องมีตัวเลข + ห้ามซ้ำ 4 ตัวล่าสุด · ต้องใช้ OTP |

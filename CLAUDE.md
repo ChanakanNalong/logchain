@@ -16,7 +16,7 @@ rule engine + DeepLog) → alert · integrity ใช้ Merkle root ต่อ ba
   ของ `app.module.ts` (backend รันเองตอน boot) · **ห้ามแก้ `infra/postgres/init/`** เพื่อเปลี่ยน schema
   ไฟล์พวกนั้นรันเฉพาะตอน volume ว่าง DB ที่มีอยู่แล้วจะไม่ได้รับ
 - **ตาราง `logs` เป็น append-only** — trigger `trg_logs_no_update` บล็อก UPDATE/DELETE
-- **ก่อน commit ให้รัน `npm run lint:ci`** (มีเพดาน warning 668) ไม่ใช่ `npm run lint`
+- **ก่อน commit ให้รัน `npm run lint:ci`** (มีเพดาน warning 667) ไม่ใช่ `npm run lint`
   ชุดที่ CI รันจริง: `lint:ci` + `npm test` + `npm run build` + `npx jest --config test/jest-e2e.json`
   + ฝั่ง detection: `cd detection && python -m unittest discover -s tests -t . -v` (ต้องมี PyYAML)
 - **e2e ยิง DB จริงและทิ้ง batch UNVERIFIED ไว้** (`tx_hash` ขึ้นต้น `0xaaaa…`) ลบทุกครั้งหลังรัน

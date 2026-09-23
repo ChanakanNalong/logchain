@@ -24,7 +24,7 @@ jobs:
           cache: npm
       - run: npm ci
       # lint:ci ไม่มี --fix (ต่างจาก npm run lint) — CI ต้องรายงาน ไม่ใช่แก้ไฟล์ทิ้ง
-      # --max-warnings 668 คือเพดานหนี้ปัจจุบัน: error ใหม่ล้มทันที ส่วน warning
+      # --max-warnings 667 คือเพดานหนี้ปัจจุบัน: error ใหม่ล้มทันที ส่วน warning
       # กลุ่ม no-unsafe-* เพิ่มไม่ได้อีก ถ้าไล่ใส่ type จนลดลงได้ ให้ลดตัวเลขนี้ตาม
       - name: Lint
         run: npm run lint:ci
