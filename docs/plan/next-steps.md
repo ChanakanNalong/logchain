@@ -14,8 +14,8 @@
   + `Security Scan` แยก workflow
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
-- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) · scrape target ละ 1 ตัวต่อแอป · **ยังไม่มี Alertmanager**
-- งานในแผนเสร็จหมดแล้ว **เหลือแค่ข้อ 2 (รอยืนยันข้ามคืน)** + ข้อ 4 ที่ยังไม่ได้เริ่ม
+- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) → Alertmanager `:9093` · **ยังไม่ส่ง email** จนกว่าเจ้าของใส่รหัส (4.1)
+- งานในแผนเสร็จหมดแล้ว **เหลือแค่ข้อ 2 (รอยืนยันข้ามคืน)** · ข้อ 4 ปิดครบ (4.1 รอเจ้าของใส่รหัสอีเมลเอง)
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -117,23 +117,20 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · restart 
 เดิมเฉพาะ TIMEOUT ที่นับเป็น "ยังไม่รู้ผล" · ตอนนี้ error ของ ethers ทุกตัวยกเว้น `CALL_EXCEPTION` /
 `TRANSACTION_REPLACED` คืน `confirmed:false` · error ที่ไม่ใช่ของ ethers ยังโยนต่อ (worklog หัวข้อ 18)
 
-## 4. 🟢 ทำเมื่อว่าง — ยังไม่ได้เริ่ม (เกิดจากงานของ 2026-09-23)
+## 4. ✅ งานต่อยอดจาก 2026-09-23 — ปิดครบ
 
-### 4.1 Alertmanager
-alert rule มีแล้ว (worklog หัวข้อ 19) แต่ขึ้นแค่ http://localhost:9090/alerts ไม่มีใครได้รับแจ้ง
-**ติดอยู่ที่:** SMTP ใน Vault ยังว่าง (`secret/logchain/notification` — backend log
-`Notification disabled — SMTP not configured`) ต้องได้ app password ของ Gmail จากเจ้าของก่อน
-ทำ: เพิ่ม service `alertmanager` ใน compose + `alerting:` ใน `prometheus.yml` + route ไป email ·
-เพิ่ม `promtool`/`amtool check-config` ใน CI job `prometheus`
+### 4.1 ✅ Alertmanager — โครงเสร็จ (2026-09-23) · **เหลือเจ้าของใส่รหัส Gmail เอง**
+service `alertmanager` (`:9093`) · Prometheus ส่ง alert เข้าแล้ว · `infra/alertmanager/render.sh` สร้าง config
+ตอน start: ยังไม่ตั้งอีเมล = receiver `none` (รับไว้ไม่ส่ง) · ตั้งครบ = email · รหัสอยู่ใน
+`infra/alertmanager/.secrets/smtp_password` (gitignored) · วิธีตั้ง: README หัวข้อ "Alert แจ้งทาง email"
+CI job `prometheus` ตรวจ config ทั้งสองแบบด้วย `amtool` (worklog หัวข้อ 22)
 
 ### 4.2 ⛔ detection จำ id ที่เห็นแล้วข้าม restart — ตัดสินใจไม่ทำ (2026-09-23)
 เหตุผลอยู่ในหมวด "ห้ามทำ" ด้านล่าง · รายละเอียด worklog หัวข้อ 21
 
-### 4.3 ค่าเริ่มต้นของ `INTEGRITY_AUTO_REANCHOR` (ต้องตัดสินใจ ไม่ใช่แค่แก้)
-เครื่องนี้ `true` · `.env.example` = `false` → clone ใหม่ batch ที่ tx ถูก drop (3.5) ค้าง `UNVERIFIED` ถาวร
-**ไม่มีบันทึกเหตุผลที่ตั้ง false** (commit `1dcb243` ไม่ได้เขียนไว้) · ความเสี่ยงที่อ่านได้จากโค้ด:
-`reanchorUnverified()` เขียน `merkle_root` **จาก DB** ขึ้น chain เมื่อ chain ไม่มี root — ถ้าคนแก้ได้ทั้ง `logs`
-และ `batches.merkle_root` ก่อน re-anchor ของปลอมจะถูกตรึงบน chain · ถามเจ้าของก่อนเปลี่ยน
+### 4.3 ✅ `INTEGRITY_AUTO_REANCHOR` คง `false` เป็นค่าเริ่มต้น — ตัดสินใจแล้ว (2026-09-23)
+เจ้าของเลือกคงไว้ · เหตุผลเขียนใน `.env.example` + README Troubleshooting (batch ค้าง UNVERIFIED เป็นชั่วโมง)
+เครื่องนี้ยังเป็น `true` ตามเดิม
 
 ---
 
@@ -179,7 +176,7 @@ alert rule มีแล้ว (worklog หัวข้อ 19) แต่ขึ้
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
 | รัน e2e ในเครื่องแล้ว integrity ตกจาก 100% | e2e ทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) — ลบทิ้งหลังรัน |
 | รันแอปบน host (`npm run start:dev`) แล้ว Prometheus/Grafana ไม่มีข้อมูล | target ชี้ชื่อ service ใน compose อย่างเดียว — เปลี่ยน target ของ job นั้นเป็น `host.docker.internal:<port>` แล้ว `curl -X POST localhost:9090/-/reload` (อย่าใส่คู่กัน = scrape ซ้ำ worklog หัวข้อ 20) |
-| alert ขึ้นใน `:9090/alerts` แต่ไม่มีใครได้แจ้ง | ยังไม่มี Alertmanager (ข้อ 4.1) |
+| alert ขึ้นใน `:9090/alerts` แต่ไม่มีใครได้ email | `docker logs logchain-alertmanager | head -1` — ถ้าขึ้น "ยังไม่ได้ตั้งอีเมล" ดู README หัวข้อ Alert แจ้งทาง email · แก้ `.env`/ไฟล์รหัสแล้วต้อง `--force-recreate alertmanager` |
 
 ---
 

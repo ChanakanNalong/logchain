@@ -95,6 +95,20 @@ jobs:
           docker run --rm -v "$PWD/infra/prometheus:/p:ro" -w /p \
             --entrypoint promtool prom/prometheus:v2.55.0 \
             test rules alerts.test.yml
+      # render.sh สร้าง config คนละแบบตามว่าตั้งอีเมลหรือยัง — ตรวจทั้งสองแบบ
+      # (รหัสปลอม ไม่ได้ส่งจริง: amtool แค่ตรวจรูปแบบ)
+      - name: Alertmanager config (no email / email)
+        run: |
+          mkdir -p /tmp/am-secrets && echo not-a-real-password > /tmp/am-secrets/smtp_password
+          for mode in none email; do
+            env_args=()
+            [ "$mode" = email ] && env_args=(-e ALERT_EMAIL_TO=to@example.com -e ALERT_SMTP_USER=me@example.com)
+            docker run --rm "${env_args[@]}" \
+              -v "$PWD/infra/alertmanager/render.sh:/r.sh:ro" \
+              -v /tmp/am-secrets:/etc/alertmanager/secrets:ro \
+              --entrypoint sh prom/alertmanager:v0.27.0 \
+              -c "sh /r.sh && grep -q 'receiver: $mode' /tmp/alertmanager.yml && amtool check-config /tmp/alertmanager.yml"
+          done
 
   integration:
     name: Integration — Postgres + Vault

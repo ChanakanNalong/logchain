@@ -33,7 +33,7 @@ INFRA_SERVICES=(postgres postgres-standby postgres-exporter
                 keycloak-config keycloak
                 kafka-1 kafka-2 kafka-3 kafka-init kafka-exporter
                 vault vault-unseal vault-init
-                prometheus grafana node-exporter)
+                prometheus alertmanager grafana node-exporter)
 APP_SERVICES=(backend cylis-dashboard detection-api detection-consumer)
 
 say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
@@ -105,6 +105,10 @@ else
     ./infra/kafka/gen-certs.sh
     ok "สร้าง CA + broker cert 3 ใบ + client cert (nestjs, detection)"
 fi
+
+# โฟลเดอร์รหัส SMTP ของ Alertmanager (gitignored) — ต้องมีก่อน compose up ไม่งั้น docker สร้าง
+# bind mount ให้เองเป็นของ root แล้วเราเขียนไฟล์รหัสลงไปไม่ได้
+mkdir -p infra/alertmanager/.secrets && chmod 700 infra/alertmanager/.secrets
 
 # ── 3. infra ───────────────────────────────────────────────────────────────
 say "3/6  ยก infrastructure"
@@ -205,6 +209,7 @@ cat <<EOF
   Keycloak     http://localhost:8080     admin console: ${KC_USER}
   Grafana      http://localhost:3002     admin / (ดู GRAFANA_ADMIN_PASSWORD ใน .env)
   Prometheus   http://localhost:9090
+  Alertmanager http://localhost:9093     (ส่ง email เมื่อตั้งค่า — README หัวข้อ Alert แจ้งทาง email)
   Vault        http://localhost:8200
 
   บัญชีสำหรับ login ที่ dashboard อยู่ใน realm 'logchain'

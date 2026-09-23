@@ -144,6 +144,31 @@ npm install && npm run start:dev
 
 ---
 
+## Alert แจ้งทาง email
+
+Prometheus ส่ง alert (rule ใน `infra/prometheus/alerts.yml`) ต่อให้ Alertmanager ที่ http://localhost:9093
+ค่าเริ่มต้น **ยังไม่ส่งไปไหน** — รับไว้ให้ดูเฉย ๆ จนกว่าจะตั้ง 3 อย่างนี้ครบ:
+
+```bash
+# 1. รหัส — Gmail: Google Account → Security → 2-Step Verification → App passwords
+#    ใส่ในไฟล์ (gitignored) ไม่ใช่ .env · ใช้ printf ไม่ให้มี newline ท้าย
+printf '%s' 'xxxx xxxx xxxx xxxx' > infra/alertmanager/.secrets/smtp_password
+chmod 600 infra/alertmanager/.secrets/smtp_password
+
+# 2. ใน .env
+ALERT_SMTP_USER=you@gmail.com
+ALERT_EMAIL_TO=oncall@example.com
+
+# 3. สร้าง container ใหม่ (config ถูก render ตอน start)
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --no-deps --force-recreate alertmanager
+docker logs logchain-alertmanager 2>&1 | head -1   # ต้องขึ้น "ส่ง email → ..."
+```
+
+ไม่ใช่ Gmail: ตั้ง `ALERT_SMTP_SMARTHOST=host:port` (และ `ALERT_SMTP_FROM` ถ้าต่างจาก user) ใน `.env`
+
+> SMTP ชุดนี้แยกจากของ backend (`secret/logchain/notification` ใน Vault — ใช้แจ้ง alert ความปลอดภัย)
+> Alertmanager อ่าน Vault ไม่ได้ จึงเก็บรหัสเป็นไฟล์แทน
+
 ## Troubleshooting
 
 | อาการ | สาเหตุ | แก้ |
@@ -162,7 +187,8 @@ npm install && npm run start:dev
 | login dashboard ด้วย `admin-user` + `KEYCLOAK_ADMIN_USER_PASSWORD` แล้วขึ้น *Invalid username or password* | Keycloak import realm (พร้อมรหัสจาก `.env`) **ครั้งเดียวตอน boot แรก** — ถ้าเคยเปลี่ยนรหัสผ่านหน้าเว็บ หรือแก้ `.env` ทีหลัง ค่าใน `.env` จะไม่ตรงกับของจริงอีกต่อไป | ใช้รหัสที่ตั้งไว้เอง หรือ reset ที่ Keycloak admin console (`http://localhost:8080` → realm `logchain` → Users) · ระวัง brute force protection ล็อกหลังพลาด 5 ครั้ง |
 | dashboard login แล้ว redirect กลับมาเปล่า ๆ | `NEXT_PUBLIC_*` ถูกตั้งเป็นชื่อ service | ต้องเป็น `localhost` เสมอ (inline ตอน build + รันบนเบราว์เซอร์ซึ่งอยู่นอก docker network) — แก้แล้วต้อง `--build` ใหม่ |
 | batch ค้างที่ `SEALED` ไม่ขึ้น `CONFIRMED` | ไม่ได้ตั้ง `CONTRACT_ADDRESS` / private key ใน Vault | **ปกติ** — batch ถูกปิดแล้ว proof กับ tamper detection ทำงานครบ แค่ยังไม่ได้ตรึง root ขึ้น chain · ตั้ง blockchain เมื่อไหร่ `anchorSealedBatches()` จะตามไป anchor ย้อนหลังให้เองภายใน 1 นาที |
-| batch ค้างที่ `UNVERIFIED` ไม่ขึ้น `CONFIRMED` | anchor ไปแล้วแต่ tx ยังไม่ confirm ใน `BLOCKCHAIN_TX_TIMEOUT_MS` | รอบ verify ถัดไปตามผลให้เอง — ไม่ใช่ `FAILED` |
+| batch ค้างที่ `UNVERIFIED` ไม่ขึ้น `CONFIRMED` | anchor ไปแล้วแต่ tx ยังไม่ confirm ใน `BLOCKCHAIN_TX_TIMEOUT_MS` หรือ RPC พังระหว่างรอ receipt | รอบ verify ถัดไปตามผลให้เอง — ไม่ใช่ `FAILED` |
+| batch ค้าง `UNVERIFIED` **เป็นชั่วโมง** · backend log `unverifiable — no root on chain` | tx ถูก drop ไม่เคยลง chain (หรือ chain reset) · `INTEGRITY_AUTO_REANCHOR=false` (ค่าเริ่มต้น) ระบบจึง**ไม่ส่งใหม่เอง** — ตั้งใจ: re-anchor เอา `merkle_root` จาก DB ขึ้น chain ถ้า DB ถูกแก้มาก่อน ของปลอมจะถูกตรึงบน chain | ตรวจก่อนว่าไม่มีใครแก้ DB (`demo-tamper.sh` / audit log) แล้วตั้ง `INTEGRITY_AUTO_REANCHOR=true` ใน `.env` → `docker compose up -d --no-deps backend` · ส่งเสร็จปิดกลับได้ |
 
 ### Vault user lockout
 

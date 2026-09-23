@@ -335,6 +335,33 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # ---- Alertmanager (ส่ง alert ของ Prometheus ออกทาง email) ----
+  # ยังไม่ตั้งอีเมล = รับ alert ไว้เฉย ๆ (ดูที่ :9093) · วิธีตั้ง: README หัวข้อ Alert แจ้งทาง email
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: logchain-alertmanager
+    restart: unless-stopped
+    # uid ของเรา — ไฟล์รหัสเป็น 0600 ของเราได้ ไม่ต้องเปิดให้ทุกคนอ่าน
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint: ["/bin/sh", "/etc/alertmanager/render.sh"]
+    command:
+      - /bin/alertmanager
+      - --config.file=/tmp/alertmanager.yml
+      # silence หายเมื่อ restart (dev) — volume ของ image เป็นของ nobody เขียนด้วย uid เราไม่ได้
+      - --storage.path=/tmp/alertmanager-data
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_SMTP_USER: ${ALERT_SMTP_USER:-}
+      ALERT_SMTP_FROM: ${ALERT_SMTP_FROM:-}
+      ALERT_SMTP_SMARTHOST: ${ALERT_SMTP_SMARTHOST:-smtp.gmail.com:587}
+    volumes:
+      - ./infra/alertmanager/render.sh:/etc/alertmanager/render.sh:ro
+      - ./infra/alertmanager/.secrets:/etc/alertmanager/secrets:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - default
+
   # ---- Grafana (visualization) ----
   grafana:
     image: grafana/grafana:11.3.0

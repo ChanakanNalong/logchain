@@ -3,9 +3,14 @@ global:
   scrape_interval:      15s
   evaluation_interval:  15s
 
-# alert rule (+ unit test ใน alerts.test.yml) — ยังไม่มี Alertmanager ดูที่ /alerts
+# alert rule (+ unit test ใน alerts.test.yml) → ส่งต่อให้ Alertmanager (email ถ้าตั้งไว้)
 rule_files:
   - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 scrape_configs:
   # Prometheus เอง
