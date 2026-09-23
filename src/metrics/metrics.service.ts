@@ -12,6 +12,7 @@ export class MetricsService {
   private readonly logsTotal: Counter;
   private readonly ingestHist: Histogram;
   private readonly piiCounter: Counter;
+  private readonly ethersRejections: Counter;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'logchain_' });
@@ -33,6 +34,12 @@ export class MetricsService {
       help: 'Logs with PII masked',
       registers: [this.registry],
     });
+    this.ethersRejections = new Counter({
+      name: 'logchain_unhandled_ethers_rejections_total',
+      help: 'ethers promise rejections that escaped every await (process kept alive)',
+      labelNames: ['code'],
+      registers: [this.registry],
+    });
   }
 
   incrementLogsIngested(severity: string) {
@@ -43,6 +50,9 @@ export class MetricsService {
   }
   incrementPiiMasked() {
     this.piiCounter.inc();
+  }
+  incrementUnhandledEthersRejection(code: string) {
+    this.ethersRejections.inc({ code });
   }
 
   async getMetrics() {

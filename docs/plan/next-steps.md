@@ -79,10 +79,10 @@ docker logs --since 12h logchain-detection-consumer 2>&1 | grep -c "Task is alre
 
 ## 3. 🟢 P3 — ทำเมื่อว่าง
 
-### 3.1 กันพลาดเผื่อ ethers หลุด unhandled rejection อีก
-ethers หลุดแบบนี้มาแล้ว 2 ครั้ง (network detection ก่อนใส่ `staticNetwork` · `NonceManager`)
-ทั้งคู่ฆ่าทั้ง process · ถ้าจะใส่ `process.on('unhandledRejection')` ให้**จำกัดเฉพาะ error ของ ethers**
-(มี `code` + `shortMessage`) log ERROR + metric แล้วไม่ตาย · error อื่นต้องตายเหมือนเดิม (fail fast)
+### 3.1 ✅ กัน ethers หลุด unhandled rejection — เสร็จแล้ว (2026-09-23)
+`src/common/process/unhandled-rejection.ts` ติดใน `main.ts` ก่อน `NestFactory.create` · error ของ ethers
+(มี `code` + `shortMessage`) → log ERROR + `logchain_unhandled_ethers_rejections_total{code}` แล้วไม่ตาย ·
+อย่างอื่นโยนต่อให้ Node ตายเหมือนเดิม · ยังไม่มี Prometheus alert rule ในโปรเจกต์ — ถ้าจะทำ ให้เตือนเมื่อค่านี้ > 0
 
 ### 3.2 `storeRoot` แยก "รอ confirm ไม่ทัน" กับ "RPC timeout ระหว่างรอ" ไม่ได้
 `src/blockchain/blockchain.service.ts` เช็ค `err?.code !== 'TIMEOUT'` — ethers ใช้ code เดียวกันทั้งสองกรณี
