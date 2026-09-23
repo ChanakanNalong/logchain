@@ -110,8 +110,8 @@ mount ไป `/app/data/GeoLite2-City.mmdb` ถ้าอยากเปิด ge
 
 ### 3.4 ✅ detection กัน event ซ้ำด้วย `log_id` — เสร็จแล้ว (2026-09-23)
 `detection/app/dedup.py` (`SeenIds` จำ 10,000 id ล่าสุดในหน่วยความจำ) · consumer ข้าม id ที่เคยเห็นก่อนเข้า
-rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้อจำกัด:** restart consumer แล้วลืม
-(ซ้ำจาก Kafka redeliver หลัง restart ยังหลุดได้) · เทสต์ Python รันใน CI job `detection` แล้ว
+rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · restart แล้วลืม **โดยตั้งใจ**
+(ลืมพร้อม state อื่นของ detection — ดู "ห้ามทำ") · เทสต์ Python รันใน CI job `detection` แล้ว
 
 ### 3.5 ✅ RPC error อื่นระหว่างรอ receipt → UNVERIFIED ไม่ใช่ FAILED (2026-09-23)
 เดิมเฉพาะ TIMEOUT ที่นับเป็น "ยังไม่รู้ผล" · ตอนนี้ error ของ ethers ทุกตัวยกเว้น `CALL_EXCEPTION` /
@@ -126,10 +126,8 @@ alert rule มีแล้ว (worklog หัวข้อ 19) แต่ขึ้
 ทำ: เพิ่ม service `alertmanager` ใน compose + `alerting:` ใน `prometheus.yml` + route ไป email ·
 เพิ่ม `promtool`/`amtool check-config` ใน CI job `prometheus`
 
-### 4.2 detection จำ id ที่เห็นแล้วข้าม restart
-`SeenIds` (3.4) อยู่ในหน่วยความจำ — restart consumer แล้วลืม ซ้ำจาก Kafka redeliver หลัง restart ยังหลุด
-ทางเลือก: ตารางใน Postgres (`detection_seen_logs(log_id pk, seen_at)` + ลบของเก่ากว่า N ชม.) หรือ Redis
-(ยังไม่มีใน stack) · ถ้าเป็น Postgres ต้องทำ migration ฝั่ง backend (`src/database/migrations/`) ไม่ใช่ `infra/postgres/init/`
+### 4.2 ⛔ detection จำ id ที่เห็นแล้วข้าม restart — ตัดสินใจไม่ทำ (2026-09-23)
+เหตุผลอยู่ในหมวด "ห้ามทำ" ด้านล่าง · รายละเอียด worklog หัวข้อ 21
 
 ### 4.3 ค่าเริ่มต้นของ `INTEGRITY_AUTO_REANCHOR` (ต้องตัดสินใจ ไม่ใช่แค่แก้)
 เครื่องนี้ `true` · `.env.example` = `false` → clone ใหม่ batch ที่ tx ถูก drop (3.5) ค้าง `UNVERIFIED` ถาวร
@@ -157,6 +155,12 @@ alert rule มีแล้ว (worklog หัวข้อ 19) แต่ขึ้
   **ห้ามเปลี่ยน `NEXT_PUBLIC_*` เป็นชื่อ service** (inline ตอน build และรันบนเบราว์เซอร์นอก docker network)
 - **ห้ามใช้ `${VAR:?...}` ใน `docker-compose.yml`** — compose error ทั้งไฟล์
 - **ห้าม `docker compose down -v`** ตอนทดสอบ ถ้ายังอยากได้ข้อมูล demo เดิม
+- **ห้ามเก็บ `SeenIds` (id ที่ detection เห็นแล้ว) ไว้ถาวรแยกจาก state อื่น** — state ของ rule engine
+  (`_event_history`) และ buffer ของ DeepLog อยู่ในหน่วยความจำ restart แล้วหายพร้อมกัน ถ้า id รอดแต่ประวัติหาย
+  message ที่ Kafka redeliver หลัง crash จะถูกข้าม → threshold นับขาด → **5710 ไม่เด้งทั้งที่ brute force จริง**
+  ของเดิม (ลืมพร้อมกันหมด) นับถูก ผลเสียเหลือแค่ alert ซ้ำ 1 ครั้ง ซึ่ง backend รวมเป็น `occurrence_count` อยู่แล้ว
+  · ถ้าจะทำต้องเก็บ **ครบชุด** (id + `_event_history` + `_prior_matches` + DeepLog buffers) และ detection ต้องได้
+  สิทธิ์ DB (ตอนนี้ไม่มี — ขยาย PCI scope) · ตัดสินใจ 2026-09-23
 
 ---
 

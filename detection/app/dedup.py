@@ -6,7 +6,9 @@ backend replay log ที่ค้าง `kafka_pending_logs` แบบ at-least
 และ buffer ของ DeepLog ได้ log key ซ้ำ → sequence เพี้ยน
 
 ใช้ `id` ของ log (uuid จาก backend) เป็น key · จำไว้ในหน่วยความจำแบบจำกัดจำนวน (ตัวเก่าสุดหลุดก่อน)
-ข้อจำกัด: restart consumer แล้วลืม — ซ้ำที่มาจาก Kafka redeliver หลัง restart ยังหลุดได้
+restart แล้วลืม **โดยตั้งใจ** — ต้องลืมพร้อม state อื่น (ประวัติของ RuleEngine, buffer ของ DeepLog)
+ถ้าจำ id ไว้ถาวรแต่ประวัติหาย message ที่ Kafka redeliver หลัง crash จะถูกข้าม → threshold นับขาด
+→ rule ไม่เด้งทั้งที่โดนโจมตีจริง (ตัดสินใจไว้ใน docs/plan/next-steps.md หมวด "ห้ามทำ")
 """
 from collections import OrderedDict
 from typing import Optional
