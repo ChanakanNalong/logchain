@@ -11,11 +11,15 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# pip / setuptools ที่มากับ base image มีช่องโหว่ (pip-audit 2026-09-24) — อัปก่อนลงอย่างอื่น
+RUN pip install --no-cache-dir --upgrade pip setuptools
+
 # torch CPU wheel ต้องลงก่อน requirements.txt — default จาก PyPI เป็น build ที่
 # ลาก nvidia CUDA libs มาด้วย ~3 GB ซึ่ง inference ไม่ได้ใช้เลย
-# ลงแล้วบรรทัด torch==2.12.0 ใน requirements.txt จะถือว่า satisfied (2.12.0+cpu)
+# ลงแล้วบรรทัด torch==2.13.0 ใน requirements.txt จะถือว่า satisfied (2.13.0+cpu)
+# ⚠️ scanner จับคู่ `+cpu` ไม่ได้ — ช่องโหว่ของ torch ใน image หลุดการ scan · CI จึง audit requirements.txt แทน
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.12.0
+        torch==2.13.0
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

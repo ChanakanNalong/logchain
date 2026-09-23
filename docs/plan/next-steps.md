@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–36) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–37) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -153,7 +153,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.2 ✅ | email ของ security alert เปิดแล้ว (`scripts/setup-alert-email.sh` → `.env` `MAIL_*` → vault-init) · ทดสอบส่งจริง (worklog หัวข้อ 34) | B11 | เสร็จ 2026-09-23 |
 | 6.3 ✅ | Kafka mTLS เปิดแล้ว — listener `DOCKER_SSL` `kafka-N:9094` · backend + detection ใช้ client cert · ทดสอบครบทั้งสาย + ปฏิเสธ client ไม่มี cert (worklog หัวข้อ 35) | B3 | เสร็จ 2026-09-23 |
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
-| 6.5 | pip audit ใน CI · ให้ npm audit / Trivy vuln block ที่ HIGH+ | B7 B6 | เล็ก แต่อาจเจอ vuln ค้างต้องไล่แก้ |
+| 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
 | 6.6 | HTTPS หน้า backend / dashboard / Keycloak (reverse proxy + cert) | B2 | ใหญ่ — กระทบ Keycloak issuer + `NEXT_PUBLIC_*` |
 | 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
 | 6.8 | erasure ลบ `audit_access` ขัด PCI 10.5.1 (เก็บ audit ≥ 12 เดือน)? — พิจารณา pseudonymize แทนลบ | B10 | ต้องตัดสินใจก่อน |
@@ -199,6 +199,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | approle login ตอบ `permission denied` | Vault user lockout — `./scripts/vault-unlock.sh` |
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` — ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
 | container ต่อ Kafka SSL `:39092` ไม่ได้ / ค้าง | listener `SSL` advertise `localhost` ใช้ได้จาก host เท่านั้น — ใน docker network ใช้ `DOCKER_SSL` `kafka-N:9094` |
+| Trivy / pip-audit บน image ไม่เจอช่องโหว่ของ torch | torch ใน image เป็น `X+cpu` scanner จับคู่ไม่ได้ — CI audit `detection/requirements.txt` แทน (อัป torch ต้องแก้ทั้ง `requirements.txt` และ `Dockerfile`) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |

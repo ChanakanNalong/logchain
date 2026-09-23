@@ -3,11 +3,11 @@
 # torch: ค่า default จาก PyPI เป็น build ที่ลาก nvidia CUDA libs มา ~3 GB
 # inference บน HDFS sequence ไม่ต้องใช้ GPU — Dockerfile เลยลง CPU wheel
 # จาก https://download.pytorch.org/whl/cpu ก่อน แล้วบรรทัดนี้จะถือว่า satisfied
-# (2.12.0+cpu เข้าเงื่อนไข ==2.12.0 ตาม PEP 440 — local version segment ถูกมองข้าม)
+# (2.13.0+cpu เข้าเงื่อนไข ==2.13.0 ตาม PEP 440 — local version segment ถูกมองข้าม)
 # รันเองบน host ที่อยากได้ CPU wheel เหมือนกัน:
-#   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.12.0
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.13.0
 #   pip install -r requirements.txt
-torch==2.12.0
+torch==2.13.0
 
 fastapi==0.137.2
 uvicorn==0.49.0

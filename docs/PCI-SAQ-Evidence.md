@@ -18,7 +18,7 @@
 | 4.1 | Encrypt transmission | **PARTIAL** | Kafka ระหว่าง API Gateway ↔ Detection เป็น **mTLS แล้ว** (listener `DOCKER_SSL :9094` · บังคับ client cert · เปิด 2026-09-23 · ดู E08) · **ยังไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP (review B2) |
 | 5.1 | Anti-malware | **N/A — ไม่มี** | ไม่มี anti-malware · Trivy เป็น vulnerability/secret scanner (review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
-| 6.2 | Vulnerability scan | **PARTIAL** | Trivy vuln scan (`exit-code: 0` ไม่ block) + npm audit (`continue-on-error`) · **ไม่มี pip audit** (review B7) |
+| 6.2 | Vulnerability scan | PASS | ทุก push **block** เมื่อเจอ HIGH/CRITICAL: npm audit (backend + dashboard) · Trivy (มี fix แล้ว) · pip-audit (detection) — 2026-09-24 (review B7) |
 | 7.1 | Restrict access by need | PASS | JWT RBAC 5 roles (admin / operator / ingestor / analyst / auditor) |
 | 8.1 | Identify and authenticate | PASS | JWT ทุก endpoint ใต้ `/api/v1` · `/`, `/health`, `/metrics` เปิดสาธารณะโดยตั้งใจ (review B5) |
 | 9.1 | Restrict physical access | N/A | Cloud/local deployment |
@@ -49,7 +49,11 @@
 ### E04 — Vulnerability Scanning
 - File: .github/workflows/security.yml — ทุก push
 - block: gitleaks · Trivy secret scan · `check-tracked-secrets.sh`
-- ไม่ block: Trivy vulnerability scan (`exit-code: 0`) · npm audit (`continue-on-error`) · **ไม่มี pip audit**
+- block (HIGH/CRITICAL, 2026-09-24): npm audit backend + dashboard (`--audit-level=high`) · Trivy vuln (`ignore-unfixed`) ·
+  pip-audit `detection/requirements.txt` (`--no-deps` — dependency ทางอ้อมของ Python ไม่ครอบ)
+- ตอนเปิด block: npm 0 ทุกระดับ · Trivy 0 · pip-audit เจอ **torch 2.12.0 CVE-2025-3000** (ไม่กระทบ — ไม่ได้ใช้ `torch.jit.script`)
+  → อัปเป็น 2.13.0 · image อัป pip / setuptools ที่มีช่องโหว่
+- ⚠️ ใน image torch เป็น `2.13.0+cpu` scanner จับคู่ advisory ไม่ได้ (เคยทำให้ CVE ข้างบนหลุด) → audit จาก requirements.txt
 
 ### E05 — Data Retention
 - File: src/retention/retention.service.ts — cron ทุกเที่ยงคืน

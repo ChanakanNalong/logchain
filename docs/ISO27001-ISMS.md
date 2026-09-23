@@ -33,7 +33,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
 | R07 | Container | Privilege escalation | Low | High | MEDIUM | service ทุกตัวรัน process หลักเป็น non-root (ตรวจด้วย `docker top` 2026-09-23) · postgres / vault เริ่มด้วย root แล้วลดสิทธิ์เอง (มาตรฐานของ image) · ยกเว้น `vault-unseal` / `vault-init` (ต้อง chown ไฟล์ secret ให้ user บน host ตอน clone ใหม่) |
-| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | Trivy + npm audit ใน CI (ไม่ block) · ไม่มี pip audit |
+| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | npm audit + Trivy + pip-audit ใน CI — block ที่ HIGH/CRITICAL |
 
 ---
 
@@ -47,7 +47,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | A.9.4 | System Access Control | RBAC 5 roles (admin / operator / ingestor / analyst / auditor), audit interceptor logs all access |
 | A.10.1 | Cryptographic Controls | SHA-256 hash stored on blockchain per log batch |
 | A.12.4 | Logging and Monitoring | PostgreSQL + YAML rule engine (แนว Wazuh) + ML anomaly detection · Prometheus alert 13 rule → email (Alertmanager) |
-| A.12.6 | Vulnerability Management | Trivy scan + npm audit in CI/CD (ไม่ block) · ไม่มี pip audit |
+| A.12.6 | Vulnerability Management | npm audit + Trivy + pip-audit ทุก push · block ที่ HIGH/CRITICAL (Trivy เฉพาะที่มี fix) |
 | A.13.2.1 | Information Transfer | Kafka mutual TLS ระหว่าง Detection ↔ API Gateway (เปิดใช้แล้ว) · ⚠️ ยังไม่มี HTTPS (ดูหัวข้อ 5) |
 | A.16.1 | Incident Management | Alert system with severity routing · security alert HIGH/CRITICAL → email (backend) · infra alert → email (Alertmanager) · ทดสอบส่งจริงทั้งคู่แล้ว |
 | A.17.1 | Business Continuity | RTO/RPO + backup รายวัน + สำเนาเข้ารหัสบน Google Drive · ทดสอบกู้คืนแล้ว (RTO-RPO หัวข้อ 3.1–3.2) |

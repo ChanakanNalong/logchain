@@ -23,15 +23,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # audit เป็นข้อมูลประกอบ ไม่ตัดสินว่า build ผ่านหรือไม่ผ่าน
-      # (NestJS chain ต้องขึ้น major version ถึงจะเคลียร์ได้ ค้างไว้เป็นงานแยก)
+      # ── ช่องโหว่ของ dependency (blocking ที่ HIGH ขึ้นไป — PCI 6.3.3 ต้องแก้ critical/high) ──
+      # 2026-09-24: ทั้งสองฝั่ง 0 ทุกระดับ จึงเปิด block ได้โดยไม่ค้าง · moderate ลงมายังไม่ block
+      # (advisory ระดับกลางออกบ่อย ถ้า block จะแดงเพราะงานที่ไม่เกี่ยวกัน) — ดูใน log ของ step นี้
       - name: npm audit (backend)
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
+        run: npm audit --audit-level=high
 
       - name: npm audit (dashboard)
-        run: npm --prefix cylis-dashboard audit --audit-level=moderate
-        continue-on-error: true
+        run: npm --prefix cylis-dashboard audit --audit-level=high
+
+      # audit จาก requirements.txt ไม่ใช่ image: ใน image torch ติดตั้งเป็น `2.13.0+cpu` ซึ่ง scanner
+      # จับคู่กับ advisory ไม่ได้ (เคยหลุด CVE-2025-3000 ของ torch 2.12.0 มาแล้ว) · --no-deps --disable-pip
+      # = ตรวจเฉพาะที่ pin ไว้ ไม่ติดตั้ง torch (~GB) · dependency ทางอ้อมไม่ครอบ
+      # ubuntu-latest (24.04) ห้าม pip install ลง python ของระบบ (PEP 668) → ใช้ setup-python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: pip-audit (detection)
+        run: |
+          pip install --quiet pip-audit
+          pip-audit -r detection/requirements.txt --no-deps --disable-pip --progress-spinner off
 
       # ── ด่านที่ทำให้ build แดงจริง ──
       # secret หลุดเข้า repo คือเคสที่เกิดมาแล้ว (.env backup ถูก commit ขึ้น public
@@ -67,11 +78,13 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: 1
 
-      - name: Trivy — vulnerability scan (informational)
+      # block เฉพาะที่มีเวอร์ชันแก้แล้ว — ช่องโหว่ที่ยังไม่มี fix แก้ไม่ได้อยู่ดี ถ้า block จะแดงค้าง
+      - name: Trivy — vulnerability scan (blocking)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: .
           scanners: vuln
           severity: CRITICAL,HIGH
-          exit-code: 0
+          ignore-unfixed: true
+          exit-code: 1
