@@ -3,7 +3,7 @@
 ## When to trigger
 - Primary DB (`logchain-postgres`) unreachable > 60 seconds
 - Application errors: "connection refused" หรือ "role logchain not found"
-- Prometheus alert `postgres_up{instance="postgres"} == 0`
+- Prometheus alert `PostgresDown` (`pg_up == 0` นาน 1 นาที — ส่ง email ผ่าน Alertmanager)
 
 ## Prerequisites
 - User with `docker exec` access on host

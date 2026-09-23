@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–27) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–28) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -15,7 +15,7 @@
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule 8 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
-- **งานในแผนปิดครบทุกข้อ ไม่มีงานค้าง**
+- งานในแผนเดิมปิดครบ · **ข้อ 5 ใหม่: ยังไม่มี backup อัตโนมัติของ Postgres**
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -127,6 +127,15 @@ CI job `prometheus` ตรวจ config ทั้งสองแบบด้ว�
 ### 4.3 ✅ `INTEGRITY_AUTO_REANCHOR` คง `false` เป็นค่าเริ่มต้น — ตัดสินใจแล้ว (2026-09-23)
 เจ้าของเลือกคงไว้ · เหตุผลเขียนใน `.env.example` + README Troubleshooting (batch ค้าง UNVERIFIED เป็นชั่วโมง)
 เครื่องนี้ยังเป็น `true` ตามเดิม
+
+
+## 5. 🟡 backup อัตโนมัติของ Postgres — ยังไม่มี (เจอ 2026-09-23 ตอนทดสอบกู้คืน)
+
+เอกสาร RTO/RPO สัญญา RPO 24 ชม. จาก daily backup แต่ไม่มี backup job เลย · **ขั้นตอน restore ทดสอบผ่านแล้ว**
+(worklog หัวข้อ 28 · คำสั่งอยู่ใน `docs/RTO-RPO-Compliance-Signoff.md` หัวข้อ Database Failure)
+ต้องทำ: script dump `globals` + `logchain` + `keycloak` ตามคำสั่งในเอกสาร · เก็บนอก docker volume · ตั้งเวลาวันละครั้ง
+(cron / systemd timer ของเครื่อง หรือ service ใน compose) · เก็บย้อนหลัง N วัน · **dump มี hash รหัส role + log → เก็บแบบ 0600
+และไม่เข้า git** · alert เมื่อ backup ล่าสุดเก่ากว่า 26 ชม. · ทดสอบ restore จากไฟล์ที่ job สร้างจริง 1 รอบ
 
 ---
 
