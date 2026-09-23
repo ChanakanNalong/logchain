@@ -43,7 +43,7 @@
 | B12 | Chain-of-Custody #2–3, T002 | Kafka ก่อน Storage · "Kafka → NestJS Backend: Message consumed" | **ลำดับกลับกัน:** backend insert ลง Postgres ก่อน (`logs.service.ts:67`) แล้วค่อย publish ขึ้น Kafka (`:70`) · detection เป็นฝั่ง consume · alert ย้อนกลับมาทาง `alerts.raw` | `src/logs/logs.service.ts` |
 | B13 | Key-Rotation §1 | "secret ทั้งหมดอยู่ใน Vault — ไม่ใช่ `.env`" | `.env` ยังมี `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `KC_DB_PASSWORD`, client secrets ฯลฯ · secret ใหม่ของวันนี้ไม่อยู่ในตาราง: Alertmanager SMTP (`infra/alertmanager/.secrets/`) · rclone token + crypt password (`infra/rclone/.secrets/`) | `.env` · worklog หัวข้อ 22, 30 |
 | B14 | Key-Rotation §3 | "redeploy/transfer contract ownership" | contract **ไม่มี `transferOwnership`** → rotate key = redeploy เท่านั้น | worklog 2026-09-17 หัวข้อ 4.3 |
-| B15 | PCI 1.1 | "Firewall — Docker network isolation" (PASS) | ทุก port ที่ publish bind **`0.0.0.0`** — Postgres 5433/5434 · Kafka plaintext 29092 · Vault 8200 · Prometheus 9090 / Alertmanager 9093 (ไม่มี auth — ใครใน LAN silence alert ได้) · node-exporter 9100 · เครื่องมี IP LAN `10.5.50.253` · Docker publish ข้าม host firewall | `ss -ltn` |
+| B15 ✅ | PCI 1.1 | "Firewall — Docker network isolation" (PASS) | ทุก port ที่ publish bind **`0.0.0.0`** — Postgres 5433/5434 · Kafka plaintext 29092 · Vault 8200 · Prometheus 9090 / Alertmanager 9093 (ไม่มี auth — ใครใน LAN silence alert ได้) · node-exporter 9100 · เครื่องมี IP LAN `10.5.50.253` · Docker publish ข้าม host firewall | `ss -ltn` |
 
 ### ตรงกับของจริง (ตรวจแล้ว)
 - Chain-of-Custody "Hash Coverage" — field ใน `computeRawHash` ตรงตามตาราง (+ `v` เวอร์ชัน) · PAN mask ก่อน hash
@@ -59,6 +59,7 @@
 - **B1–B15** → เจ้าของเลือก "แก้เอกสารให้ตรงความจริงก่อน" — แก้แล้วใน PCI / ISO / Chain-of-Custody / Key-Rotation /
   RTO-RPO (สถานะ PASS ที่ไม่จริงเปลี่ยนเป็น PARTIAL / FAIL / N/A พร้อมหมายเหตุ · Attestation ระบุข้อยกเว้น)
 - การทำระบบให้ผ่านทีละข้อ → `docs/plan/next-steps.md` ข้อ 6
+- **B15 แก้แล้ว** (ข้อ 6.1): port ทั้ง 19 ตัว bind `127.0.0.1` · PCI 1.1 → PASS
 
 ## D. คำถามเดิม (เก็บไว้อ้างอิง)
 

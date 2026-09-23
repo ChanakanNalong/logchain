@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–32) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–33) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -149,7 +149,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 
 | # | เรื่อง | review | ขนาดงาน |
 |---|---|---|---|
-| 6.1 | port ที่ publish bind `127.0.0.1` แทน `0.0.0.0` (Postgres, Kafka, Vault, Prometheus, Alertmanager ฯลฯ เปิดให้ LAN) | B15 | เล็ก — แก้ `ports:` ใน compose |
+| 6.1 ✅ | port ทั้ง 19 ตัว bind `${PUBLISH_ADDR:-127.0.0.1}` — ทดสอบจาก IP LAN ปิดหมด · pipeline ทำงานปกติ (worklog หัวข้อ 33) | B15 | เสร็จ 2026-09-23 |
 | 6.2 | ใส่ Gmail app password ลง Vault `secret/logchain/notification` เปิด email ของ security alert | B11 | เล็ก — เจ้าของใส่รหัสเอง |
 | 6.3 | เปิด Kafka mTLS ใน compose (`KAFKA_SSL_ENABLED=true` + listener 39092) | B3 | กลาง — cert มีแล้ว |
 | 6.4 | dashboard + kafka-exporter รันเป็น non-root | B8 | เล็ก–กลาง |
@@ -192,6 +192,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | อาการ | ที่จริงคือ |
 |---|---|
 | lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 667`) |
+| เครื่องอื่นใน LAN เข้า service ไม่ได้ (log source ข้ามเครื่อง ฯลฯ) | ตั้งใจ — port bind `127.0.0.1` · ตั้ง `PUBLISH_ADDR=0.0.0.0` ใน `.env` แล้ว `docker compose up -d` (เปิดทุก port) |
 | ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | (1) `select count(*) from kafka_pending_logs` — ค้างคิวเพราะ Kafka ล่มไหม (2) มี alert OPEN ของ rule + host เดียวกันอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
 | rule แบบ threshold ไม่เด้งทั้งที่ยิง log ครบ | rule นับหน้าต่างเวลาจาก **`createdAt` ของ event** ไม่ใช่เวลาที่รับ — ยิงห่างกันเกิน 60 วิ ก็ไม่เข้าเกณฑ์ (ตั้งใจ ดู `detection/app/rules.py::_event_time`) |
 | login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | 2026-09-23 ตั้งให้ตรงกันแล้ว · ถ้าไม่ผ่านอีก = มีคนเปลี่ยนรหัสผ่านหน้าเว็บ · realm policy ต้องมีตัวเลข + ห้ามซ้ำ 4 ตัวล่าสุด · ต้องใช้ OTP |

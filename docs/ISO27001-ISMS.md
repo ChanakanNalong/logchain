@@ -28,7 +28,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 |----|-------|--------|------------|--------|------------|---------|
 | R01 | Log data | Unauthorized modification | Medium | High | HIGH | Blockchain hash verification |
 | R02 | API endpoints | Unauthorized access | Medium | High | HIGH | JWT authentication |
-| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest และ port 5433 เปิดบน `0.0.0.0` |
+| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest |
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |

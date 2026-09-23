@@ -17,6 +17,10 @@ name: logchain
 #       แยกไปอยู่ KEYCLOAK_INTERNAL_URL)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# port ทุกตัว publish ที่ ${PUBLISH_ADDR:-127.0.0.1} — เข้าได้จากเครื่องนี้เท่านั้น
+# เดิม bind 0.0.0.0: Postgres / Kafka plaintext / Vault / Prometheus + Alertmanager (ไม่มี auth) เปิดให้ทั้ง LAN
+# และ Docker publish ข้าม firewall ของเครื่อง (compliance review 2026-09-23 B15)
+# ต้องให้เครื่องอื่นเข้าจริง (เช่น log source ข้ามเครื่องยิง :3000) → ตั้ง PUBLISH_ADDR ใน .env โดยตั้งใจ
 services:
   postgres:
     image: postgres:16-alpine 
@@ -32,7 +36,7 @@ services:
       # consumed by infra/postgres/init/01-replication-user.sh — pg_hba.conf อ้าง role นี้
       REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
     ports:
-      - "5433:5432"
+      - "${PUBLISH_ADDR:-127.0.0.1}:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # init scripts รันอัตโนมัติตอน container สร้างครั้งแรก
@@ -103,7 +107,7 @@ services:
       # default host port 8080 (container ยัง listen 8080 เหมือนเดิม). ถ้า 8080
       # บนเครื่อง dev ชนกับโปรเจกต์อื่น ตั้ง KEYCLOAK_HOST_PORT ใน .env เป็นค่าอื่น
       # แล้วอัปเดต KEYCLOAK_URL ของตัวเองให้ตรงกับพอร์ตที่เปลี่ยนด้วย
-      -  "${KEYCLOAK_HOST_PORT:-8080}:8080"
+      -  "${PUBLISH_ADDR:-127.0.0.1}:${KEYCLOAK_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,8 +160,8 @@ services:
       KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "2"
       ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
-      - "29092:29092"
-      - "39092:39092"
+      - "${PUBLISH_ADDR:-127.0.0.1}:29092:29092"
+      - "${PUBLISH_ADDR:-127.0.0.1}:39092:39092"
     volumes:
       - kafka_1_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-1:/opt/bitnami/kafka/config/certs:ro
@@ -209,8 +213,8 @@ services:
     ports:
       # ฝั่ง container ต้องเป็นพอร์ตของ EXTERNAL listener (29093) ไม่ใช่ 29092
       # ซึ่งไม่มีอะไร listen อยู่เลย (PLAINTEXT อยู่ที่ 9092)
-      - "29093:29093"
-      - "39093:39093"
+      - "${PUBLISH_ADDR:-127.0.0.1}:29093:29093"
+      - "${PUBLISH_ADDR:-127.0.0.1}:39093:39093"
     volumes:
       - kafka_2_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-2:/opt/bitnami/kafka/config/certs:ro
@@ -260,8 +264,8 @@ services:
       KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "2"
       ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
-      - "29094:29094"
-      - "39094:39094"
+      - "${PUBLISH_ADDR:-127.0.0.1}:29094:29094"
+      - "${PUBLISH_ADDR:-127.0.0.1}:39094:39094"
     volumes:
       - kafka_3_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-3:/opt/bitnami/kafka/config/certs:ro
@@ -306,7 +310,7 @@ services:
       - "--kafka.server=kafka-2:9092"
       - "--kafka.server=kafka-3:9092"
     ports:
-      - "9308:9308"
+      - "${PUBLISH_ADDR:-127.0.0.1}:9308:9308"
     depends_on:
       kafka-1: {condition: service_healthy}
       kafka-2: {condition: service_healthy}
@@ -327,7 +331,7 @@ services:
       - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "${PUBLISH_ADDR:-127.0.0.1}:9090:9090"
     networks:
       - default
     # ให้ Prometheus เห็น service บน host — ใช้เฉพาะตอนรันแอปบน host แทน container
@@ -403,7 +407,7 @@ services:
       - ./infra/alertmanager/render.sh:/etc/alertmanager/render.sh:ro
       - ./infra/alertmanager/.secrets:/etc/alertmanager/secrets:ro
     ports:
-      - "9093:9093"
+      - "${PUBLISH_ADDR:-127.0.0.1}:9093:9093"
     networks:
       - default
 
@@ -421,7 +425,7 @@ services:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3002:3000"
+      - "${PUBLISH_ADDR:-127.0.0.1}:3002:3000"
     depends_on:
       - prometheus
     networks:
@@ -442,7 +446,7 @@ services:
       # mount propagation ("path / is mounted on / but it is not a shared or slave mount")
       - /:/host:ro
     ports:
-      - "9100:9100"
+      - "${PUBLISH_ADDR:-127.0.0.1}:9100:9100"
     networks:
       - default
 
@@ -459,7 +463,7 @@ services:
       PRIMARY_HOST: postgres
       REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
     ports:
-      - "5434:5432"
+      - "${PUBLISH_ADDR:-127.0.0.1}:5434:5432"
     volumes:
       - postgres_standby_data:/var/lib/postgresql/data
       - ./infra/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
@@ -489,7 +493,7 @@ services:
       DATA_SOURCE_NAME: "postgresql://logchain:${POSTGRES_PASSWORD}@postgres:5432/logchain?sslmode=disable"
       PG_EXPORTER_INCLUDE_DATABASES: "logchain,keycloak"
     ports:
-      - "9187:9187"
+      - "${PUBLISH_ADDR:-127.0.0.1}:9187:9187"
     depends_on:
       postgres:
         condition: service_healthy
@@ -511,7 +515,7 @@ services:
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
       VAULT_ADDR: "http://127.0.0.1:8200"
     ports:
-      - "8200:8200"
+      - "${PUBLISH_ADDR:-127.0.0.1}:8200:8200"
     volumes:
       - vault_data:/vault/file
       - ./infra/vault/config:/vault/config:ro
@@ -609,7 +613,7 @@ services:
       # ตัวที่ backend ใช้ยิงจริงคือตัวนี้
       KEYCLOAK_INTERNAL_URL: "http://keycloak:8080"
     ports:
-      - "3000:3000"
+      - "${PUBLISH_ADDR:-127.0.0.1}:3000:3000"
     volumes:
       # ให้สลับ KAFKA_SSL_ENABLED=true ได้โดยไม่ต้อง rebuild image
       # path ใน .env เป็น ./infra/kafka/certs/... ซึ่ง resolve จาก WORKDIR /app พอดี
@@ -645,7 +649,7 @@ services:
     container_name: cylis-dashboard-app
     restart: unless-stopped
     ports:
-      - "3003:3000"
+      - "${PUBLISH_ADDR:-127.0.0.1}:3003:3000"
     depends_on:
       backend: {condition: service_started}
     healthcheck:
@@ -668,7 +672,7 @@ services:
       # api ไม่ต้องใช้ Vault/Kafka — แค่โหลดโมเดลแล้วตอบ /api/v1/detect
       PYTHONUNBUFFERED: "1"
     ports:
-      - "8000:8000"
+      - "${PUBLISH_ADDR:-127.0.0.1}:8000:8000"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5).status==200 else 1)\""]
       interval: 15s

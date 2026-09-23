@@ -145,6 +145,9 @@ npm install && npm run start:dev
 | kafka SSL (mTLS) | `localhost:39092-39094` | |
 | detection-consumer metrics | `localhost:9101` | ไม่ได้ publish ออก host |
 
+ทุก port bind ที่ **`127.0.0.1`** (เข้าได้จากเครื่องนี้เท่านั้น) · ต้องให้เครื่องอื่นเข้า เช่น log source ข้ามเครื่องยิง
+`:3000` → ตั้ง `PUBLISH_ADDR` ใน `.env` แล้ว `docker compose up -d` (ระวัง: เปิดทุก port รวม Postgres / Vault / Alertmanager)
+
 `/health` กับ `/metrics` อยู่**นอก** global prefix `api/v1` โดยตั้งใจ —
 คือ `/health` ไม่ใช่ `/api/v1/health`
 

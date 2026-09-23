@@ -12,7 +12,7 @@
 
 | Req | Description | Status | Evidence |
 |-----|-------------|--------|----------|
-| 1.1 | Firewall configuration | **PARTIAL** | service คุยกันใน Docker network · แต่ port ที่ publish ทั้งหมด (Postgres, Kafka plaintext, Vault, Prometheus/Alertmanager ไม่มี auth ฯลฯ) bind `0.0.0.0` = เข้าถึงได้จาก LAN (review B15) |
+| 1.1 | Firewall configuration | PASS | service คุยกันใน Docker network · port ที่ publish ทั้ง 19 ตัว bind `127.0.0.1` (`PUBLISH_ADDR`) — ทดสอบจาก IP LAN ของเครื่องแล้วปิดทุกตัว · แก้ 2026-09-23 (เดิม `0.0.0.0` · review B15) |
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
 | 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) |
 | 4.1 | Encrypt transmission | **FAIL** | **ไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP · Kafka mTLS ทำได้แต่ **ปิดอยู่** (`KAFKA_SSL_ENABLED=false`) (review B2, B3 · ดู E08) |
