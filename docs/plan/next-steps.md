@@ -2,16 +2,20 @@
 
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-23 · **HEAD:** `f66922b` (push แล้ว · CI เขียวครบทุก job)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–10) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `3d15107` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–20) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
 # สถานะระบบ ณ ตอนเขียน
 
 - clone จาก GitHub แล้วรัน `./scripts/bootstrap.sh` รวดเดียวจบ — smoke test จาก GitHub จริงผ่าน 2 รอบ
-- CI เขียวครบ 4 job (`CI` 3 job + `Security Scan`)
-- stack บนเครื่องต่อ **Polygon Amoy จริง** batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
+- CI 5 job: Backend · Dashboard · **Detection (Python unittest)** · **Prometheus (promtool)** · Integration
+  + `Security Scan` แยก workflow
+- stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
+  batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
+- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) · scrape target ละ 1 ตัวต่อแอป · **ยังไม่มี Alertmanager**
+- งานในแผนเสร็จหมดแล้ว **เหลือแค่ข้อ 2 (รอยืนยันข้ามคืน)** + ข้อ 4 ที่ยังไม่ได้เริ่ม
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -47,6 +51,12 @@ npm run lint:ci   # ← สำคัญ: มีเพดาน warning 667 · `n
 npm test
 npm run build
 npx jest --config test/jest-e2e.json    # ต้องมี stack รันอยู่
+# ฝั่ง detection (ต้องมี PyYAML — หรือรันใน image ของ detection)
+docker run --rm -v $PWD/detection:/w -w /w --entrypoint python logchain-detection:dev \
+  -m unittest discover -s tests -t . -v
+# alert rule
+docker run --rm -v $PWD/infra/prometheus:/p:ro -w /p --entrypoint promtool \
+  prom/prometheus:v2.55.0 test rules alerts.test.yml
 
 # e2e ทิ้ง batch ทดสอบไว้ใน DB — ลบทุกครั้ง ไม่งั้น integrity บน dashboard ตกจาก 100%
 docker exec logchain-postgres psql -U logchain -d logchain \
@@ -57,9 +67,9 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 
 # งานค้าง เรียงตามลำดับที่ควรทำ
 
-## 0. ✅ commit งาน 2.1 + kafka-python + blockchain retry — push แล้ว CI เขียว (2026-09-23)
+## 0. ✅ commit ทุกอย่างของ 2026-09-23 — push แล้ว CI เขียว
 
-`d26fb44` Kafka outbox · `5a8b184` kafka-python 3.0.11 · `f66922b` blockchain init retry
+`d26fb44` Kafka outbox → … → `3d15107` Prometheus scrape ซ้ำ · git ในเครื่องสะอาด
 
 ## 1. ✅ ตรวจหน้าเว็บด้วยตา — ปิดแล้ว (2026-09-23)
 
@@ -67,7 +77,7 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 (RPC สะดุดตอน boot = batch ค้าง SEALED จน restart) → แก้ให้ลองใหม่แบบ backoff แล้ว
 รหัส `admin-user` ตอนนี้ตรงกับ `.env` แล้ว (ยังต้องใช้ OTP ของเจ้าของ)
 
-## 2. 🟢 `detection-consumer` — `Task is already done!` (แก้แล้ว รอยืนยันข้ามคืน)
+## 2. 🟡 `detection-consumer` — `Task is already done!` (แก้แล้ว รอยืนยันข้ามคืน) ← **ทำอันนี้ก่อน**
 
 เป็นบั๊กของ kafka-python 3.0.2 (task ที่จบแล้วถูกปลุกซ้ำ · library จับ exception เองก่อนรันโค้ดใด ๆ
 = **ไม่ทำ message หาย/ไม่ commit ข้าม**) · upstream แก้ใน 3.0.3 (#3078) → pin เป็น **3.0.11** แล้ว
@@ -77,7 +87,10 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 docker logs --since 12h logchain-detection-consumer 2>&1 | grep -c "Task is already done"   # ควรได้ 0
 ```
 
-## 3. 🟢 P3 — ทำเมื่อว่าง
+ณ 2026-09-23 ~18:40 (ICT) = 0 · consumer เริ่มรัน 17:36 · error เดิมเกิด ~1 ครั้ง/ชม. จึงต้องรอหลายชั่วโมง
+ได้ 0 → เปลี่ยนหัวข้อนี้เป็น ✅ · ยังเจอ → ดู traceback ว่าเป็น `selector.py` แบบเดิมไหม (worklog หัวข้อ 11)
+
+## 3. ✅ P3 — เสร็จครบทุกข้อ (2026-09-23)
 
 ### 3.1 ✅ กัน ethers หลุด unhandled rejection — เสร็จแล้ว (2026-09-23)
 `src/common/process/unhandled-rejection.ts` ติดใน `main.ts` ก่อน `NestFactory.create` · error ของ ethers
@@ -103,6 +116,26 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้
 ### 3.5 ✅ RPC error อื่นระหว่างรอ receipt → UNVERIFIED ไม่ใช่ FAILED (2026-09-23)
 เดิมเฉพาะ TIMEOUT ที่นับเป็น "ยังไม่รู้ผล" · ตอนนี้ error ของ ethers ทุกตัวยกเว้น `CALL_EXCEPTION` /
 `TRANSACTION_REPLACED` คืน `confirmed:false` · error ที่ไม่ใช่ของ ethers ยังโยนต่อ (worklog หัวข้อ 18)
+
+## 4. 🟢 ทำเมื่อว่าง — ยังไม่ได้เริ่ม (เกิดจากงานของ 2026-09-23)
+
+### 4.1 Alertmanager
+alert rule มีแล้ว (worklog หัวข้อ 19) แต่ขึ้นแค่ http://localhost:9090/alerts ไม่มีใครได้รับแจ้ง
+**ติดอยู่ที่:** SMTP ใน Vault ยังว่าง (`secret/logchain/notification` — backend log
+`Notification disabled — SMTP not configured`) ต้องได้ app password ของ Gmail จากเจ้าของก่อน
+ทำ: เพิ่ม service `alertmanager` ใน compose + `alerting:` ใน `prometheus.yml` + route ไป email ·
+เพิ่ม `promtool`/`amtool check-config` ใน CI job `prometheus`
+
+### 4.2 detection จำ id ที่เห็นแล้วข้าม restart
+`SeenIds` (3.4) อยู่ในหน่วยความจำ — restart consumer แล้วลืม ซ้ำจาก Kafka redeliver หลัง restart ยังหลุด
+ทางเลือก: ตารางใน Postgres (`detection_seen_logs(log_id pk, seen_at)` + ลบของเก่ากว่า N ชม.) หรือ Redis
+(ยังไม่มีใน stack) · ถ้าเป็น Postgres ต้องทำ migration ฝั่ง backend (`src/database/migrations/`) ไม่ใช่ `infra/postgres/init/`
+
+### 4.3 ค่าเริ่มต้นของ `INTEGRITY_AUTO_REANCHOR` (ต้องตัดสินใจ ไม่ใช่แค่แก้)
+เครื่องนี้ `true` · `.env.example` = `false` → clone ใหม่ batch ที่ tx ถูก drop (3.5) ค้าง `UNVERIFIED` ถาวร
+**ไม่มีบันทึกเหตุผลที่ตั้ง false** (commit `1dcb243` ไม่ได้เขียนไว้) · ความเสี่ยงที่อ่านได้จากโค้ด:
+`reanchorUnverified()` เขียน `merkle_root` **จาก DB** ขึ้น chain เมื่อ chain ไม่มี root — ถ้าคนแก้ได้ทั้ง `logs`
+และ `batches.merkle_root` ก่อน re-anchor ของปลอมจะถูกตรึงบน chain · ถามเจ้าของก่อนเปลี่ยน
 
 ---
 
@@ -141,6 +174,8 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
 | รัน e2e ในเครื่องแล้ว integrity ตกจาก 100% | e2e ทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) — ลบทิ้งหลังรัน |
+| รันแอปบน host (`npm run start:dev`) แล้ว Prometheus/Grafana ไม่มีข้อมูล | target ชี้ชื่อ service ใน compose อย่างเดียว — เปลี่ยน target ของ job นั้นเป็น `host.docker.internal:<port>` แล้ว `curl -X POST localhost:9090/-/reload` (อย่าใส่คู่กัน = scrape ซ้ำ worklog หัวข้อ 20) |
+| alert ขึ้นใน `:9090/alerts` แต่ไม่มีใครได้แจ้ง | ยังไม่มี Alertmanager (ข้อ 4.1) |
 
 ---
 
@@ -148,7 +183,7 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้
 
 | ไฟล์ | เกี่ยวตรงไหน |
 |---|---|
-| `docs/worklog/2026-09-23.md` | งานล่าสุด: alert dedup · เตือนซ้ำ · smoke test 2 รอบ · CI · Kafka outbox |
+| `docs/worklog/2026-09-23.md` | งานล่าสุด (หัวข้อ 1–20): alert dedup · Kafka outbox · kafka-python · blockchain retry/timeout · ethers guard · detection dedup · Prometheus alert · README contract |
 | `docs/worklog/2026-09-22.md` | onboarding · seal/anchor · NonceManager crash · P3 |
 | `src/kafka/kafka-producer.service.ts` | producer + outbox/replay (`enqueue` · `drainPending`) |
 | `src/kafka/entities/pending-log.entity.ts` | ตาราง `kafka_pending_logs` |
@@ -157,6 +192,9 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · **ข้
 | `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง (ห้ามกลับไปใช้ NonceManager) |
 | `src/logs/entities/batch.entity.ts` | `INTACT_STATUSES` — แหล่งเดียวของสูตร integrity |
 | `detection/app/rules.py` | rule engine + `_event_time()` |
-| `.github/workflows/ci.yml` | CI 3 job — ขั้น Seed Vault อ่าน AppRole จาก `infra/vault/.secrets/approle.env` |
+| `detection/app/dedup.py` | `SeenIds` กัน event ซ้ำ (เทสต์ `detection/tests/`) |
+| `src/common/process/unhandled-rejection.ts` | guard ethers unhandled rejection + metric |
+| `infra/prometheus/alerts.yml` | alert rule (เทสต์ `alerts.test.yml`) |
+| `.github/workflows/ci.yml` | CI 5 job — ขั้น Seed Vault อ่าน AppRole จาก `infra/vault/.secrets/approle.env` |
 | `scripts/vault-unlock.sh` | ปลด Vault lockout |
 | `README.md` Troubleshooting + Vault user lockout | เคสที่เจอบ่อยพร้อมคำสั่งแก้ |
