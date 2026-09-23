@@ -167,7 +167,14 @@ docker logs logchain-postgres-backup --tail 5
 
 `./backups/` อยู่เครื่องเดียวกับ DB — ดิสก์พังหายพร้อมกัน · service `backup-offsite` ส่งสำเนาขึ้น cloud ทุกชั่วโมงผ่าน
 **rclone crypt** (cloud เห็นแต่ข้อมูลเข้ารหัส ทั้งเนื้อไฟล์และชื่อ) · ตรวจ checksum หลังส่ง · เก็บบน cloud 30 วัน
-ยังไม่ตั้ง = service รอเฉย ๆ ไม่มี alert · ตั้งครั้งเดียว (ตัวอย่าง Google Drive):
+ยังไม่ตั้ง = service รอเฉย ๆ ไม่มี alert · ตั้งครั้งเดียว (Google Drive) — **ใช้ script** ไม่ต้องตอบเมนูเอง:
+
+```bash
+./scripts/setup-offsite-backup.sh    # เปิดลิงก์ที่ขึ้นมา → login → Allow · สุ่ม password ให้ + แสดงครั้งเดียวให้จด
+docker exec logchain-backup-offsite sh /offsite.sh once
+```
+
+ตั้งด้วยเมนูของ rclone เอง (ทางเลือก — เคยพลาดเพราะออกจากเมนูก่อนกด `y` บันทึก แล้วไม่มีไฟล์ config):
 
 ```bash
 # --network host: ให้เบราว์เซอร์ในเครื่องนี้กด "อนุญาต" ได้ · ไฟล์ config ลง infra/rclone/.secrets/ (gitignored)
