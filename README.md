@@ -142,7 +142,7 @@ npm install && npm run start:dev
 | postgres | `localhost:5433` | 5432 ถูก native postgres จองไว้บนเครื่อง dev |
 | postgres-standby | `localhost:5434` | hot standby (pg_basebackup) |
 | kafka EXTERNAL (PLAINTEXT) | `localhost:29092-29094` | |
-| kafka SSL (mTLS) | `localhost:39092-39094` | |
+| kafka SSL (mTLS) | `localhost:39092-39094` | จาก host · ใน docker network backend/detection ใช้ `kafka-N:9094` (mTLS เปิดอยู่) |
 | detection-consumer metrics | `localhost:9101` | ไม่ได้ publish ออก host |
 
 ทุก port bind ที่ **`127.0.0.1`** (เข้าได้จากเครื่องนี้เท่านั้น) · ต้องให้เครื่องอื่นเข้า เช่น log source ข้ามเครื่องยิง

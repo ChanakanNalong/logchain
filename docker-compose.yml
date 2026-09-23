@@ -129,12 +129,16 @@ services:
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
       # 9092 = internal (container-to-container), 29092 = external (host, PLAINTEXT)
+      # 9094 DOCKER_SSL = mTLS ใน docker network (advertise kafka-N:9094) — backend / detection ใช้ตัวนี้
+      #   SSL (39092) advertise localhost ใช้ได้จาก host เท่านั้น: container ต่อแล้ว metadata ชี้กลับ localhost ของตัวเอง
+      #   ssl.* + client auth (KAFKA_TLS_CLIENT_AUTH) เป็นค่า global ครอบทุก listener ที่ map เป็น SSL
+      #   PLAINTEXT 9092 ยังเหลือไว้ให้ inter-broker / kafka-init / kafka-exporter (ไม่ publish ออก host)
       # 39092 = external mTLS — ชื่อ listener ต้องโผล่ใน PROTOCOL_MAP เป็น SSL:SSL
       # ไม่งั้น kafka_has_ssl_listener() ใน libkafka.sh return false แล้ว
       # kafka_configure_ssl() จะไม่ถูกเรียก -> ไม่มี ssl.keystore.*/ssl.truststore.* ใน server.properties
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092,SSL://:39092"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:29092,SSL://localhost:39092"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092,SSL://:39092,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:29092,SSL://localhost:39092,DOCKER_SSL://kafka-1:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -183,9 +187,9 @@ services:
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29093,SSL://:39093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-2:9092,EXTERNAL://localhost:29093,SSL://localhost:39093"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29093,SSL://:39093,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-2:9092,EXTERNAL://localhost:29093,SSL://localhost:39093,DOCKER_SSL://kafka-2:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -236,9 +240,9 @@ services:
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29094,SSL://:39094"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-3:9092,EXTERNAL://localhost:29094,SSL://localhost:39094"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29094,SSL://:39094,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-3:9092,EXTERNAL://localhost:29094,SSL://localhost:39094,DOCKER_SSL://kafka-3:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -604,10 +608,14 @@ services:
       PORT: "3000"
       DB_HOST: postgres
       DB_PORT: "5432"
-      KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+      # mTLS ผ่าน DOCKER_SSL (compliance review B3) · path ใน container — .env ของเครื่อง dev เป็น path บน host
+      KAFKA_BROKERS: "kafka-1:9094,kafka-2:9094,kafka-3:9094"
       # internal listener เป็น PLAINTEXT — mTLS มีเฉพาะ EXTERNAL (39092-39094)
       # ที่ไว้ demo การต่อจาก host ดู scripts/demo-mtls.sh
-      KAFKA_SSL_ENABLED: "false"
+      KAFKA_SSL_ENABLED: "true"
+      KAFKA_SSL_CA: /app/infra/kafka/certs/ca.crt
+      KAFKA_SSL_CERT: /app/infra/kafka/certs/clients/nestjs.crt
+      KAFKA_SSL_KEY: /app/infra/kafka/certs/clients/nestjs.key
       VAULT_ADDR: "http://vault:8200"
       # KEYCLOAK_URL (issuer) ห้าม override — ต้องเป็น localhost:8080 ตาม .env
       # ตัวที่ backend ใช้ยิงจริงคือตัวนี้
@@ -689,8 +697,11 @@ services:
     command: ["python", "-m", "app.consumer"]
     environment:
       PYTHONUNBUFFERED: "1"
-      KAFKA_BROKERS: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
-      KAFKA_SSL_ENABLED: "false"
+      KAFKA_BROKERS: "kafka-1:9094,kafka-2:9094,kafka-3:9094"
+      KAFKA_SSL_ENABLED: "true"
+      KAFKA_SSL_CA: /certs/ca.crt
+      KAFKA_SSL_CERT: /certs/detection.crt
+      KAFKA_SSL_KEY: /certs/detection.key
       DETECT_URL: "http://detection-api:8000/api/v1/detect"
       VAULT_ADDR: "http://vault:8200"
       # app/vault.py refuse-to-start ถ้า 2 ตัวนี้ไม่มี (ตั้งใจ — fail ดังกว่า
@@ -706,6 +717,9 @@ services:
       vault: {condition: service_healthy}
       kafka-init: {condition: service_completed_successfully}
       vault-init: {condition: service_completed_successfully}
+    volumes:
+      # client cert สำหรับ mTLS ของ Kafka (DOCKER_SSL :9094)
+      - ./infra/kafka/certs/clients:/certs:ro
 
 volumes:
   postgres_data:

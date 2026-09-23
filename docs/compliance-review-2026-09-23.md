@@ -31,7 +31,7 @@
 |---|---|---|---|---|
 | B1 | PCI 3.1 · ISO R03 | "PostgreSQL encryption at rest" (PASS) | **ไม่มี** — Postgres ไม่มี TDE · ดิสก์ไม่ได้เข้ารหัส (ไม่มี LUKS) · `show ssl` = off | `lsblk -o FSTYPE` ไม่มี crypto_LUKS |
 | B2 | PCI 4.1 | "HTTPS enforced" (PASS) | **ไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP ล้วน | `src/main.ts` ไม่มี httpsOptions · compose ไม่มี reverse proxy/TLS |
-| B3 | PCI 4.1 · E08 · ISO A.13.2.1 §5 | Kafka mTLS ระหว่าง Detection ↔ API Gateway | **มีความสามารถ แต่ปิดอยู่** — `KAFKA_SSL_ENABLED=false` ทั้ง `.env` และ compose (backend hard-code `"false"`) · ใช้ listener plaintext 9092 | `docker exec … printenv KAFKA_SSL_ENABLED` = false ทั้ง backend และ consumer |
+| B3 ✅ | PCI 4.1 · E08 · ISO A.13.2.1 §5 | Kafka mTLS ระหว่าง Detection ↔ API Gateway | **มีความสามารถ แต่ปิดอยู่** — `KAFKA_SSL_ENABLED=false` ทั้ง `.env` และ compose (backend hard-code `"false"`) · ใช้ listener plaintext 9092 | `docker exec … printenv KAFKA_SSL_ENABLED` = false ทั้ง backend และ consumer |
 | B4 | PCI 2.1 | "Custom JWT secret" | ไม่มี shared secret — Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS | `src/auth/strategies/jwt.strategy.ts` `passportJwtSecret({ jwksUri })` |
 | B5 | PCI 8.1 · E01 · ISO A.9.1 | "JWT authentication on all endpoints" | ทุก endpoint ใต้ `/api/v1` ✅ แต่ `/`, `/health`, `/metrics` เปิดสาธารณะ (ตั้งใจ) · `/metrics` เปิดเผยจำนวน batch/สถานะ | controller ที่ไม่มี `UseGuards`: app · health · metrics |
 | B6 | PCI 5.1 | "Anti-malware — Trivy" | Trivy เป็น vulnerability/secret scanner ไม่ใช่ anti-malware · vuln scan ตั้ง `exit-code: 0` (ไม่ block) | `.github/workflows/security.yml` |
@@ -60,6 +60,7 @@
   RTO-RPO (สถานะ PASS ที่ไม่จริงเปลี่ยนเป็น PARTIAL / FAIL / N/A พร้อมหมายเหตุ · Attestation ระบุข้อยกเว้น)
 - การทำระบบให้ผ่านทีละข้อ → `docs/plan/next-steps.md` ข้อ 6
 - **B15 แก้แล้ว** (ข้อ 6.1): port ทั้ง 19 ตัว bind `127.0.0.1` · PCI 1.1 → PASS
+- **B3 แก้แล้ว** (ข้อ 6.3): Kafka mTLS เปิดใช้ (listener `DOCKER_SSL :9094`) · PCI 4.1 FAIL → PARTIAL (เหลือ HTTPS)
 - **B11 แก้แล้ว** (ข้อ 6.2): email ของ security alert เปิดใช้ + ทดสอบส่งจริง · เจอเพิ่ม: `.env` เป็น 664 → แก้เป็น 600 (script + bootstrap)
 
 ## D. คำถามเดิม (เก็บไว้อ้างอิง)

@@ -48,7 +48,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | A.10.1 | Cryptographic Controls | SHA-256 hash stored on blockchain per log batch |
 | A.12.4 | Logging and Monitoring | PostgreSQL + YAML rule engine (แนว Wazuh) + ML anomaly detection · Prometheus alert 13 rule → email (Alertmanager) |
 | A.12.6 | Vulnerability Management | Trivy scan + npm audit in CI/CD (ไม่ block) · ไม่มี pip audit |
-| A.13.2.1 | Information Transfer | Kafka mutual TLS — ทำได้แต่ **ปิดอยู่** · ไม่มี HTTPS (ดูหัวข้อ 5) |
+| A.13.2.1 | Information Transfer | Kafka mutual TLS ระหว่าง Detection ↔ API Gateway (เปิดใช้แล้ว) · ⚠️ ยังไม่มี HTTPS (ดูหัวข้อ 5) |
 | A.16.1 | Incident Management | Alert system with severity routing · security alert HIGH/CRITICAL → email (backend) · infra alert → email (Alertmanager) · ทดสอบส่งจริงทั้งคู่แล้ว |
 | A.17.1 | Business Continuity | RTO/RPO + backup รายวัน + สำเนาเข้ารหัสบน Google Drive · ทดสอบกู้คืนแล้ว (RTO-RPO หัวข้อ 3.1–3.2) |
 | A.18.1 | Legal Compliance | PDPA right-to-erasure, 365-day retention policy |
@@ -74,8 +74,8 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 
 ตรวจซ้ำได้ด้วย `scripts/demo-mtls.sh`
 
-**สถานะจริง (2026-09-23):** ความสามารถมีและทดสอบผ่าน แต่ stack ที่รันอยู่ **ปิด mTLS** (`KAFKA_SSL_ENABLED=false`
-ทั้ง `.env` และ compose) — backend / detection ใช้ listener plaintext `:9092`
+**สถานะจริง (2026-09-23):** เปิดใช้แล้ว — backend / detection ต่อ listener `DOCKER_SSL` (`kafka-N:9094`) ด้วย client cert
+แยกต่อ service · broker ปฏิเสธ client ที่ไม่มี cert (ทดสอบบน stack) · PLAINTEXT `:9092` เหลือไว้ให้ inter-broker / tooling
 
 ---
 

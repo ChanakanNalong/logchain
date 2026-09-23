@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–34) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–35) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -151,7 +151,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 |---|---|---|---|
 | 6.1 ✅ | port ทั้ง 19 ตัว bind `${PUBLISH_ADDR:-127.0.0.1}` — ทดสอบจาก IP LAN ปิดหมด · pipeline ทำงานปกติ (worklog หัวข้อ 33) | B15 | เสร็จ 2026-09-23 |
 | 6.2 ✅ | email ของ security alert เปิดแล้ว (`scripts/setup-alert-email.sh` → `.env` `MAIL_*` → vault-init) · ทดสอบส่งจริง (worklog หัวข้อ 34) | B11 | เสร็จ 2026-09-23 |
-| 6.3 | เปิด Kafka mTLS ใน compose (`KAFKA_SSL_ENABLED=true` + listener 39092) | B3 | กลาง — cert มีแล้ว |
+| 6.3 ✅ | Kafka mTLS เปิดแล้ว — listener `DOCKER_SSL` `kafka-N:9094` · backend + detection ใช้ client cert · ทดสอบครบทั้งสาย + ปฏิเสธ client ไม่มี cert (worklog หัวข้อ 35) | B3 | เสร็จ 2026-09-23 |
 | 6.4 | dashboard + kafka-exporter รันเป็น non-root | B8 | เล็ก–กลาง |
 | 6.5 | pip audit ใน CI · ให้ npm audit / Trivy vuln block ที่ HIGH+ | B7 B6 | เล็ก แต่อาจเจอ vuln ค้างต้องไล่แก้ |
 | 6.6 | HTTPS หน้า backend / dashboard / Keycloak (reverse proxy + cert) | B2 | ใหญ่ — กระทบ Keycloak issuer + `NEXT_PUBLIC_*` |
@@ -198,6 +198,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | login `admin-user` ด้วยรหัสใน `.env` ไม่ผ่าน | 2026-09-23 ตั้งให้ตรงกันแล้ว · ถ้าไม่ผ่านอีก = มีคนเปลี่ยนรหัสผ่านหน้าเว็บ · realm policy ต้องมีตัวเลข + ห้ามซ้ำ 4 ตัวล่าสุด · ต้องใช้ OTP |
 | approle login ตอบ `permission denied` | Vault user lockout — `./scripts/vault-unlock.sh` |
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` — ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
+| container ต่อ Kafka SSL `:39092` ไม่ได้ / ค้าง | listener `SSL` advertise `localhost` ใช้ได้จาก host เท่านั้น — ใน docker network ใช้ `DOCKER_SSL` `kafka-N:9094` |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |

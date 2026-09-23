@@ -15,7 +15,7 @@
 | 1.1 | Firewall configuration | PASS | service คุยกันใน Docker network · port ที่ publish ทั้ง 19 ตัว bind `127.0.0.1` (`PUBLISH_ADDR`) — ทดสอบจาก IP LAN ของเครื่องแล้วปิดทุกตัว · แก้ 2026-09-23 (เดิม `0.0.0.0` · review B15) |
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
 | 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) |
-| 4.1 | Encrypt transmission | **FAIL** | **ไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP · Kafka mTLS ทำได้แต่ **ปิดอยู่** (`KAFKA_SSL_ENABLED=false`) (review B2, B3 · ดู E08) |
+| 4.1 | Encrypt transmission | **PARTIAL** | Kafka ระหว่าง API Gateway ↔ Detection เป็น **mTLS แล้ว** (listener `DOCKER_SSL :9094` · บังคับ client cert · เปิด 2026-09-23 · ดู E08) · **ยังไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP (review B2) |
 | 5.1 | Anti-malware | **N/A — ไม่มี** | ไม่มี anti-malware · Trivy เป็น vulnerability/secret scanner (review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
 | 6.2 | Vulnerability scan | **PARTIAL** | Trivy vuln scan (`exit-code: 0` ไม่ block) + npm audit (`continue-on-error`) · **ไม่มี pip audit** (review B7) |
@@ -76,8 +76,13 @@
 - ผลทดสอบ: client ที่มี certificate เข้าถึง topic ได้ / client ที่ไม่มี ถูกปฏิเสธ
   ที่ TLS handshake (`bad_certificate`)
 - ตรวจซ้ำได้ด้วย `scripts/demo-mtls.sh`
-- **สถานะจริง (2026-09-23): ปิดอยู่** — `KAFKA_SSL_ENABLED=false` ทั้ง `.env` และ compose (backend hard-code `"false"`)
-  backend / detection ใช้ listener plaintext `:9092` · SSL listener `:39092-39094` มีอยู่แต่ไม่มีใครใช้
+- **เปิดใช้แล้ว 2026-09-23** — backend (producer + consumer) และ detection-consumer ต่อ listener `DOCKER_SSL`
+  (`kafka-N:9094`, advertise ชื่อใน docker network) ด้วย cert `nestjs` / `detection` · `ssl.client.auth=required`
+- ทดสอบบน stack: log → Kafka → detection → `alerts.raw` → backend → DB ครบทั้งสายผ่าน mTLS (rule 60001) ·
+  kafka client ไม่มี cert → broker `Failed authentication (SSL handshake failed)` · มี cert → เห็น topic ครบ
+- ยังเหลือ: listener PLAINTEXT `:9092` (inter-broker · kafka-init · kafka-exporter · ไม่ publish ออก host) และ
+  EXTERNAL `:29092` (plaintext · localhost เท่านั้น · ใช้ตอนรันแอปบน host) · client key ในโฟลเดอร์ cert เป็น 0644
+  (detection รันเป็น uid 10001 ต้องอ่านได้)
 
 ### E09 — Access Control / User Management — Req. 7
 - admin จัดการสิทธิ์ผ่าน Keycloak ได้ โดยมี guard 3 ชั้น:
