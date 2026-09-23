@@ -162,7 +162,40 @@ docker logs logchain-postgres-backup --tail 5
 ```
 
 กู้คืน: `docs/RTO-RPO-Compliance-Signoff.md` หัวข้อ Database Failure (ทดสอบกู้จากไฟล์ที่ job สร้างจริงแล้ว)
-⚠️ `./backups/` อยู่เครื่องเดียวกับ DB — ดิสก์พังหายพร้อมกัน ควรคัดลอกไปเก็บที่อื่นเป็นระยะ
+
+### สำเนาบน cloud (เข้ารหัส)
+
+`./backups/` อยู่เครื่องเดียวกับ DB — ดิสก์พังหายพร้อมกัน · service `backup-offsite` ส่งสำเนาขึ้น cloud ทุกชั่วโมงผ่าน
+**rclone crypt** (cloud เห็นแต่ข้อมูลเข้ารหัส ทั้งเนื้อไฟล์และชื่อ) · ตรวจ checksum หลังส่ง · เก็บบน cloud 30 วัน
+ยังไม่ตั้ง = service รอเฉย ๆ ไม่มี alert · ตั้งครั้งเดียว (ตัวอย่าง Google Drive):
+
+```bash
+# --network host: ให้เบราว์เซอร์ในเครื่องนี้กด "อนุญาต" ได้ · ไฟล์ config ลง infra/rclone/.secrets/ (gitignored)
+docker run --rm -it --network host --user $(id -u):$(id -g) \
+  -v $PWD/infra/rclone/.secrets:/config/rclone rclone/rclone:1.68 config
+```
+
+ในเมนูของ rclone:
+1. `n` → name **`gdrive`** → storage **`drive`** → client_id / client_secret: Enter (ว่าง)
+   → scope **`drive.file`** (rclone เห็นเฉพาะไฟล์ที่ตัวเองสร้าง ไม่เห็นไฟล์อื่นใน Drive) → service_account_file: Enter
+   → advanced: `n` → web browser: `y` → เปิดลิงก์ `http://127.0.0.1:53682/...` ที่ขึ้นมา → login → อนุญาต → shared drive: `n` → `y`
+2. `n` → name **`logchain-backup`** → storage **`crypt`** → remote **`gdrive:logchain-backups`**
+   → filename_encryption `standard` → directory_name_encryption `true`
+   → password: `g` (สุ่ม) → **จดไว้** → password2 (salt): `g` → **จดไว้** → advanced `n` → `y` → `q`
+
+> ⚠️ **เก็บ password ทั้งสองตัว (หรือทั้งไฟล์ `infra/rclone/.secrets/rclone.conf`) ไว้ใน password manager**
+> ไฟล์ config อยู่เครื่องเดียวกับ backup — เครื่องหาย = ไม่มีรหัสถอด = สำเนาบน cloud ใช้ไม่ได้
+
+```bash
+docker exec logchain-backup-offsite sh /offsite.sh once     # ส่งทันที → ต้องขึ้น "OK → logchain-backup: (N ชุดบน cloud)"
+```
+
+ดึงกลับจาก cloud (เครื่องใหม่: วาง `rclone.conf` เดิม หรือสร้าง crypt remote ด้วย password ชุดเดิม):
+```bash
+docker run --rm --user $(id -u):$(id -g) -v $PWD/infra/rclone/.secrets:/config/rclone -v $PWD/restore:/restore \
+  rclone/rclone:1.68 copy logchain-backup:<UTC timestamp> /restore/<UTC timestamp>
+```
+แล้ว restore ตาม `docs/RTO-RPO-Compliance-Signoff.md`
 
 ## Alert แจ้งทาง email
 

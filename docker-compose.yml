@@ -359,6 +359,27 @@ services:
     networks:
       - default
 
+  # ---- สำเนา backup นอกเครื่อง (rclone crypt → cloud) ----
+  # ยังไม่ตั้ง remote = รอเฉย ๆ · วิธีตั้ง: README หัวข้อ Backup ฐานข้อมูล · config + token อยู่ใน
+  # infra/rclone/.secrets/rclone.conf (gitignored · rw เพราะ rclone refresh token แล้วเขียนกลับ)
+  backup-offsite:
+    image: rclone/rclone:1.68
+    container_name: logchain-backup-offsite
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    entrypoint: ["/bin/sh", "/offsite.sh"]
+    environment:
+      RCLONE_CACHE_DIR: /tmp
+      OFFSITE_REMOTE: ${OFFSITE_REMOTE:-logchain-backup:}
+      OFFSITE_INTERVAL_SECONDS: ${OFFSITE_INTERVAL_SECONDS:-3600}
+      OFFSITE_KEEP_DAYS: ${OFFSITE_KEEP_DAYS:-30}
+    volumes:
+      - ./infra/backup-offsite/offsite.sh:/offsite.sh:ro
+      - ./infra/rclone/.secrets:/config/rclone
+      - ./backups:/backups
+    networks:
+      - default
+
   # ---- Alertmanager (ส่ง alert ของ Prometheus ออกทาง email) ----
   # ยังไม่ตั้งอีเมล = รับ alert ไว้เฉย ๆ (ดูที่ :9093) · วิธีตั้ง: README หัวข้อ Alert แจ้งทาง email
   alertmanager:

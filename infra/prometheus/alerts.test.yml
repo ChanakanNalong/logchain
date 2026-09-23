@@ -321,3 +321,47 @@ tests:
               summary: 'ไม่มีสถานะ backup Postgres'
               description: >-
                 `docker compose ps postgres-backup node-exporter` · ไฟล์ ./backups/metrics/backup.prom ต้องมีอยู่
+
+  # ---- OffsiteBackupStale / Failing ----
+  # ส่งสำเร็จที่ t=0 แล้วพังตลอด (ส่งทุกชั่วโมง) → Failing หลัง 3 ชม. · Stale หลัง 26 ชม. + 30m
+  - interval: 1m
+    input_series:
+      - series: 'logchain_backup_offsite_last_success_timestamp_seconds{job="node-exporter",instance="node-exporter:9100"}'
+        values: '0x1700'
+      - series: 'logchain_backup_offsite_last_run_success{job="node-exporter",instance="node-exporter:9100"}'
+        values: '1x59 0x1700'
+    alert_rule_test:
+      - eval_time: 200m
+        alertname: OffsiteBackupFailing
+        exp_alerts: []
+      - eval_time: 245m
+        alertname: OffsiteBackupFailing
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node-exporter, instance: node-exporter:9100 }
+            exp_annotations:
+              summary: 'ส่ง backup ขึ้น cloud ไม่สำเร็จติดกัน 3 รอบขึ้นไป'
+              description: >-
+                `docker logs logchain-backup-offsite --tail 20` · เช็คเน็ต / token ของ cloud / พื้นที่บน cloud
+      - eval_time: 1580m
+        alertname: OffsiteBackupStale
+        exp_alerts: []
+      - eval_time: 1600m
+        alertname: OffsiteBackupStale
+        exp_alerts:
+          - exp_labels: { severity: warning, job: node-exporter, instance: node-exporter:9100 }
+            exp_annotations:
+              summary: 'สำเนา backup บน cloud ไม่อัปเดตมา 1d 2h 40m 0s'
+              description: >-
+                `docker logs logchain-backup-offsite --tail 20` · token หมดอายุ → ตั้ง rclone ใหม่ (README) ·
+                ลองส่งทันที `docker exec logchain-backup-offsite sh /offsite.sh once`
+
+  # ไม่ได้ตั้ง rclone = ไม่มี series → ไม่เตือนทั้งสองตัว (เครื่องที่ clone ใหม่)
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 2000m
+        alertname: OffsiteBackupStale
+        exp_alerts: []
+      - eval_time: 2000m
+        alertname: OffsiteBackupFailing
+        exp_alerts: []

@@ -33,7 +33,7 @@ INFRA_SERVICES=(postgres postgres-standby postgres-exporter
                 keycloak-config keycloak
                 kafka-1 kafka-2 kafka-3 kafka-init kafka-exporter
                 vault vault-unseal vault-init
-                prometheus alertmanager grafana node-exporter postgres-backup)
+                prometheus alertmanager grafana node-exporter postgres-backup backup-offsite)
 APP_SERVICES=(backend cylis-dashboard detection-api detection-consumer)
 
 say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
@@ -111,6 +111,7 @@ fi
 mkdir -p infra/alertmanager/.secrets && chmod 700 infra/alertmanager/.secrets
 # ปลายทางของ postgres-backup (dump 0600 · gitignored) + textfile ให้ node-exporter — เหตุผลเดียวกัน
 mkdir -p backups/postgres backups/metrics && chmod 700 backups backups/postgres && chmod 755 backups/metrics
+mkdir -p infra/rclone/.secrets && chmod 700 infra/rclone/.secrets   # rclone.conf ของ backup-offsite
 
 # ── 3. infra ───────────────────────────────────────────────────────────────
 say "3/6  ยก infrastructure"

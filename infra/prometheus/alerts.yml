@@ -157,3 +157,26 @@ groups:
           summary: 'ไม่มีสถานะ backup Postgres'
           description: >-
             `docker compose ps postgres-backup node-exporter` · ไฟล์ ./backups/metrics/backup.prom ต้องมีอยู่
+
+      # สำเนานอกเครื่อง (backup-offsite) — มี metric เฉพาะเครื่องที่ตั้ง rclone แล้ว (ไม่ตั้ง = ไม่มี series = ไม่เตือน)
+      # ส่งทุกชั่วโมง ชุดใหม่เกิดวันละครั้ง → 26 ชม. = ชุดของเมื่อวานยังไม่ขึ้น cloud
+      - alert: OffsiteBackupStale
+        expr: time() - logchain_backup_offsite_last_success_timestamp_seconds > 26 * 3600
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'สำเนา backup บน cloud ไม่อัปเดตมา {{ $value | humanizeDuration }}'
+          description: >-
+            `docker logs logchain-backup-offsite --tail 20` · token หมดอายุ → ตั้ง rclone ใหม่ (README) ·
+            ลองส่งทันที `docker exec logchain-backup-offsite sh /offsite.sh once`
+
+      - alert: OffsiteBackupFailing
+        expr: logchain_backup_offsite_last_run_success == 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: 'ส่ง backup ขึ้น cloud ไม่สำเร็จติดกัน 3 รอบขึ้นไป'
+          description: >-
+            `docker logs logchain-backup-offsite --tail 20` · เช็คเน็ต / token ของ cloud / พื้นที่บน cloud

@@ -11,7 +11,7 @@
 | Component | RTO | RPO | Recovery Strategy |
 |-----------|-----|-----|-------------------|
 | NestJS Backend | 30 min | 1 hour | Restart container, restore from backup |
-| PostgreSQL | 1 hour | 24 hours | pg_restore จาก dump รายวันของ service `postgres-backup` (`./backups/postgres/` · เก็บ 7 ชุด · alert เมื่อเก่าเกิน 26 ชม.) ⚠️ อยู่ดิสก์เดียวกับ DB — ดูหัวข้อ 3.2 |
+| PostgreSQL | 1 hour | 24 hours | pg_restore จาก dump รายวันของ service `postgres-backup` (`./backups/postgres/` · เก็บ 7 ชุด · alert เมื่อเก่าเกิน 26 ชม.) + สำเนาเข้ารหัสบน cloud (เมื่อตั้ง rclone) — ดูหัวข้อ 3.2 |
 | Kafka | 30 min | 1 hour | Restart broker, replay from offset |
 | Blockchain (Polygon Amoy testnet) | 4 hours | N/A | ต่อ RPC ใหม่ / redeploy contract |
 | Anomaly Detection (FastAPI) | 30 min | N/A | Restart container |
@@ -119,8 +119,11 @@ logchain + keycloak → ตรวจด้วย `pg_restore --list` → ย้�
 ทดสอบแล้ว: ชุดแรกสร้างทันทีที่ service ขึ้น · รหัสผิด → metric = 0 ไม่มีไฟล์ค้าง ชุดเดิมอยู่ครบ · เก็บ N ชุดลบตัวเก่าถูก ·
 **กู้จากไฟล์ที่ job สร้างจริง** ด้วยขั้นตอนข้างบนลง postgres ที่เหมือน compose → ข้อมูลตรงทุกไบต์ · owner ถูก · append-only ทำงาน
 
-**ข้อจำกัด:** `./backups/` อยู่ **ดิสก์เดียวกับ docker volume ของ DB** — กันลบ/ข้อมูลเสียได้ แต่ดิสก์พัง = DB + backup หายพร้อมกัน
-ยังไม่มีสำเนานอกเครื่อง (off-site) · ต้องทำเพิ่มถ้าจะนับ RPO กรณีเครื่องหาย
+**ดิสก์เดียวกัน:** `./backups/` อยู่ดิสก์เดียวกับ docker volume ของ DB — กันลบ/ข้อมูลเสียได้ แต่ดิสก์พัง = หายพร้อมกัน
+→ service `backup-offsite` ส่งสำเนาเข้ารหัส (rclone crypt) ขึ้น cloud ทุกชั่วโมง เก็บ 30 วัน · alert `OffsiteBackupStale` /
+`OffsiteBackupFailing` · ทดสอบกับ crypt remote จำลอง: ชื่อ + เนื้อไฟล์บน cloud อ่านไม่ออก · cryptcheck ตรง · ดึงกลับ sha256 ตรง ·
+ลบชุดเก่ากว่า 30 วัน · ส่งไม่ได้ → metric 0 · **ใช้งานได้จริงเมื่อเจ้าของตั้ง rclone กับบัญชี cloud แล้ว** (README) ·
+password ของ crypt ต้องเก็บนอกเครื่อง ไม่งั้นเครื่องหาย = ถอดสำเนาไม่ได้
 
 ## 4. Compliance Sign-off Checklist
 
