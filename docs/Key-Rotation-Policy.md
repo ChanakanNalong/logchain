@@ -23,11 +23,11 @@ secret ของแอป (backend / detection) อยู่ใน HashiCorp Vau
 | Keycloak ingestor secret | `secret/logchain/keycloak` | 90 days | Person A |
 | Blockchain private key | `secret/logchain/blockchain` | 180 days | Person A |
 | Database password | `secret/logchain/database` | 90 days | Person B |
-| Gmail App Password (SMTP) | `secret/logchain/notification` | 180 days | Person C |
+| Gmail App Password (SMTP) | `.env` `MAIL_PASS` → `vault-init` seed ลง `secret/logchain/notification` (แก้ที่ `.env` เท่านั้น — `vault-init` ทับ Vault ทุกครั้งที่ `compose up`) | 180 days | Person C |
 | Vault root token | `infra/vault/.secrets/init.env` | 90 days (or on personnel change) | Person B |
 | Vault unseal keys (5) | `infra/vault/.secrets/init.env` | On compromise only | Person B |
 | Postgres / Keycloak / Grafana bootstrap passwords | `.env` | 90 days | Person B |
-| Alertmanager SMTP (Gmail App Password) | `infra/alertmanager/.secrets/smtp_password` | 180 days | Person C |
+| Alertmanager SMTP (Gmail App Password) | `infra/alertmanager/.secrets/smtp_password` — **ชุดเดียวกับ `MAIL_PASS`** บนเครื่องนี้ (rotate ต้องแก้ทั้ง 2 ที่ · `setup-alert-email.sh` รันซ้ำเพื่อ sync) | 180 days | Person C |
 | rclone Google Drive token | `infra/rclone/.secrets/rclone.conf` | เมื่อถูกถอนสิทธิ์ / หมดอายุ (`OffsiteBackupFailing`) — `scripts/setup-offsite-backup.sh` | Person B |
 | rclone crypt password ×2 | `infra/rclone/.secrets/rclone.conf` + password manager ของเจ้าของ | **ห้าม rotate โดยไม่ re-encrypt** — สำเนาเดิมบน cloud จะถอดไม่ได้ | Person B |
 
@@ -59,7 +59,9 @@ secret ของแอป (backend / detection) อยู่ใน HashiCorp Vau
 
 ### SMTP (Gmail App Password)
 - Google Account → Security → App Passwords → revoke เก่า + generate ใหม่
-- Update `secret/logchain/notification`
+- ใส่รหัสใหม่ใน `infra/alertmanager/.secrets/smtp_password` → `docker compose up -d --force-recreate alertmanager`
+- รัน `./scripts/setup-alert-email.sh` (ตอบใช้ชุดเดียวกับ Alertmanager) → เขียน `.env` + seed Vault + restart backend
+- **อย่า** `vault kv put secret/logchain/notification` ตรง ๆ — `vault-init` จะทับด้วยค่าใน `.env` รอบหน้า
 
 ---
 

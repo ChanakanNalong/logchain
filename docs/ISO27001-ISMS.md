@@ -49,7 +49,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | A.12.4 | Logging and Monitoring | PostgreSQL + YAML rule engine (แนว Wazuh) + ML anomaly detection · Prometheus alert 13 rule → email (Alertmanager) |
 | A.12.6 | Vulnerability Management | Trivy scan + npm audit in CI/CD (ไม่ block) · ไม่มี pip audit |
 | A.13.2.1 | Information Transfer | Kafka mutual TLS — ทำได้แต่ **ปิดอยู่** · ไม่มี HTTPS (ดูหัวข้อ 5) |
-| A.16.1 | Incident Management | Alert system with severity routing · email ของ security alert **ปิดอยู่** (SMTP ใน Vault ว่าง) · infra alert ส่ง email ผ่าน Alertmanager แล้ว |
+| A.16.1 | Incident Management | Alert system with severity routing · security alert HIGH/CRITICAL → email (backend) · infra alert → email (Alertmanager) · ทดสอบส่งจริงทั้งคู่แล้ว |
 | A.17.1 | Business Continuity | RTO/RPO + backup รายวัน + สำเนาเข้ารหัสบน Google Drive · ทดสอบกู้คืนแล้ว (RTO-RPO หัวข้อ 3.1–3.2) |
 | A.18.1 | Legal Compliance | PDPA right-to-erasure, 365-day retention policy |
 

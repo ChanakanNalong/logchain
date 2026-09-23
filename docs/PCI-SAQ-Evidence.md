@@ -65,7 +65,8 @@
 
 ### E07 — Alert Monitoring
 - File: src/alerts/alerts.service.ts — HIGH/CRITICAL alerts trigger email notification
-- **ปิดอยู่บน deployment นี้:** SMTP ใน Vault `secret/logchain/notification` ยังว่าง (review B11)
+- เปิดแล้ว 2026-09-23 (`scripts/setup-alert-email.sh` · ค่าอยู่ใน `.env` `MAIL_*` → `vault-init` seed เข้า Vault) ·
+  ทดสอบ: brute force จาก host ทดสอบ → alert CRITICAL → `Alert email sent` · ได้รับจริง (review B11 ✅)
 - alert ของระบบ (service ล่ม, backup, consumer ค้าง ฯลฯ) ส่ง email ผ่าน Alertmanager แล้ว — คนละชุดกับ security alert
 
 ### E08 — Encryption in Transit (Kafka mTLS) — Req. 4

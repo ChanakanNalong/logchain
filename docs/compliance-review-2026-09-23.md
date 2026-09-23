@@ -39,7 +39,7 @@
 | B8 | ISO R07 | "Non-root container enforcement" | ส่วนใหญ่ non-root แต่ **dashboard และ kafka-exporter รัน process เป็น root** (postgres/vault เริ่ม root แล้วลดสิทธิ์เอง) | `docker top cylis-dashboard-app` → root |
 | B9 | PCI E05 · 10.2 · Chain #6 | "Cron deletes records older than 365 days (`logs.retention_days`)" | cron ลบเฉพาะ **alerts + audit_access** เก่ากว่า 365 วัน · **ตาราง `logs` ไม่ถูกลบ** (append-only trigger) · คอลัมน์ `retention_days` มีแต่ job ไม่ได้ใช้ | `src/retention/retention.service.ts` |
 | B10 | PCI E06 | "removes all personal data" | ลบเฉพาะ `audit_access` ของ userId · `logs` ไม่ถูกแตะ (PII ถูก mask ตั้งแต่ ingest) · + บั๊ก A1 | `erasure.service.ts` |
-| B11 | PCI E07 · ISO A.16.1 | "HIGH/CRITICAL alerts trigger email" | โค้ดมี แต่**ปิดอยู่บน deployment นี้** — SMTP ใน Vault `secret/logchain/notification` ว่าง | backend log `Notification disabled — SMTP not configured in Vault` |
+| B11 ✅ | PCI E07 · ISO A.16.1 | "HIGH/CRITICAL alerts trigger email" | โค้ดมี แต่**ปิดอยู่บน deployment นี้** — SMTP ใน Vault `secret/logchain/notification` ว่าง | backend log `Notification disabled — SMTP not configured in Vault` |
 | B12 | Chain-of-Custody #2–3, T002 | Kafka ก่อน Storage · "Kafka → NestJS Backend: Message consumed" | **ลำดับกลับกัน:** backend insert ลง Postgres ก่อน (`logs.service.ts:67`) แล้วค่อย publish ขึ้น Kafka (`:70`) · detection เป็นฝั่ง consume · alert ย้อนกลับมาทาง `alerts.raw` | `src/logs/logs.service.ts` |
 | B13 | Key-Rotation §1 | "secret ทั้งหมดอยู่ใน Vault — ไม่ใช่ `.env`" | `.env` ยังมี `POSTGRES_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, `KC_DB_PASSWORD`, client secrets ฯลฯ · secret ใหม่ของวันนี้ไม่อยู่ในตาราง: Alertmanager SMTP (`infra/alertmanager/.secrets/`) · rclone token + crypt password (`infra/rclone/.secrets/`) | `.env` · worklog หัวข้อ 22, 30 |
 | B14 | Key-Rotation §3 | "redeploy/transfer contract ownership" | contract **ไม่มี `transferOwnership`** → rotate key = redeploy เท่านั้น | worklog 2026-09-17 หัวข้อ 4.3 |
@@ -60,6 +60,7 @@
   RTO-RPO (สถานะ PASS ที่ไม่จริงเปลี่ยนเป็น PARTIAL / FAIL / N/A พร้อมหมายเหตุ · Attestation ระบุข้อยกเว้น)
 - การทำระบบให้ผ่านทีละข้อ → `docs/plan/next-steps.md` ข้อ 6
 - **B15 แก้แล้ว** (ข้อ 6.1): port ทั้ง 19 ตัว bind `127.0.0.1` · PCI 1.1 → PASS
+- **B11 แก้แล้ว** (ข้อ 6.2): email ของ security alert เปิดใช้ + ทดสอบส่งจริง · เจอเพิ่ม: `.env` เป็น 664 → แก้เป็น 600 (script + bootstrap)
 
 ## D. คำถามเดิม (เก็บไว้อ้างอิง)
 

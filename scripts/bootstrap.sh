@@ -54,6 +54,7 @@ else
     cp .env.example .env
     ok "copy .env.example -> .env"
 fi
+chmod 600 .env   # มี password / secret หลายตัว — ค่าเริ่มต้นของ cp คือ 664 (ใครในเครื่องก็อ่านได้)
 
 # สุ่มค่าให้ทุกบรรทัดที่ยังเป็น CHANGE_ME* — ยกเว้น 2 ตัวที่สุ่มแล้วไม่มีความหมาย
 #   BLOCKCHAIN_PRIVATE_KEY : ต้องเป็น private key จริงของ wallet ที่มี MATIC

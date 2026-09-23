@@ -236,6 +236,18 @@ docker logs logchain-alertmanager 2>&1 | head -1   # ต้องขึ้น "�
 
 ไม่ใช่ Gmail: ตั้ง `ALERT_SMTP_SMARTHOST=host:port` (และ `ALERT_SMTP_FROM` ถ้าต่างจาก user) ใน `.env`
 
+### Security alert (brute force ฯลฯ) ทาง email
+
+Alertmanager ข้างบนแจ้งเรื่อง **ระบบ** (service ล่ม, backup) · alert **ความปลอดภัย** ระดับ HIGH/CRITICAL ที่ detection จับได้
+ส่งโดย backend ผ่าน SMTP ใน Vault (`secret/logchain/notification`) — ค่าเริ่มต้นปิดอยู่ · เปิดด้วย:
+
+```bash
+./scripts/setup-alert-email.sh   # ใช้บัญชี + app password ชุดเดียวกับ Alertmanager ได้ (ไม่ต้องพิมพ์รหัสใหม่)
+```
+
+ค่าอยู่ใน `.env` (`MAIL_USER` / `MAIL_TO` / `MAIL_PASS`) แล้ว `vault-init` seed เข้า Vault — **อย่าเขียน Vault ตรง ๆ**
+`vault-init` รันทุกครั้งที่ `docker compose up` และ seed จาก `.env` ใหม่ ค่าที่เขียนเองจะถูกทับ
+
 > SMTP ชุดนี้แยกจากของ backend (`secret/logchain/notification` ใน Vault — ใช้แจ้ง alert ความปลอดภัย)
 > Alertmanager อ่าน Vault ไม่ได้ จึงเก็บรหัสเป็นไฟล์แทน
 

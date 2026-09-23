@@ -3,7 +3,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-23 (อัปเดตท้ายวัน) · **HEAD:** `1bba91b` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–33) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–34) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -150,7 +150,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | # | เรื่อง | review | ขนาดงาน |
 |---|---|---|---|
 | 6.1 ✅ | port ทั้ง 19 ตัว bind `${PUBLISH_ADDR:-127.0.0.1}` — ทดสอบจาก IP LAN ปิดหมด · pipeline ทำงานปกติ (worklog หัวข้อ 33) | B15 | เสร็จ 2026-09-23 |
-| 6.2 | ใส่ Gmail app password ลง Vault `secret/logchain/notification` เปิด email ของ security alert | B11 | เล็ก — เจ้าของใส่รหัสเอง |
+| 6.2 ✅ | email ของ security alert เปิดแล้ว (`scripts/setup-alert-email.sh` → `.env` `MAIL_*` → vault-init) · ทดสอบส่งจริง (worklog หัวข้อ 34) | B11 | เสร็จ 2026-09-23 |
 | 6.3 | เปิด Kafka mTLS ใน compose (`KAFKA_SSL_ENABLED=true` + listener 39092) | B3 | กลาง — cert มีแล้ว |
 | 6.4 | dashboard + kafka-exporter รันเป็น non-root | B8 | เล็ก–กลาง |
 | 6.5 | pip audit ใน CI · ให้ npm audit / Trivy vuln block ที่ HIGH+ | B7 B6 | เล็ก แต่อาจเจอ vuln ค้างต้องไล่แก้ |
@@ -204,6 +204,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | รัน e2e ในเครื่องแล้ว integrity ตกจาก 100% | e2e ทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) — ลบทิ้งหลังรัน · ลืมลบ 30 นาทีจะได้ email `BatchStuckUnverified` |
 | รันแอปบน host (`npm run start:dev`) แล้ว Prometheus/Grafana ไม่มีข้อมูล | target ชี้ชื่อ service ใน compose อย่างเดียว — เปลี่ยน target ของ job นั้นเป็น `host.docker.internal:<port>` แล้ว `curl -X POST localhost:9090/-/reload` (อย่าใส่คู่กัน = scrape ซ้ำ worklog หัวข้อ 20) |
 | `setup-offsite-backup.sh` ขึ้น `access_denied` / 403 insufficient scopes | หน้า Google hasn't verified → Advanced → Go to rclone · คำถาม Shared Drive ตอบ `n` (worklog หัวข้อ 31) |
+| เขียน `secret/logchain/notification` ใน Vault เองแล้วหายหลัง `docker compose up` | `vault-init` seed จาก `.env` ทุกรอบ — แก้ที่ `.env` (`MAIL_*`) หรือ `scripts/setup-alert-email.sh` |
 | alert ขึ้นใน `:9090/alerts` แต่ไม่มีใครได้ email | `docker logs logchain-alertmanager | head -1` — ถ้าขึ้น "ยังไม่ได้ตั้งอีเมล" ดู README หัวข้อ Alert แจ้งทาง email · แก้ `.env`/ไฟล์รหัสแล้วต้อง `--force-recreate alertmanager` |
 
 ---
