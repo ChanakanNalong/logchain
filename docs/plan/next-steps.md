@@ -14,8 +14,8 @@
   + `Security Scan` แยก workflow
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
-- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) → Alertmanager `:9093` · **ยังไม่ส่ง email** จนกว่าเจ้าของใส่รหัส (4.1)
-- **งานในแผนปิดครบทุกข้อ** · สิ่งเดียวที่ค้างคือเจ้าของใส่รหัส Gmail เพื่อเปิด email ของ Alertmanager (4.1)
+- Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว**
+- **งานในแผนปิดครบทุกข้อ ไม่มีงานค้าง**
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -114,11 +114,12 @@ rule/DeepLog · metric `consumer_messages_total{status="duplicate"}` · restart 
 
 ## 4. ✅ งานต่อยอดจาก 2026-09-23 — ปิดครบ
 
-### 4.1 ✅ Alertmanager — โครงเสร็จ (2026-09-23) · **เหลือเจ้าของใส่รหัส Gmail เอง**
+### 4.1 ✅ Alertmanager — ส่ง email ได้จริงแล้ว (2026-09-23)
 service `alertmanager` (`:9093`) · Prometheus ส่ง alert เข้าแล้ว · `infra/alertmanager/render.sh` สร้าง config
 ตอน start: ยังไม่ตั้งอีเมล = receiver `none` (รับไว้ไม่ส่ง) · ตั้งครบ = email · รหัสอยู่ใน
 `infra/alertmanager/.secrets/smtp_password` (gitignored) · วิธีตั้ง: README หัวข้อ "Alert แจ้งทาง email"
 CI job `prometheus` ตรวจ config ทั้งสองแบบด้วย `amtool` (worklog หัวข้อ 22)
+เจ้าของตั้ง Gmail app password แล้ว ทดสอบ alert → ได้ email จริง · `alertmanager_notifications_total{integration="email"}` = 1 ล้มเหลว 0 (หัวข้อ 24)
 
 ### 4.2 ⛔ detection จำ id ที่เห็นแล้วข้าม restart — ตัดสินใจไม่ทำ (2026-09-23)
 เหตุผลอยู่ในหมวด "ห้ามทำ" ด้านล่าง · รายละเอียด worklog หัวข้อ 21
