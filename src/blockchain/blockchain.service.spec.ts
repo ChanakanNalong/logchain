@@ -5,6 +5,7 @@ import {
   BlockchainService,
   classifyChainError,
   INIT_RETRY_BASE_MS,
+  isWaitDeadline,
 } from './blockchain.service';
 import { VaultService } from '../vault/vault.service';
 
@@ -189,5 +190,45 @@ describe('BlockchainService.onModuleInit — RPC unavailable at boot', () => {
     await jest.advanceTimersByTimeAsync(10 * INIT_RETRY_BASE_MS);
     expect(getNetwork).toHaveBeenCalledTimes(3);
     expect(svc.ready).toBe(false);
+  });
+});
+
+/**
+ * ethers ใช้ code TIMEOUT ทั้งรอ confirm ครบเพดาน และ RPC ไม่ตอบ — shape ตาม source ของ 6.17
+ */
+describe('isWaitDeadline', () => {
+  it('true only for the tx.wait deadline', () => {
+    expect(
+      isWaitDeadline(
+        ethers.makeError('wait for transaction timeout', 'TIMEOUT'),
+      ),
+    ).toBe(true);
+  });
+
+  it('false for RPC timeouts and anything else', () => {
+    // utils/fetch.js
+    expect(
+      isWaitDeadline(
+        ethers.makeError('timeout', 'TIMEOUT', {
+          operation: 'request.send',
+          reason: 'timeout',
+          request: new ethers.FetchRequest('http://x'),
+        }),
+      ),
+    ).toBe(false);
+    // utils/geturl.js
+    expect(isWaitDeadline(ethers.makeError('request timeout', 'TIMEOUT'))).toBe(
+      false,
+    );
+    // providers/abstract-provider.js (waitForBlock)
+    expect(
+      isWaitDeadline(
+        ethers.makeError('timeout', 'TIMEOUT', { reason: 'timeout' }),
+      ),
+    ).toBe(false);
+    expect(isWaitDeadline(new Error('wait for transaction timeout'))).toBe(
+      false,
+    );
+    expect(isWaitDeadline(null)).toBe(false);
   });
 });

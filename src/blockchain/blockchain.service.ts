@@ -66,6 +66,18 @@ function isUnsetPlaceholder(value: string | undefined | null): boolean {
   return /^0x0{40}$/i.test(value.trim());
 }
 
+/**
+ * TIMEOUT จาก tx.wait(confirms, timeout) เพราะรอครบเพดานแล้ว (ไม่ใช่ RPC ไม่ตอบ)
+ * ethers 6.17 `providers/provider.js`: makeError("wait for transaction timeout", "TIMEOUT")
+ * ส่วน RPC timeout เป็น "timeout" (+ operation "request.send") หรือ "request timeout"
+ */
+export function isWaitDeadline(err: unknown): boolean {
+  const e = err as { code?: unknown; shortMessage?: unknown } | null;
+  return (
+    e?.code === 'TIMEOUT' && e.shortMessage === 'wait for transaction timeout'
+  );
+}
+
 export function classifyChainError(err: unknown): ChainWriteError {
   const e = err as any;
   // ethers v6 วาง revert string ไว้หลายที่ — รวมทุกที่แล้วค่อยจับ
@@ -266,14 +278,23 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         blockNumber: receipt.blockNumber,
         confirmed: true,
       };
-    } catch (err: any) {
-      if (err?.code !== 'TIMEOUT') throw err;
+    } catch (err: unknown) {
+      const e = err as {
+        code?: unknown;
+        shortMessage?: unknown;
+        message?: unknown;
+      } | null;
+      if (e?.code !== 'TIMEOUT') throw err;
 
-      // tx ส่งไปแล้วแต่ยังไม่ confirm ในเวลาที่กำหนด — ไม่ใช่ความล้มเหลว
+      // tx ส่งไปแล้ว ผลยังไม่รู้ — ไม่ใช่ความล้มเหลว ทั้งสองแบบ
       // คืน hash ไปให้ caller บันทึก แล้วให้รอบ verify ถัดไปตามผลเอง
+      // ethers ใช้ code TIMEOUT ทั้ง "รอครบเพดานแล้วยังไม่ mine" และ "RPC ไม่ตอบระหว่างถาม receipt"
+      // ต้องแยกใน log ไม่งั้นอ่านแล้วนึกว่า chain ช้า ทั้งที่ RPC ต่างหากที่มีปัญหา
+      const why = isWaitDeadline(err)
+        ? `not confirmed within ${this.txTimeoutMs}ms`
+        : `RPC timed out while waiting for the receipt (${String(e.shortMessage ?? e.message)})`;
       this.logger.warn(
-        `Root tx=${tx.hash} for batch ${batchId} not confirmed within ${this.txTimeoutMs}ms — ` +
-          'leaving it for the next verify round',
+        `Root tx=${tx.hash} for batch ${batchId} ${why} — leaving it for the next verify round`,
       );
       return { txHash: tx.hash, blockNumber: null, confirmed: false };
     }

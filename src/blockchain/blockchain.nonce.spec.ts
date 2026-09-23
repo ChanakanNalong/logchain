@@ -193,6 +193,37 @@ describe('BlockchainService — nonce handling', () => {
     expect(sentNonces).toEqual([CHAIN_NONCE]);
   });
 
+  it('รอ confirm ครบเพดาน — log บอกว่า "not confirmed within" (TIMEOUT จริงของ ethers)', async () => {
+    const warn = Logger.prototype.warn as jest.Mock;
+
+    await expect(store('b1')).resolves.toMatchObject({ confirmed: false });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('not confirmed within 20ms'),
+    );
+  });
+
+  it('RPC timeout ระหว่างรอ receipt — log บอกว่าเป็น RPC ไม่ใช่ chain ช้า', async () => {
+    const warn = Logger.prototype.warn as jest.Mock;
+    jest
+      .spyOn(ethers.ContractTransactionResponse.prototype, 'wait')
+      .mockRejectedValueOnce(
+        ethers.makeError('timeout', 'TIMEOUT', {
+          operation: 'request.send',
+          reason: 'timeout',
+          request: new ethers.FetchRequest(url),
+        }),
+      );
+
+    await expect(store('b1')).resolves.toMatchObject({ confirmed: false });
+
+    const msg = (warn.mock.calls as unknown[][])
+      .map((c) => String(c[0]))
+      .join('\n');
+    expect(msg).toContain('RPC timed out while waiting for the receipt');
+    expect(msg).not.toContain('not confirmed within');
+  });
+
   it('ยิงพร้อมกันสองตัว (cron seal + cron anchor) — ได้ nonce ไม่ชนกัน แม้ RPC ตอบ pending ล้าหลัง', async () => {
     // server ตอบ pending = 5 ตลอด (เหมือน node ที่ยังไม่เห็น tx ที่เพิ่งส่ง)
     await Promise.all([store('b1'), store('b2')]);

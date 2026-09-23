@@ -84,9 +84,11 @@ docker logs --since 12h logchain-detection-consumer 2>&1 | grep -c "Task is alre
 (มี `code` + `shortMessage`) → log ERROR + `logchain_unhandled_ethers_rejections_total{code}` แล้วไม่ตาย ·
 อย่างอื่นโยนต่อให้ Node ตายเหมือนเดิม · ยังไม่มี Prometheus alert rule ในโปรเจกต์ — ถ้าจะทำ ให้เตือนเมื่อค่านี้ > 0
 
-### 3.2 `storeRoot` แยก "รอ confirm ไม่ทัน" กับ "RPC timeout ระหว่างรอ" ไม่ได้
-`src/blockchain/blockchain.service.ts` เช็ค `err?.code !== 'TIMEOUT'` — ethers ใช้ code เดียวกันทั้งสองกรณี
-ผลไม่เสียหาย (ได้ UNVERIFIED แล้ว verify รอบถัดไปตามเอง) แต่ log บอกไม่ตรง แก้ข้อความก็พอ
+### 3.2 ✅ `storeRoot` แยก "รอ confirm ไม่ทัน" กับ "RPC timeout ระหว่างรอ" — เสร็จแล้ว (2026-09-23)
+`isWaitDeadline()` ดู `shortMessage === 'wait for transaction timeout'` (ethers 6.17 `provider.js`) · log บอก
+`not confirmed within Nms` หรือ `RPC timed out while waiting for the receipt (...)` · พฤติกรรมเหมือนเดิม
+(คืน `confirmed:false` ให้ verify รอบถัดไปตาม) · **ถ้าอัปเกรด ethers ให้เช็คข้อความนี้** — เทสต์ใน
+`blockchain.nonce.spec.ts` ใช้ ethers จริงจะแดงถ้าข้อความเปลี่ยน
 
 ### 3.3 ✅ ลบ `~/Documents/logchain-detection` แล้ว (2026-09-23)
 ก่อนลบตรวจซ้ำ: โค้ดทุกไฟล์มีใน `detection/` หรือใน git history แล้ว · `data/` (1.8 GB ไม่อยู่ใน git)
