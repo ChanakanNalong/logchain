@@ -15,7 +15,7 @@
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule แล้ว (`infra/prometheus/alerts.yml`) → Alertmanager `:9093` · **ยังไม่ส่ง email** จนกว่าเจ้าของใส่รหัส (4.1)
-- งานในแผนเสร็จหมดแล้ว **เหลือแค่ข้อ 2 (รอยืนยันข้ามคืน)** · ข้อ 4 ปิดครบ (4.1 รอเจ้าของใส่รหัสอีเมลเอง)
+- **งานในแผนปิดครบทุกข้อ** · สิ่งเดียวที่ค้างคือเจ้าของใส่รหัส Gmail เพื่อเปิด email ของ Alertmanager (4.1)
 - มี migration แล้ว 3 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs`
 
@@ -77,18 +77,13 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 (RPC สะดุดตอน boot = batch ค้าง SEALED จน restart) → แก้ให้ลองใหม่แบบ backoff แล้ว
 รหัส `admin-user` ตอนนี้ตรงกับ `.env` แล้ว (ยังต้องใช้ OTP ของเจ้าของ)
 
-## 2. 🟡 `detection-consumer` — `Task is already done!` (แก้แล้ว รอยืนยันข้ามคืน) ← **ทำอันนี้ก่อน**
+## 2. ✅ `detection-consumer` — `Task is already done!` — ปิดแล้ว (2026-09-23)
 
-เป็นบั๊กของ kafka-python 3.0.2 (task ที่จบแล้วถูกปลุกซ้ำ · library จับ exception เองก่อนรันโค้ดใด ๆ
-= **ไม่ทำ message หาย/ไม่ commit ข้าม**) · upstream แก้ใน 3.0.3 (#3078) → pin เป็น **3.0.11** แล้ว
-ทดสอบ brute-force ผ่าน (worklog หัวข้อ 11) · **เหลือแค่เช็คว่า error หายจริง** หลังรันไปสักพัก:
-
-```bash
-docker logs --since 12h logchain-detection-consumer 2>&1 | grep -c "Task is already done"   # ควรได้ 0
-```
-
-ณ 2026-09-23 ~18:40 (ICT) = 0 · consumer เริ่มรัน 17:36 · error เดิมเกิด ~1 ครั้ง/ชม. จึงต้องรอหลายชั่วโมง
-ได้ 0 → เปลี่ยนหัวข้อนี้เป็น ✅ · ยังเจอ → ดู traceback ว่าเป็น `selector.py` แบบเดิมไหม (worklog หัวข้อ 11)
+บั๊กของ kafka-python 3.0.2 (ไม่ทำ message หาย) · pin **3.0.11** แล้ว (upstream แก้ใน 3.0.3 #3078)
+หลักฐาน (worklog หัวข้อ 11 + 23): รันเงียบ 1 ชม. 42 นาที = 0 ครั้ง (เดิม ~1–2 ครั้ง/ชม.) · จำลองเหตุที่เคยทำให้เกิดบ่อย
+(restart broker ที่เป็น coordinator — kafka-3 → kafka-1) = 0 ครั้ง · consumer กลับมา Stable ประมวลผลต่อ lag 0
+ถ้าวันหลังเจออีก: `docker logs --since 24h logchain-detection-consumer 2>&1 | grep -c "Task is already done"`
+แล้วดู traceback ว่ามาจาก `kafka/net/selector.py` แบบเดิมไหม
 
 ## 3. ✅ P3 — เสร็จครบทุกข้อ (2026-09-23)
 
