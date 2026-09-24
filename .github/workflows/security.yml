@@ -32,9 +32,10 @@ jobs:
       - name: npm audit (dashboard)
         run: npm --prefix cylis-dashboard audit --audit-level=high
 
-      # audit จาก requirements.txt ไม่ใช่ image: ใน image torch ติดตั้งเป็น `2.13.0+cpu` ซึ่ง scanner
-      # จับคู่กับ advisory ไม่ได้ (เคยหลุด CVE-2025-3000 ของ torch 2.12.0 มาแล้ว) · --no-deps --disable-pip
-      # = ตรวจเฉพาะที่ pin ไว้ ไม่ติดตั้ง torch (~GB) · dependency ทางอ้อมไม่ครอบ
+      # audit requirements.lock ไม่ใช่ image: ใน image torch ติดตั้งเป็น `2.13.0+cpu` ซึ่ง scanner
+      # จับคู่กับ advisory ไม่ได้ (เคยหลุด CVE-2025-3000 ของ torch 2.12.0 มาแล้ว) · lock มีทุกแพ็กเกจใน image
+      # รวม dependency ทางอ้อม (Dockerfile ลงด้วย -c lock และ build พังถ้าไม่ตรง) · --no-deps --disable-pip
+      # = ตรวจตาม lock ตรง ๆ ไม่ติดตั้ง torch (~GB) · สร้าง lock ใหม่: ./scripts/detection-lock.sh
       # ubuntu-latest (24.04) ห้าม pip install ลง python ของระบบ (PEP 668) → ใช้ setup-python
       - uses: actions/setup-python@v5
         with:
@@ -42,7 +43,7 @@ jobs:
       - name: pip-audit (detection)
         run: |
           pip install --quiet pip-audit
-          pip-audit -r detection/requirements.txt --no-deps --disable-pip --progress-spinner off
+          pip-audit -r detection/requirements.lock --no-deps --disable-pip --progress-spinner off
 
       # ── ด่านที่ทำให้ build แดงจริง ──
       # secret หลุดเข้า repo คือเคสที่เกิดมาแล้ว (.env backup ถูก commit ขึ้น public

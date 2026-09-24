@@ -41,7 +41,7 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 |---|---|---|
 | ✅ dashboard ใช้ `next/font/local` แทน Google Fonts | เสร็จ 2026-09-24 — ฟอนต์อยู่ `cylis-dashboard/src/app/fonts/` · build ผ่านใน container `--network none` | worklog 2026-09-24 หัวข้อ 4 |
 | ✅ `/metrics` ของ backend เปิดสาธารณะ | เสร็จ 2026-09-24 — ย้ายไป `:9464` ไม่ publish · detection-api `:8000/metrics` ยังเปิด (สถิติ HTTP ความเสี่ยงต่ำ) | worklog 2026-09-24 หัวข้อ 5 |
-| pip-audit ครอบ dependency ทางอ้อม | CI ใช้ `--no-deps` ตรวจเฉพาะที่ pin · ทางเลือก: lock file (`pip-compile`) หรือ audit image แบบตัด torch ออก | review B7 |
+| ✅ pip-audit ครอบ dependency ทางอ้อม | เสร็จ 2026-09-24 — `detection/requirements.lock` (48 ตัว) · Dockerfile ลงตาม lock + build พังถ้าไม่ตรง · สร้างใหม่ `./scripts/detection-lock.sh` | worklog 2026-09-24 หัวข้อ 6 |
 | client key ของ Kafka เป็น 0644 | detection รันเป็น uid 10001 ต้องอ่านได้ · แก้ได้ด้วย group ร่วม หรือ copy + chown ตอน build | worklog หัวข้อ 35 |
 | Kafka PLAINTEXT `:9092` ใน docker network | inter-broker / kafka-init / kafka-exporter ยังใช้ · ย้ายเป็น SSL ทั้งหมดได้ แต่ต้องทดสอบ broker ครบ | worklog หัวข้อ 35 |
 | anti-malware (PCI 5.1 = N/A) | ไม่มี · ทางเลือก ClamAV scan ใน CI หรือระบุเป็นความเสี่ยงที่ยอมรับในเอกสาร | review B6 |

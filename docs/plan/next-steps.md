@@ -201,7 +201,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | approle login ตอบ `permission denied` | Vault user lockout — `./scripts/vault-unlock.sh` |
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` — ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
 | container ต่อ Kafka SSL `:39092` ไม่ได้ / ค้าง | listener `SSL` advertise `localhost` ใช้ได้จาก host เท่านั้น — ใน docker network ใช้ `DOCKER_SSL` `kafka-N:9094` |
-| Trivy / pip-audit บน image ไม่เจอช่องโหว่ของ torch | torch ใน image เป็น `X+cpu` scanner จับคู่ไม่ได้ — CI audit `detection/requirements.txt` แทน (อัป torch ต้องแก้ทั้ง `requirements.txt` และ `Dockerfile`) |
+| Trivy / pip-audit บน image ไม่เจอช่องโหว่ของ torch | torch ใน image เป็น `X+cpu` scanner จับคู่ไม่ได้ — CI audit `detection/requirements.lock` แทน (อัป torch ต้องแก้ทั้ง `requirements.txt` และ `Dockerfile` แล้วรัน `./scripts/detection-lock.sh`) |
+| build detection พัง `requirements.lock ไม่ตรงกับที่ลงจริง` | แก้ `detection/requirements.txt` แล้วยังไม่ได้สร้าง lock ใหม่ — `./scripts/detection-lock.sh` (สร้าง + pip-audit) แล้ว build ใหม่ · diff ใน log บอกตัวที่ต่าง |
 | container `logchain-*` มาจากสองโฟลเดอร์ปนกัน / Vault sealed ทั้งที่มี `init.env` / `vault-unseal` บอก "unseal key หาย" | เคยยก stack จากโฟลเดอร์ clone (เช่น `~/Documents/clone_logchain/logchain`) — ชื่อ project + volume เดียวกัน compose จึงทับ container กันไปมา · ดู `docker ps --format '{{.Names}} {{.Label "com.docker.compose.project.working_dir"}}'` · แก้: `docker compose up -d` จากโฟลเดอร์หลัก (volume เดิม ข้อมูลไม่หาย) · ทดสอบ clone ให้ `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (พอร์ต/`container_name` ชน) |
 | `curl localhost:3000/metrics` ได้ 404 | ตั้งใจ (review B5) — metrics ของ backend อยู่ `:9464` ใน docker network · `docker exec logchain-backend wget -qO- 127.0.0.1:9464/metrics` |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |

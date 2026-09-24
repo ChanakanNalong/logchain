@@ -50,10 +50,11 @@
 - File: .github/workflows/security.yml — ทุก push
 - block: gitleaks · Trivy secret scan · `check-tracked-secrets.sh`
 - block (HIGH/CRITICAL, 2026-09-24): npm audit backend + dashboard (`--audit-level=high`) · Trivy vuln (`ignore-unfixed`) ·
-  pip-audit `detection/requirements.txt` (`--no-deps` — dependency ทางอ้อมของ Python ไม่ครอบ)
+  pip-audit `detection/requirements.lock` — ครบทุกแพ็กเกจใน image รวม dependency ทางอ้อม (48 ตัว · เดิม 15 ตัวที่ pin ใน requirements.txt) ·
+  Dockerfile ลงด้วย `-c requirements.lock` และ build พังถ้าของที่ลงไม่ตรง lock (2026-09-24)
 - ตอนเปิด block: npm 0 ทุกระดับ · Trivy 0 · pip-audit เจอ **torch 2.12.0 CVE-2025-3000** (ไม่กระทบ — ไม่ได้ใช้ `torch.jit.script`)
   → อัปเป็น 2.13.0 · image อัป pip / setuptools ที่มีช่องโหว่
-- ⚠️ ใน image torch เป็น `2.13.0+cpu` scanner จับคู่ advisory ไม่ได้ (เคยทำให้ CVE ข้างบนหลุด) → audit จาก requirements.txt
+- ⚠️ ใน image torch เป็น `2.13.0+cpu` scanner จับคู่ advisory ไม่ได้ (เคยทำให้ CVE ข้างบนหลุด) → audit จาก requirements.lock (torch เขียนเป็น `2.13.0`)
 
 ### E05 — Data Retention
 - File: src/retention/retention.service.ts — cron ทุกเที่ยงคืน
