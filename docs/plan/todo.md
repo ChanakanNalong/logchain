@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-09-24 (HEAD `735b792`) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
+> อัปเดต 2026-09-24 (ท้ายวัน · HEAD `d1ec07d` — ข้อ 1–3 ปิดครบ ดู worklog 2026-09-24) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -31,7 +31,8 @@
 password ของ rclone crypt 2 ตัวอยู่ใน password manager ของเจ้าของ · **ทดสอบแล้ว**: พิมพ์ค่าจาก password manager ใส่ crypt remote
 ชั่วคราว → `rclone lsf` เห็นชื่อโฟลเดอร์จริง (`20260923T151851Z/` …)
 - ลืมจด/หายจาก password manager แต่เครื่องยังอยู่: `rclone.conf` เก็บแบบ obscure ถอดได้ด้วย `rclone reveal` (worklog 2026-09-24 หัวข้อ 3)
-- ควรเก็บเพิ่ม (ยังไม่บังคับ): `.env` (seed Vault ตอนย้ายเครื่อง) · `infra/vault/.secrets/init.env` (unseal key — หาย = เปิด Vault เดิมไม่ได้)
+- ✅ เก็บเพิ่มแล้ว (2026-09-24): `.env` + `infra/vault/.secrets/init.env` เป็น Secure Note ใน password manager ของเจ้าของ
+  · **อัปเดต note ของ `.env` ทุกครั้งที่ rotate secret** (ครั้งถัดไปภายใน 2026-12-16) · `init.env` เปลี่ยนเฉพาะตอน init Vault ใหม่
 
 ---
 
@@ -71,7 +72,7 @@ PCI 3.1 ยัง PARTIAL · Postgres ไม่มี TDE → ทำที่ร
 
 | งาน | ครั้งถัดไป | อ้างอิง |
 |---|---|---|
-| rotate secret รอบ 90 วัน (Keycloak / DB / Grafana …) | **ภายใน 2026-12-16** (rotate ทั้งชุดล่าสุด 2026-09-17) | `docs/Key-Rotation-Policy.md` |
+| rotate secret รอบ 90 วัน (Keycloak / DB / Grafana …) — เสร็จแล้วอัปเดต note `.env` ใน password manager ด้วย | **ภายใน 2026-12-16** (rotate ทั้งชุดล่าสุด 2026-09-17) | `docs/Key-Rotation-Policy.md` |
 | rotate Gmail app password (180 วัน) — แก้ 2 ที่: Alertmanager + `.env` `MAIL_PASS` | ภายใน 2027-03-22 | Key-Rotation §3 SMTP |
 | ทดสอบกู้คืนจาก backup (ในเครื่อง + จาก Google Drive) | ทุกไตรมาส — ครั้งถัดไป ~2026-12 | `docs/RTO-RPO-Compliance-Signoff.md` §3.1–3.2 |
 | ตรวจกล่อง email ว่ายังได้ alert (ทดสอบ: หยุด `node-exporter` > 2 นาที) | ทุกเดือน | worklog หัวข้อ 27 |
