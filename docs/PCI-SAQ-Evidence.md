@@ -16,7 +16,7 @@
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
 | 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) |
 | 4.1 | Encrypt transmission | **PARTIAL** | Kafka ระหว่าง API Gateway ↔ Detection เป็น **mTLS แล้ว** (listener `DOCKER_SSL :9094` · บังคับ client cert · เปิด 2026-09-23 · ดู E08) · **ยังไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP (review B2) |
-| 5.1 | Anti-malware | **N/A — ไม่มี** | ไม่มี anti-malware · Trivy เป็น vulnerability/secret scanner (review B6) |
+| 5.1 | Anti-malware | **PARTIAL** | ClamAV สแกนทุกไฟล์ใน repo ทุก push (block ถ้าเจอ · 2026-09-24 · ดู E10) · **ไม่มี anti-malware ตอน runtime** บน host / ใน container — ยอมรับความเสี่ยงพร้อมมาตรการชดเชย (E10 · review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
 | 6.2 | Vulnerability scan | PASS | ทุก push **block** เมื่อเจอ HIGH/CRITICAL: npm audit (backend + dashboard) · Trivy (มี fix แล้ว) · pip-audit (detection) — 2026-09-24 (review B7) |
 | 7.1 | Restrict access by need | PASS | JWT RBAC 5 roles (admin / operator / ingestor / analyst / auditor) |
@@ -97,6 +97,17 @@
   EXTERNAL `:29092` (plaintext · localhost เท่านั้น · ใช้ตอนรันแอปบน host)
 - 2026-09-24: private key ทุกตัว 0640 (`ca.key` 0600) · container ที่ใช้ key ได้กลุ่มเจ้าของไฟล์ผ่าน `group_add` ·
   backend / detection mount เฉพาะ cert + key ของตัวเอง (เดิม backend mount ทั้ง `certs/` รวม `ca.key` และอ่านได้)
+
+### E10 — Anti-malware — Req. 5
+- `.github/workflows/security.yml` step **ClamAV (blocking)** — `clamav/clamav:stable` · `freshclam` ก่อนสแกน (ไม่ได้ = ใช้ฐานข้อมูล
+  ที่มากับ image + warning) · สแกนทุกไฟล์ใน `git ls-files` (ซอร์ส + binary ที่ commit: โมเดล `.pt` · ฟอนต์ `.woff2`) ~15 วินาที
+- ทดสอบ 2026-09-24: repo 243 ไฟล์ = 0 · แทรกไฟล์ EICAR → `Eicar-Test-Signature FOUND` exit 1 (job แดง)
+- ไม่ครอบ: `node_modules` (~1 GB · สแกนเกิน 10 นาที) → แพ็กเกจที่เป็นมัลแวร์มี advisory ใน GitHub Advisory DB ซึ่ง `npm audit`
+  block ที่ HIGH+ อยู่แล้ว (E04) · Python ใช้ lock file (`detection/requirements.lock`) + pip-audit
+- **ความเสี่ยงที่ยอมรับ:** ไม่มี anti-malware ตอน runtime บน host หรือใน container (ระบบ dev/demo เครื่องเดียว) · มาตรการชดเชย:
+  image สร้างจาก base ทางการ + scan ช่องโหว่ · process ใน container เป็น non-root (ISO R07) · cert / config mount `:ro` ·
+  port ทุกตัว bind `127.0.0.1` · `logs` append-only + Merkle root บน blockchain (แก้ข้อมูลแล้วตรวจเจอ)
+- ถ้าขึ้น production: ติด anti-malware ระดับ host (เช่น ClamAV `clamd` + on-access scan หรือ EDR ขององค์กร)
 
 ### E09 — Access Control / User Management — Req. 7
 - admin จัดการสิทธิ์ผ่าน Keycloak ได้ โดยมี guard 3 ชั้น:

@@ -45,6 +45,20 @@ jobs:
           pip install --quiet pip-audit
           pip-audit -r detection/requirements.lock --no-deps --disable-pip --progress-spinner off
 
+      # ── anti-malware (PCI 5.1 · review B6) ──
+      # Trivy / npm audit / pip-audit หาช่องโหว่ ไม่ได้หามัลแวร์ → ClamAV สแกนทุกไฟล์ที่อยู่ใน git (ซอร์ส + ไฟล์ binary
+      # ที่ commit เช่น โมเดล .pt / ฟอนต์ woff2) ~15 วินาที · ไม่สแกน node_modules (~1 GB เกิน 10 นาที) — แพ็กเกจ npm
+      # ที่เป็นมัลแวร์มี advisory ใน GitHub Advisory DB ซึ่ง npm audit ข้างบน block อยู่แล้ว
+      # freshclam ไม่ได้ (CDN ของ ClamAV จำกัด rate ต่อ IP ของ runner) = ใช้ฐานข้อมูลที่มากับ image แทน ไม่ทำ job แดง
+      # clamscan: 0 = สะอาด · 1 = เจอ · 2 = error → ไม่ใช่ 0 แดงทั้งหมด (ทดสอบด้วยไฟล์ EICAR แล้ว)
+      - name: ClamAV (blocking)
+        run: |
+          git ls-files > "$RUNNER_TEMP/files.lst"
+          docker run --rm -v "$PWD":/scan:ro -v "$RUNNER_TEMP/files.lst":/files.lst:ro -w /scan \
+            clamav/clamav:stable sh -c '
+              freshclam --stdout --quiet || echo "::warning::freshclam ไม่ได้ — ใช้ฐานข้อมูลที่มากับ image"
+              clamscan --infected --file-list=/files.lst'
+
       # ── ด่านที่ทำให้ build แดงจริง ──
       # secret หลุดเข้า repo คือเคสที่เกิดมาแล้ว (.env backup ถูก commit ขึ้น public
       # repo อยู่ 10 วัน) ตอนนั้นสแกนตั้ง exit-code: 0 ไว้ CI เลยเขียวตลอดทั้งที่เจอ

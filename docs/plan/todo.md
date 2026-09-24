@@ -44,7 +44,7 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 | ✅ pip-audit ครอบ dependency ทางอ้อม | เสร็จ 2026-09-24 — `detection/requirements.lock` (48 ตัว) · Dockerfile ลงตาม lock + build พังถ้าไม่ตรง · สร้างใหม่ `./scripts/detection-lock.sh` | worklog 2026-09-24 หัวข้อ 6 |
 | ✅ client key ของ Kafka เป็น 0644 | เสร็จ 2026-09-24 — key 0640 + `group_add` · `ca.key` 0600 ไม่ mount เข้า container ไหน · แต่ละ service เห็นแค่ key ตัวเอง | worklog 2026-09-24 หัวข้อ 7 |
 | Kafka PLAINTEXT `:9092` ใน docker network | inter-broker / kafka-init / kafka-exporter ยังใช้ · ย้ายเป็น SSL ทั้งหมดได้ แต่ต้องทดสอบ broker ครบ | worklog หัวข้อ 35 |
-| anti-malware (PCI 5.1 = N/A) | ไม่มี · ทางเลือก ClamAV scan ใน CI หรือระบุเป็นความเสี่ยงที่ยอมรับในเอกสาร | review B6 |
+| ✅ anti-malware (PCI 5.1) | เสร็จ 2026-09-24 — ClamAV สแกน repo ใน Security Scan (block) + runtime เป็นความเสี่ยงที่ยอมรับ (PCI E10 · ISO R09) · 5.1 N/A → PARTIAL | worklog 2026-09-24 หัวข้อ 8 |
 
 ---
 

@@ -33,7 +33,8 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint — pseudonymize `audit_access` ด้วย HMAC (key ใน Vault) แทนการลบ ให้ audit trail ยังครบตาม PCI 10.5.1 · tombstone ใน `erasure_log` |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
 | R07 | Container | Privilege escalation | Low | High | MEDIUM | service ทุกตัวรัน process หลักเป็น non-root (ตรวจด้วย `docker top` 2026-09-23) · postgres / vault เริ่มด้วย root แล้วลดสิทธิ์เอง (มาตรฐานของ image) · ยกเว้น `vault-unseal` / `vault-init` (ต้อง chown ไฟล์ secret ให้ user บน host ตอน clone ใหม่) |
-| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | npm audit + Trivy + pip-audit ใน CI — block ที่ HIGH/CRITICAL |
+| R08 | Dependencies | Supply chain attack | Medium | High | HIGH | npm audit + Trivy + pip-audit (lock file ครบ dependency ทางอ้อม) ใน CI — block ที่ HIGH/CRITICAL |
+| R09 | Host / containers | Malware | Low | High | MEDIUM | ClamAV สแกนไฟล์ใน repo ทุก push (block) · ไม่มี runtime anti-malware — ยอมรับความเสี่ยง มาตรการชดเชยใน PCI E10 |
 
 ---
 
