@@ -30,7 +30,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | R02 | API endpoints | Unauthorized access | Medium | High | HIGH | JWT authentication |
 | R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest |
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
-| R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint |
+| R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint — pseudonymize `audit_access` ด้วย HMAC (key ใน Vault) แทนการลบ ให้ audit trail ยังครบตาม PCI 10.5.1 · tombstone ใน `erasure_log` |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
 | R07 | Container | Privilege escalation | Low | High | MEDIUM | service ทุกตัวรัน process หลักเป็น non-root (ตรวจด้วย `docker top` 2026-09-23) · postgres / vault เริ่มด้วย root แล้วลดสิทธิ์เอง (มาตรฐานของ image) · ยกเว้น `vault-unseal` / `vault-init` (ต้อง chown ไฟล์ secret ให้ user บน host ตอน clone ใหม่) |
 | R08 | Dependencies | Supply chain attack | Medium | High | HIGH | npm audit + Trivy + pip-audit ใน CI — block ที่ HIGH/CRITICAL |
@@ -51,7 +51,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | A.13.2.1 | Information Transfer | Kafka mutual TLS ระหว่าง Detection ↔ API Gateway (เปิดใช้แล้ว) · ⚠️ ยังไม่มี HTTPS (ดูหัวข้อ 5) |
 | A.16.1 | Incident Management | Alert system with severity routing · security alert HIGH/CRITICAL → email (backend) · infra alert → email (Alertmanager) · ทดสอบส่งจริงทั้งคู่แล้ว |
 | A.17.1 | Business Continuity | RTO/RPO + backup รายวัน + สำเนาเข้ารหัสบน Google Drive · ทดสอบกู้คืนแล้ว (RTO-RPO หัวข้อ 3.1–3.2) |
-| A.18.1 | Legal Compliance | PDPA right-to-erasure, 365-day retention policy |
+| A.18.1 | Legal Compliance | PDPA right-to-erasure (pseudonymize), audit trail เก็บขั้นต่ำ 365 วัน (บังคับในโค้ด) |
 
 ---
 

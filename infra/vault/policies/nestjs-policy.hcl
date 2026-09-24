@@ -13,3 +13,8 @@ path "secret/data/logchain/blockchain" {
 path "secret/data/logchain/notification" {
   capabilities = ["read"]
 }
+
+# HMAC key สำหรับ pseudonymize audit_access ตอน PDPA erasure
+path "secret/data/logchain/erasure" {
+  capabilities = ["read"]
+}

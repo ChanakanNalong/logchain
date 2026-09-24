@@ -22,6 +22,10 @@ export interface LogChainSecrets {
     pass: string;
     to: string;
   };
+  erasure: {
+    /** HMAC key (hex) สำหรับ pseudonymize audit_access — null = Vault ยังไม่มี (vault-init รุ่นเก่า) */
+    pseudonymKey: string | null;
+  };
 }
 
 @Injectable()
@@ -97,11 +101,12 @@ export class VaultService implements OnModuleInit {
 
   private async fetchAllSecrets() {
     try {
-      const [db, kc, bc, notif] = await Promise.all([
+      const [db, kc, bc, notif, pseudonymKey] = await Promise.all([
         this.client.read('secret/data/logchain/database'),
         this.client.read('secret/data/logchain/keycloak'),
         this.client.read('secret/data/logchain/blockchain'),
         this.client.read('secret/data/logchain/notification'),
+        this.readPseudonymKey(),
       ]);
 
       this.secrets = {
@@ -124,15 +129,33 @@ export class VaultService implements OnModuleInit {
           pass: notif.data.data.pass,
           to: notif.data.data.to,
         },
+        erasure: {
+          pseudonymKey,
+        },
       };
 
       this.logger.log(
-        'Vault secrets loaded (database, keycloak, blockchain, notification)',
+        'Vault secrets loaded (database, keycloak, blockchain, notification, erasure)',
       );
     } catch (err: any) {
       throw new Error(
         `Vault secret fetch failed - app cannot start: ${err.message}`,
       );
+    }
+  }
+
+  /** ไม่มี = แค่ erasure ใช้ไม่ได้ (ตอบ 503) ไม่ใช่เหตุให้ทั้งแอป boot ไม่ขึ้น */
+  private async readPseudonymKey(): Promise<string | null> {
+    try {
+      const res = (await this.client.read('secret/data/logchain/erasure')) as {
+        data?: { data?: { pseudonym_key?: string } };
+      };
+      return res.data?.data?.pseudonym_key || null;
+    } catch {
+      this.logger.warn(
+        'secret/logchain/erasure not found — PDPA erasure disabled until vault-init runs',
+      );
+      return null;
     }
   }
 

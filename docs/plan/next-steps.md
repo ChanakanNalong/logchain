@@ -5,7 +5,7 @@
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
 > **เขียนเมื่อ:** 2026-09-24 · **HEAD:** `735b792` (push แล้ว · CI เขียวครบ 5 job + Security Scan)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -18,8 +18,8 @@
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule 13 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
 - งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 ใหม่: ช่องว่าง compliance จากการทบทวน**
-- มี migration แล้ว 4 ตัว รันเองตอน backend boot:
-  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog`
+- มี migration แล้ว 5 ตัว รันเองตอน backend boot:
+  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog` · `ErasurePseudonymize`
 
 ### คำสั่งที่ใช้บ่อย
 
@@ -158,7 +158,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
 | 6.6 | HTTPS หน้า backend / dashboard / Keycloak (reverse proxy + cert) | B2 | ใหญ่ — กระทบ Keycloak issuer + `NEXT_PUBLIC_*` |
 | 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
-| 6.8 | erasure ลบ `audit_access` ขัด PCI 10.5.1 (เก็บ audit ≥ 12 เดือน)? — พิจารณา pseudonymize แทนลบ | B10 | ต้องตัดสินใจก่อน |
+| 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
 ---
 
@@ -202,6 +202,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | `UPDATE logs ...` ใน psql ไม่มีผล | trigger `trg_logs_no_update` — ต้อง `ALTER TABLE logs DISABLE TRIGGER` ก่อน (ดู `scripts/demo-tamper.sh`) |
 | container ต่อ Kafka SSL `:39092` ไม่ได้ / ค้าง | listener `SSL` advertise `localhost` ใช้ได้จาก host เท่านั้น — ใน docker network ใช้ `DOCKER_SSL` `kafka-N:9094` |
 | Trivy / pip-audit บน image ไม่เจอช่องโหว่ของ torch | torch ใน image เป็น `X+cpu` scanner จับคู่ไม่ได้ — CI audit `detection/requirements.txt` แทน (อัป torch ต้องแก้ทั้ง `requirements.txt` และ `Dockerfile`) |
+| container `logchain-*` มาจากสองโฟลเดอร์ปนกัน / Vault sealed ทั้งที่มี `init.env` / `vault-unseal` บอก "unseal key หาย" | เคยยก stack จากโฟลเดอร์ clone (เช่น `~/Documents/clone_logchain/logchain`) — ชื่อ project + volume เดียวกัน compose จึงทับ container กันไปมา · ดู `docker ps --format '{{.Names}} {{.Label "com.docker.compose.project.working_dir"}}'` · แก้: `docker compose up -d` จากโฟลเดอร์หลัก (volume เดิม ข้อมูลไม่หาย) · ทดสอบ clone ให้ `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (พอร์ต/`container_name` ชน) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
@@ -222,7 +223,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | `src/kafka/kafka-producer.service.ts` | producer + outbox/replay (`enqueue` · `drainPending`) |
 | `src/kafka/entities/pending-log.entity.ts` | ตาราง `kafka_pending_logs` |
 | `src/alerts/alerts.service.ts` | dedup ตาม rule · นับซ้ำ · ขยับ severity · เตือนซ้ำ |
-| `src/database/migrations/` | migration ของ schema ทั้งหมด (4 ตัว) |
+| `src/database/migrations/` | migration ของ schema ทั้งหมด (5 ตัว) |
+| `src/erasure/erasure.service.ts` | PDPA erasure = pseudonymize (`pseudonymize()` · `resourcePattern()`) · key จาก `VaultService.get().erasure` |
 | `docs/compliance-review-2026-09-23.md` | ผลทบทวนเอกสาร compliance + หลักฐาน (ข้อ 6) |
 | `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง (ห้ามกลับไปใช้ NonceManager) |
 | `src/logs/entities/batch.entity.ts` | `INTACT_STATUSES` — แหล่งเดียวของสูตร integrity |

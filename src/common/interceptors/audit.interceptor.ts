@@ -44,7 +44,8 @@ export class AuditInterceptor implements NestInterceptor {
       userId: user?.userId ?? 'anonymous',
       username: user?.username ?? null,
       action: `${req.method} ${req.route?.path ?? req.url}`,
-      resource: req.url,
+      // controller ตั้ง auditResource ได้เมื่อ URL มีข้อมูลส่วนบุคคล (ดู ErasureController)
+      resource: req.auditResource ?? req.url,
       method: req.method,
       statusCode: res.statusCode,
       // รองรับ proxy (nginx) ที่ forward IP มาใน header

@@ -23,7 +23,7 @@
 | 8.1 | Identify and authenticate | PASS | JWT ทุก endpoint ใต้ `/api/v1` · `/`, `/health`, `/metrics` เปิดสาธารณะโดยตั้งใจ (review B5) |
 | 9.1 | Restrict physical access | N/A | Cloud/local deployment |
 | 10.1 | Track and monitor access | PASS | AuditAccess entity logs all requests |
-| 10.2 | Audit log retention | PASS | `audit_access` + `alerts` เก็บ 365 วันแล้วลบ · ตาราง `logs` ไม่ถูกลบ (append-only) |
+| 10.2 | Audit log retention | PASS | `audit_access` เก็บ **อย่างน้อย 365 วันเสมอ** (โค้ดบังคับขั้นต่ำ · 10.5.1) · `alerts` ตาม `RETENTION_DAYS` (default 365) · ตาราง `logs` ไม่ถูกลบ (append-only) · PDPA erasure pseudonymize แทนลบ (E06) |
 | 11.1 | Vulnerability testing | PASS | Trivy CI scan on every push |
 | 12.1 | Security policy | PASS | ISO 27001 ISMS document |
 
@@ -57,14 +57,22 @@
 
 ### E05 — Data Retention
 - File: src/retention/retention.service.ts — cron ทุกเที่ยงคืน
-- ลบ `alerts` และ `audit_access` ที่เก่ากว่า 365 วัน
+- ลบ `alerts` ที่เก่ากว่า `RETENTION_DAYS` (default 365) และ `audit_access` ที่เก่ากว่า max(`RETENTION_DAYS`, 365) — audit ไม่มีทางถูกลบก่อน 12 เดือน (PCI 10.5.1 · `retentionDays()` + เทสต์)
+- แก้ 2026-09-24: เดิม default ในโค้ด 90 วัน และ compose ไม่ส่ง `RETENTION_DAYS` เข้า container → audit ถูกลบตั้งแต่วันที่ 90 ขัดกับเอกสารที่เขียนว่า 365
 - ตาราง `logs` **ไม่ถูกลบ** (append-only trigger) · คอลัมน์ `retention_days` มีอยู่แต่ job ไม่ได้ใช้ · หน้า Reports แสดงจำนวนที่เกินกำหนด
 
 ### E06 — PDPA Erasure
 - File: src/erasure/erasure.service.ts — `DELETE /api/v1/erasure/user/:userId` (admin)
-- ลบ `audit_access` ของ user + บันทึก tombstone ลงตาราง `erasure_log` **ใน transaction เดียวกัน** (บันทึกไม่ได้ = ไม่ลบ)
+- **pseudonymize แทนการลบ** (2026-09-24 · review B10) — แถวใน `audit_access` ยังอยู่ครบตาม PCI 10.5.1 แต่ระบุตัวคนไม่ได้:
+  `user_id` → `anon-<HMAC-SHA256>` · `username` / `ip_address` → NULL · userId ที่อยู่ใน `resource` ของแถวอื่น
+  (เช่น admin แก้ role ของ user นี้ · URL ของคำขอลบเอง) → HMAC ตัวเดียวกัน
+- key ของ HMAC สุ่มครั้งเดียวด้วย RNG ของ Vault (`secret/logchain/erasure` · `infra/vault/init.sh`) ไม่อยู่ใน DB/backup/.env
+  → คนที่อ่าน DB หรือ backup อย่างเดียวย้อนกลับไม่ได้ · ผู้ถือ key คำนวณ HMAC ของ userId ที่สงสัยเพื่อสืบสวนตาม PCI 10 ได้
+  · ไม่มี key = ตอบ 503 (ไม่ถอยไปลบจริง)
+- แก้ + บันทึก tombstone ลงตาราง `erasure_log` **ใน transaction เดียวกัน** (บันทึกไม่ได้ = ไม่แก้) · tombstone มี `method`
+  (`DELETE` = คำขอก่อน 2026-09-24 · `PSEUDONYMIZE`) และ `pseudonym` ไว้ผูกกับแถว audit
 - `erasure_log` append-only (trigger) · `requested_by` มาจากตัวตนใน JWT · อยู่ใน backup รายวัน
-- ขอบเขต: `audit_access` เท่านั้น — `logs` ไม่ถูกแตะ (PII ถูก mask ตั้งแต่ ingest)
+- ขอบเขต: `audit_access` เท่านั้น — `logs` ไม่ถูกแตะ (PII ถูก mask ตั้งแต่ ingest) · `erasure_log` เก็บ userId ตัวจริงไว้เป็นหลักฐานว่าคำขอของใครถูกดำเนินการ
 - แก้ 2026-09-23: เดิมเขียน tombstone ลงไฟล์ใน container ซึ่งเขียนไม่ได้ → ข้อมูลถูกลบแต่ไม่มีหลักฐาน (review A1)
 
 ### E07 — Alert Monitoring

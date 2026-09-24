@@ -12,9 +12,11 @@ type Tombstone = {
   userId: string;
   requestedBy: string;
   recordsDeleted: number;
+  method: string;
+  pseudonym: string;
   hash: string;
 };
-type EraseResponse = { tombstone: Tombstone };
+type EraseResponse = { tombstone: Tombstone; referencesPseudonymized: number };
 type ReportResponse = { erasure: { records: Tombstone[] }[] };
 
 describe('Erasure Integration', () => {
@@ -22,6 +24,8 @@ describe('Erasure Integration', () => {
   let db: DataSource;
   // ขึ้นต้นเฉพาะ — afterAll ลบเฉพาะแถวของเทสต์นี้ (erasure_log เป็น append-only)
   const TEST_USER = `e2e-erasure-${Date.now()}`;
+  // แถว audit ที่ถูก pseudonymize แล้วไม่ขึ้นต้น e2e-erasure- — จดไว้ลบตอนจบ
+  const pseudonyms: string[] = [];
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -67,41 +71,105 @@ describe('Erasure Integration', () => {
       `ALTER TABLE erasure_log ENABLE TRIGGER trg_erasure_log_no_update`,
     );
     await db.query(
-      `DELETE FROM audit_access WHERE user_id LIKE 'e2e-erasure-%'`,
+      `DELETE FROM audit_access WHERE user_id LIKE 'e2e-erasure-%' OR user_id = ANY($1)`,
+      [pseudonyms],
     );
     await app.close();
   });
 
-  it('erases the user and records a durable tombstone in the same transaction', async () => {
+  it('pseudonymizes the audit trail (kept for PCI 10.5.1) and records a tombstone in the same transaction', async () => {
     for (let i = 0; i < 2; i++) {
       await db.query(
-        `INSERT INTO audit_access (user_id, action, resource) VALUES ($1, 'GET', '/e2e')`,
-        [TEST_USER],
+        `INSERT INTO audit_access (user_id, username, action, resource, ip_address)
+         VALUES ($1, 'e2e-name', 'GET', $2, '10.1.2.3')`,
+        [TEST_USER, `/api/v1/me/${TEST_USER}?x=1`],
       );
     }
+    // แถวของคนอื่นที่อ้างถึง user นี้ใน URL (admin แก้ role) + แถวที่ id คล้ายกันต้องไม่ถูกแตะ
+    const ADMIN = `${TEST_USER}-admin`;
+    await db.query(
+      `INSERT INTO audit_access (user_id, action, resource) VALUES
+         ($1, 'PUT', $2), ($1, 'PUT', $3)`,
+      [
+        ADMIN,
+        `/api/v1/admin/users/${TEST_USER}/roles`,
+        `/api/v1/admin/users/${TEST_USER}0/roles`,
+      ],
+    );
 
     const res = await request(app.getHttpServer())
       .delete(`/api/v1/erasure/user/${TEST_USER}`)
       .send({ requestedBy: 'e2e-dpo' })
       .expect(200);
-    const { tombstone } = res.body as EraseResponse;
+    const { tombstone, referencesPseudonymized } = res.body as EraseResponse;
+    const P = tombstone.pseudonym;
+    pseudonyms.push(P);
 
     expect(tombstone).toMatchObject({
       userId: TEST_USER,
       recordsDeleted: 2,
+      method: 'PSEUDONYMIZE',
       // มาจากตัวตนใน JWT ไม่ใช่ body (body ส่ง 'e2e-dpo' เหมือนกันแต่ถูกเมิน — ดูเทสต์ถัดไป)
       requestedBy: 'e2e-dpo',
     });
-    const [{ n }] = await db.query<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM audit_access WHERE user_id = $1`,
+    expect(P).toMatch(/^anon-[a-f0-9]{64}$/);
+    // 2 แถวของ user เอง (resource มี id) + แถว admin 1 แถว
+    expect(referencesPseudonymized).toBe(3);
+
+    // แถวยังอยู่ครบ แต่ระบุตัวไม่ได้
+    const own = await db.query(
+      `SELECT user_id, username, ip_address, resource FROM audit_access WHERE user_id = $1`,
+      [P],
+    );
+    expect(own).toEqual([
+      {
+        user_id: P,
+        username: null,
+        ip_address: null,
+        resource: `/api/v1/me/${P}?x=1`,
+      },
+      {
+        user_id: P,
+        username: null,
+        ip_address: null,
+        resource: `/api/v1/me/${P}?x=1`,
+      },
+    ]);
+    const adminRows = await db.query<{ resource: string }[]>(
+      `SELECT resource FROM audit_access WHERE user_id = $1`,
+      [ADMIN],
+    );
+    expect(adminRows.map((r) => r.resource).sort()).toEqual([
+      `/api/v1/admin/users/${P}/roles`,
+      `/api/v1/admin/users/${TEST_USER}0/roles`, // id อื่น — ไม่แตะ
+    ]);
+
+    // AuditInterceptor บันทึกคำขอลบเองแบบ fire-and-forget — รอให้เขียนเสร็จ แล้วต้องไม่มี id ตัวจริง
+    await new Promise((r) => setTimeout(r, 500));
+    const [{ leaked }] = await db.query<{ leaked: number }[]>(
+      `SELECT count(*)::int AS leaked FROM audit_access
+        WHERE user_id = $1 OR resource LIKE '%' || $1 || '/%' OR resource LIKE '%' || $1`,
       [TEST_USER],
     );
-    expect(n).toBe(0);
-    const rows = await db.query<{ records_deleted: number; hash: string }[]>(
-      `SELECT records_deleted, hash FROM erasure_log WHERE user_id = $1`,
+    expect(leaked).toBe(0);
+    const [{ erasureCall }] = await db.query<{ erasureCall: number }[]>(
+      `SELECT count(*)::int AS "erasureCall" FROM audit_access WHERE resource = $1`,
+      [`/api/v1/erasure/user/${P}`],
+    );
+    expect(erasureCall).toBe(1);
+
+    const rows = await db.query(
+      `SELECT records_deleted, hash, method, pseudonym FROM erasure_log WHERE user_id = $1`,
       [TEST_USER],
     );
-    expect(rows).toEqual([{ records_deleted: 2, hash: tombstone.hash }]);
+    expect(rows).toEqual([
+      {
+        records_deleted: 2,
+        hash: tombstone.hash,
+        method: 'PSEUDONYMIZE',
+        pseudonym: P,
+      },
+    ]);
 
     // หน้า Reports เห็น tombstone (เดิมอ่านไฟล์ที่ไม่เคยถูกเขียน → 0 เสมอ)
     const today = new Date(Date.now() + 7 * 3600_000)
@@ -128,7 +196,9 @@ describe('Erasure Integration', () => {
       .send({ requestedBy: 'someone-else' })
       .expect(200);
 
-    expect((res.body as EraseResponse).tombstone.requestedBy).toBe('e2e-dpo');
+    const body = res.body as EraseResponse;
+    pseudonyms.push(body.tombstone.pseudonym);
+    expect(body.tombstone.requestedBy).toBe('e2e-dpo');
   });
 
   it('tombstones are append-only', async () => {

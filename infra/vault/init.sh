@@ -64,6 +64,15 @@ vault kv put secret/logchain/notification \
 vault kv put secret/logchain/detection \
     abuseipdb_key="${ABUSEIPDB_KEY}"
 
+# key ของ HMAC ที่ใช้แทน user_id ใน audit_access ตอนมีคำขอลบตาม PDPA (src/erasure/erasure.service.ts)
+# ไม่ได้มาจาก .env — สุ่มด้วย RNG ของ Vault ครั้งแรกครั้งเดียว แล้วใช้ค่าเดิมตลอด
+# (เปลี่ยน key = pseudonym ของคำขอเก่ากับใหม่ไม่ตรงกัน ผูก audit trail กับ tombstone ไม่ได้)
+if ! vault kv get -field=pseudonym_key secret/logchain/erasure > /dev/null 2>&1; then
+    echo "▶ Generating erasure pseudonym key..."
+    vault kv put secret/logchain/erasure \
+        pseudonym_key="$(vault write -field=random_bytes sys/tools/random/32 format=hex)"
+fi
+
 # ── 5. Create AppRoles ──
 echo "▶ Creating AppRole: nestjs-api..."
 vault write auth/approle/role/nestjs-api \

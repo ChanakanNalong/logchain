@@ -186,6 +186,8 @@ export class ComplianceService {
       requestedBy: string;
       deletedAt: string;
       recordsDeleted: number;
+      method: string;
+      pseudonym: string | null;
       hash: string;
     };
     const byDay = new Map<string, Tombstone[]>();
@@ -197,6 +199,8 @@ export class ComplianceService {
         requestedBy: r.requestedBy,
         deletedAt: r.deletedAt.toISOString(),
         recordsDeleted: r.recordsDeleted,
+        method: r.method,
+        pseudonym: r.pseudonym,
         hash: r.hash,
       });
     }

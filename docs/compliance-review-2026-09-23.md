@@ -63,6 +63,7 @@
 - **B7 แก้แล้ว** (ข้อ 6.5): npm audit / Trivy vuln / pip-audit block ที่ HIGH+ · อัป torch 2.13.0 (CVE-2025-3000 หลุด scanner เพราะ `+cpu`) · PCI 6.2 → PASS · B6 (anti-malware) ยัง N/A
 - **B8 แก้แล้ว** (ข้อ 6.4): dashboard → `USER node` · kafka-exporter → `user: 65534` · เหลือ root ตั้งใจ: vault-unseal / vault-init (chown ไฟล์ secret) · dumb-init PID 1 ของ vault
 - **B3 แก้แล้ว** (ข้อ 6.3): Kafka mTLS เปิดใช้ (listener `DOCKER_SSL :9094`) · PCI 4.1 FAIL → PARTIAL (เหลือ HTTPS)
+- **B10 แก้แล้ว** (ข้อ 6.8 · 2026-09-24): erasure เปลี่ยนจากลบเป็น pseudonymize (HMAC · key ใน Vault) · audit trail อยู่ครบ 12 เดือน · เจอเพิ่ม: retention ลบ `audit_access` ที่ 90 วัน (default ในโค้ด · compose ไม่ส่ง `RETENTION_DAYS`) ขัดกับเอกสาร 365 → บังคับขั้นต่ำ 365
 - **B11 แก้แล้ว** (ข้อ 6.2): email ของ security alert เปิดใช้ + ทดสอบส่งจริง · เจอเพิ่ม: `.env` เป็น 664 → แก้เป็น 600 (script + bootstrap)
 
 ## D. คำถามเดิม (เก็บไว้อ้างอิง)
