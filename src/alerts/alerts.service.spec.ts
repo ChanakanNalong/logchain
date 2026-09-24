@@ -167,6 +167,22 @@ describe('AlertsService', () => {
     );
   });
 
+  // e2e `creates an alert` เคยเกิน timeout: createOrDedup รอ Gmail (3–7 วิ · ช้ากว่านั้นได้มาก)
+  it('does not wait for the email — SMTP that never answers must not block alert creation', async () => {
+    mockRepo.findOne.mockResolvedValue(null);
+    mockNotification.sendAlertEmail.mockReturnValue(new Promise(() => {}));
+
+    const result = await service.createOrDedup({
+      alertType: 'RULE_MATCH',
+      severity: 'CRITICAL',
+      source: 'api-gw',
+      title: 'SMTP hangs',
+    });
+
+    expect(result).toBeDefined();
+    expect(mockNotification.sendAlertEmail).toHaveBeenCalledTimes(1);
+  });
+
   it('does NOT send email for INFO severity', async () => {
     mockRepo.findOne.mockResolvedValue(null);
 

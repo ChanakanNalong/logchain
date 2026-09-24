@@ -4,7 +4,7 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-24 (อัปเดตท้ายวัน) · **HEAD:** `d1ec07d` (push แล้ว · CI เขียวครบ 5 job + Security Scan) · งานวันนี้: `docs/worklog/2026-09-24.md`
+> **เขียนเมื่อ:** 2026-09-24 (อัปเดตท้ายวัน) · **HEAD:** `9de6134` (push แล้ว · CI เขียวครบ 5 job + Security Scan) · งานวันนี้: `docs/worklog/2026-09-24.md`
 > **บันทึกงานเต็ม:** `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
@@ -156,7 +156,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.3 ✅ | Kafka mTLS เปิดแล้ว — listener `DOCKER_SSL` `kafka-N:9094` · backend + detection ใช้ client cert · ทดสอบครบทั้งสาย + ปฏิเสธ client ไม่มี cert (worklog หัวข้อ 35) | B3 | เสร็จ 2026-09-23 |
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
-| 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · **รอเจ้าของ login + OTP ทดสอบ** | B2 | เสร็จ 2026-09-24 |
+| 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · เจ้าของ trust CA + login + OTP ผ่านเบราว์เซอร์แล้ว | B2 | เสร็จ 2026-09-24 |
 | 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 

@@ -85,8 +85,11 @@ export class AlertsService {
       throw err;
     }
 
+    // ไม่รอ SMTP — alert ลง DB แล้วคือจบงานของ request / Kafka message นี้ (sendAlertEmail จับ error เอง)
+    // เดิม await: Gmail ช้า 3–7 วิต่อฉบับ และช้ากว่านั้นได้เป็นนาทีตอนส่งถี่ → consumer ของ alerts.raw ค้างตาม
+    // และ e2e `creates an alert` เกิน timeout เป็นระยะ (worklog 2026-09-24 หัวข้อ 12)
     if (notify) {
-      await this.notificationService.sendAlertEmail(
+      void this.notificationService.sendAlertEmail(
         dto.severity!,
         dto.title ?? 'Alert',
         JSON.stringify(dto.detail ?? {}),
@@ -152,7 +155,8 @@ export class AlertsService {
       : null;
 
     if (row.notify_now) {
-      await this.notificationService.sendAlertEmail(
+      // ไม่รอ SMTP — เหตุผลเดียวกับใน createOrDedup
+      void this.notificationService.sendAlertEmail(
         alert.severity,
         alert.title ?? incoming.title ?? 'Alert',
         JSON.stringify(incoming.detail ?? alert.detail ?? {}),

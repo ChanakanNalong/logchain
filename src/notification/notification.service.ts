@@ -26,6 +26,10 @@ export class NotificationService implements OnModuleInit {
       host: smtp.host,
       port: Number(smtp.port),
       secure: false,
+      // default ของ nodemailer รอได้เป็นนาที (connection 2 นาที · socket 10 นาที) — SMTP ค้าง = อีเมลค้างเงียบ ๆ
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
       auth: {
         user: smtp.user,
         pass: smtp.pass,

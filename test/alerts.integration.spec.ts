@@ -10,6 +10,7 @@ import { AlertsService } from '../src/alerts/alerts.service';
 import { Alert } from '../src/alerts/entities/alert.entity';
 import { KafkaProducerService } from '../src/kafka/kafka-producer.service';
 import { KafkaConsumerService } from '../src/kafka/kafka-consumer.service';
+import { NotificationService } from '../src/notification/notification.service';
 
 describe('Alerts Integration', () => {
   let app: INestApplication;
@@ -38,6 +39,9 @@ describe('Alerts Integration', () => {
       .useValue({ publishLog: async () => undefined })
       .overrideProvider(KafkaConsumerService)
       .useValue({})
+      // alert HIGH ในเทสต์ = อีเมลจริงเข้ากล่องของ security team ทุกครั้งที่รัน (ตั้งแต่เปิด MAIL_* 2026-09-23)
+      .overrideProvider(NotificationService)
+      .useValue({ sendAlertEmail: () => Promise.resolve() })
       .compile();
 
     app = moduleFixture.createNestApplication();

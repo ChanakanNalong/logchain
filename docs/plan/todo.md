@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-09-24 (ท้ายวัน · HEAD `d1ec07d` — ข้อ 1–3 ปิดครบ ดู worklog 2026-09-24) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
+> อัปเดต 2026-09-24 (ท้ายวัน · HEAD `9de6134` — ข้อ 1–4 ปิดครบ ดู worklog 2026-09-24) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -13,7 +13,7 @@
 | 1 ✅ | 6.8 erasure → pseudonymize (หัวข้อ 1) | เสร็จ 2026-09-24 | — |
 | 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
 | 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
-| 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ · **เจ้าของ login + OTP ทดสอบ** | — |
+| 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ 2026-09-24 | — |
 | 5 | 6.7 encryption at rest (หัวข้อ 5) | เจ้าของ (ระดับเครื่อง) | ใหญ่ |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 
@@ -52,10 +52,8 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 ## 4. ✅ 6.6 — HTTPS (เสร็จ 2026-09-24 · worklog หัวข้อ 11)
 
 Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboard `:3453` · HTTP เดิม bind 127.0.0.1 เสมอ · PCI 4.1 → PASS
-**เหลือให้เจ้าของทำ:**
-1. `sudo apt install libnss3-tools` → `./scripts/trust-web-ca.sh` → restart เบราว์เซอร์
-2. เปิด https://localhost:3453 → login `admin-user` + OTP → เปิดครบ 4 หน้า (Dashboard / Alerts / Integrity / Reports)
-3. (ไม่บังคับ) smoke test clone ใหม่ — `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (ดูตารางกับดักใน next-steps)
+เจ้าของ trust CA (`./scripts/trust-web-ca.sh`) + login `admin-user` + OTP ที่ https://localhost:3453 ผ่านแล้ว (2026-09-24)
+เหลือ (ไม่บังคับ): smoke test clone ใหม่ — `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (ดูตารางกับดักใน next-steps)
 
 ---
 
