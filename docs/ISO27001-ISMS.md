@@ -42,7 +42,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 | Control | Description | Implementation |
 |---------|-------------|----------------|
 | A.8.1 | Asset Management | Log entries tracked with UUID, timestamp, source |
-| A.9.1 | Access Control Policy | JWT (Keycloak RS256) ทุก endpoint ใต้ `/api/v1` · `/health` `/metrics` เปิดสาธารณะ |
+| A.9.1 | Access Control Policy | JWT (Keycloak RS256) ทุก endpoint ใต้ `/api/v1` · `/health` เปิดสาธารณะ · `/metrics` แยกไป port `:9464` ที่เข้าได้เฉพาะใน docker network (Prometheus) |
 | A.9.2 | User Access Management | admin จัดการสิทธิ์ผ่าน Keycloak + guard 3 ชั้น (ดูหัวข้อ 6) |
 | A.9.4 | System Access Control | RBAC 5 roles (admin / operator / ingestor / analyst / auditor), audit interceptor logs all access |
 | A.10.1 | Cryptographic Controls | SHA-256 hash stored on blockchain per log batch |

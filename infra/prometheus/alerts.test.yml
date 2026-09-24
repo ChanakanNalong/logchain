@@ -17,7 +17,7 @@ tests:
   # backend ตัวเดียวถูก scrape 2 target → ต้องได้ alert ตัวเดียว ไม่ใช่ 2
   - interval: 1m
     input_series:
-      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:3000",code="TIMEOUT"}'
+      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:9464",code="TIMEOUT"}'
         values: '0x10 1x120'
       - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="host.docker.internal:3000",code="TIMEOUT"}'
         values: '0x10 1x120'
@@ -44,7 +44,7 @@ tests:
   # counter เป็นค่าคงที่ตั้งแต่ต้น (backend เพิ่ง boot มาพร้อมค่าเดิม) → ไม่เตือน
   - interval: 1m
     input_series:
-      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:3000",code="NETWORK_ERROR"}'
+      - series: 'logchain_unhandled_ethers_rejections_total{job="nestjs-api",instance="backend:9464",code="NETWORK_ERROR"}'
         values: '3x90'
     alert_rule_test:
       - eval_time: 80m
@@ -122,7 +122,7 @@ tests:
   # ล่ม 1 นาทีแล้วกลับ → ไม่เด้ง · ล่มยาว → เด้งหลัง 2 นาที
   - interval: 1m
     input_series:
-      - series: 'up{job="nestjs-api",instance="backend:3000"}'
+      - series: 'up{job="nestjs-api",instance="backend:9464"}'
         values: '1 1 0 1 1 1 0 0 0 0 0'
     alert_rule_test:
       - eval_time: 3m
@@ -134,11 +134,11 @@ tests:
           - exp_labels:
               severity: critical
               job: nestjs-api
-              instance: backend:3000
+              instance: backend:9464
             exp_annotations:
-              summary: 'nestjs-api (backend:3000) ไม่ตอบ'
+              summary: 'nestjs-api (backend:9464) ไม่ตอบ'
               description: >-
-                Prometheus scrape backend:3000 ไม่ได้มา 2 นาที ·
+                Prometheus scrape backend:9464 ไม่ได้มา 2 นาที ·
                 `docker compose ps` แล้วดู log ของ service นั้น
 
   # ---- PostgresDown ----
@@ -190,9 +190,9 @@ tests:
   # CONFIRMED เก่าแค่ไหนก็ไม่เกี่ยว
   - interval: 1m
     input_series:
-      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="UNVERIFIED"}'
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:9464",status="UNVERIFIED"}'
         values: '1200+60x30'
-      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="CONFIRMED"}'
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:9464",status="CONFIRMED"}'
         values: '600000+60x30'
     alert_rule_test:
       - eval_time: 14m
@@ -204,7 +204,7 @@ tests:
           - exp_labels:
               severity: warning
               job: nestjs-api
-              instance: backend:3000
+              instance: backend:9464
               status: UNVERIFIED
             exp_annotations:
               summary: 'batch ค้าง UNVERIFIED มา 36m 0s'
@@ -216,7 +216,7 @@ tests:
   # UNVERIFIED สั้น ๆ แล้วหาย (tx confirm ทีหลัง = ปกติ) → series หายไป → ไม่เด้ง
   - interval: 1m
     input_series:
-      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="UNVERIFIED"}'
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:9464",status="UNVERIFIED"}'
         values: '0+60x3 _x30'
     alert_rule_test:
       - eval_time: 30m
@@ -226,7 +226,7 @@ tests:
   # ---- BatchStuckPending ----
   - interval: 1m
     input_series:
-      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:3000",status="PENDING"}'
+      - series: 'logchain_batch_oldest_age_seconds{job="nestjs-api",instance="backend:9464",status="PENDING"}'
         values: '0+60x30'
     alert_rule_test:
       - eval_time: 12m
@@ -238,7 +238,7 @@ tests:
           - exp_labels:
               severity: warning
               job: nestjs-api
-              instance: backend:3000
+              instance: backend:9464
               status: PENDING
             exp_annotations:
               summary: 'batch ค้าง PENDING มา 16m 0s'

@@ -20,7 +20,7 @@
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
 | 6.2 | Vulnerability scan | PASS | ทุก push **block** เมื่อเจอ HIGH/CRITICAL: npm audit (backend + dashboard) · Trivy (มี fix แล้ว) · pip-audit (detection) — 2026-09-24 (review B7) |
 | 7.1 | Restrict access by need | PASS | JWT RBAC 5 roles (admin / operator / ingestor / analyst / auditor) |
-| 8.1 | Identify and authenticate | PASS | JWT ทุก endpoint ใต้ `/api/v1` · `/`, `/health`, `/metrics` เปิดสาธารณะโดยตั้งใจ (review B5) |
+| 8.1 | Identify and authenticate | PASS | JWT ทุก endpoint ใต้ `/api/v1` · `/`, `/health` เปิดสาธารณะโดยตั้งใจ · `/metrics` ย้ายไป `:9464` ไม่ publish ออก host (review B5 แก้ 2026-09-24) |
 | 9.1 | Restrict physical access | N/A | Cloud/local deployment |
 | 10.1 | Track and monitor access | PASS | AuditAccess entity logs all requests |
 | 10.2 | Audit log retention | PASS | `audit_access` เก็บ **อย่างน้อย 365 วันเสมอ** (โค้ดบังคับขั้นต่ำ · 10.5.1) · `alerts` ตาม `RETENTION_DAYS` (default 365) · ตาราง `logs` ไม่ถูกลบ (append-only) · PDPA erasure pseudonymize แทนลบ (E06) |
@@ -33,8 +33,8 @@
 
 ### E01 — JWT Authentication
 - File: src/auth/strategies/jwt.strategy.ts — Keycloak RS256 + JWKS
-- ทุก controller ใต้ `/api/v1` มี `AuthGuard('jwt')` + `RolesGuard` · `/`, `/health`, `/metrics` เปิดสาธารณะ
-  (`/metrics` เปิดเผยจำนวน batch ตามสถานะ)
+- ทุก controller ใต้ `/api/v1` มี `AuthGuard('jwt')` + `RolesGuard` · `/`, `/health` เปิดสาธารณะ
+  · `/metrics` (จำนวน batch ตามสถานะ) อยู่ port แยก `:9464` เข้าได้เฉพาะใน docker network — `:3000/metrics` ตอบ 404 (2026-09-24)
 
 ### E02 — Audit Logging
 - File: src/common/interceptors/audit.interceptor.ts

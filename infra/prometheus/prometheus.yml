@@ -29,13 +29,14 @@ scrape_configs:
   # (Grafana เส้นซ้ำ · alert เด้งซ้ำ) และ 9101 ไม่ได้ publish จึงขึ้น DOWN ทั้งที่ consumer ปกติ
   #
   # รันแอปบน host แทน container (เช่น `npm run start:dev`): หยุด container ตัวนั้น แล้วเปลี่ยน
-  # target ของ job นั้นเป็น host.docker.internal:<port> จากนั้น
+  # target ของ job นั้นเป็น host.docker.internal:<port> (backend = 9464 ไม่ใช่ 3000) จากนั้น
   #   curl -X POST localhost:9090/-/reload
 
   # NestJS api-gateway
   - job_name: 'nestjs-api'
     static_configs:
-      - targets: ['backend:3000']
+      # :9464 ไม่ publish ออก host — /metrics ไม่อยู่บน :3000 แล้ว (review B5 · src/metrics/metrics-server.ts)
+      - targets: ['backend:9464']
     metrics_path: '/metrics'
 
   # FastAPI detection service

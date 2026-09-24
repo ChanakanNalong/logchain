@@ -92,9 +92,9 @@ nvm use                                     # อ่าน .nvmrc -> node 22.19.
 npm install && npm run start:dev
 ```
 
-> **Prometheus:** target ของ backend ชี้ `backend:3000` (container) — หยุด container แล้ว alert `ServiceDown`
+> **Prometheus:** target ของ backend ชี้ `backend:9464` (container · port metrics แยกจาก API) — หยุด container แล้ว alert `ServiceDown`
 > จะเด้ง (และส่ง email ถ้าตั้งไว้) ใน 2 นาที · เปลี่ยน target ของ job `nestjs-api` ใน
-> `infra/prometheus/prometheus.yml` เป็น `host.docker.internal:3000` แล้ว `curl -X POST localhost:9090/-/reload`
+> `infra/prometheus/prometheus.yml` เป็น `host.docker.internal:9464` แล้ว `curl -X POST localhost:9090/-/reload`
 > (อย่าใส่ทั้งสองคู่กัน — scrape ซ้ำ) หรือ silence ที่ http://localhost:9093
 
 `.env` เขียนค่าไว้สำหรับโหมดนี้ (`localhost:5433`, `localhost:29092`, …)
@@ -132,7 +132,7 @@ npm install && npm run start:dev
 | Service | URL | หมายเหตุ |
 |---|---|---|
 | dashboard (Next.js) | http://localhost:3003 | เริ่มที่นี่ — login ผ่าน Keycloak |
-| backend (NestJS) | http://localhost:3000 | `/health`, `/metrics`, `/api`, `/api/v1/*` |
+| backend (NestJS) | http://localhost:3000 | `/health`, `/api`, `/api/v1/*` · metrics อยู่ `:9464/metrics` ใน docker network เท่านั้น (ไม่ publish) |
 | detection (FastAPI) | http://localhost:8000 | `/health`, `/metrics`, `/api/v1/detect` |
 | keycloak | http://localhost:8080 | admin console |
 | grafana | http://localhost:3002 | user `admin` |
@@ -148,8 +148,10 @@ npm install && npm run start:dev
 ทุก port bind ที่ **`127.0.0.1`** (เข้าได้จากเครื่องนี้เท่านั้น) · ต้องให้เครื่องอื่นเข้า เช่น log source ข้ามเครื่องยิง
 `:3000` → ตั้ง `PUBLISH_ADDR` ใน `.env` แล้ว `docker compose up -d` (ระวัง: เปิดทุก port รวม Postgres / Vault / Alertmanager)
 
-`/health` กับ `/metrics` อยู่**นอก** global prefix `api/v1` โดยตั้งใจ —
-คือ `/health` ไม่ใช่ `/api/v1/health`
+`/health` อยู่**นอก** global prefix `api/v1` โดยตั้งใจ — คือ `/health` ไม่ใช่ `/api/v1/health`
+
+`/metrics` ของ backend **ไม่อยู่บน :3000** — แยกไป `:9464` ซึ่งไม่ publish ออก host (review B5: เดิมใครเรียกก็เห็นจำนวน batch
+ตามสถานะ) · ดูค่าเอง: `docker exec logchain-backend wget -qO- 127.0.0.1:9464/metrics` หรือหน้า Prometheus `:9090`
 
 ---
 

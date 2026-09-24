@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import Providers from "./providers";
 
-const manrope = Manrope({
+// ฟอนต์อยู่ใน repo (src/app/fonts · OFL-1.1 · มาจาก @fontsource-variable 5.3.0 ชุด latin)
+// เดิมใช้ next/font/google ซึ่งดึงจาก Google Fonts ทุกครั้งที่ build — เน็ตสะดุด = CI แดง
+// และ bootstrap.sh บนเครื่องไม่มีเน็ต build dashboard ไม่ผ่าน (worklog 2026-09-23 หัวข้อ 38)
+// ไฟล์เป็น variable font: ไฟล์เดียวครอบทุก weight
+const manrope = localFont({
+  src: "./fonts/manrope-latin-wght-normal.woff2",
   variable: "--font-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: "200 800",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-latin-wght-normal.woff2",
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: "100 800",
 });
 
 export const metadata: Metadata = {

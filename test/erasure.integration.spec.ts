@@ -54,7 +54,7 @@ describe('Erasure Integration', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
+    app.setGlobalPrefix('api/v1', { exclude: ['health'] });
     await app.init();
     db = app.get(DataSource);
   });

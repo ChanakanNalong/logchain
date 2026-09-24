@@ -122,7 +122,7 @@ describe('Integrity Integration', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
+    app.setGlobalPrefix('api/v1', { exclude: ['health'] });
     await app.init();
 
     integrity = app.get(IntegrityService);

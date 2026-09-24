@@ -13,7 +13,7 @@ import { AuditService } from '../../audit/audit.service';
  * ทำงานแบบ middleware ที่ wrap ทุก HTTP request:
  *   request เข้า → interceptor เริ่มจับเวลา → controller ทำงาน → interceptor บันทึก
  *
- * ข้ามเฉพาะ /health และ /metrics เพื่อลด noise
+ * ข้ามเฉพาะ /health เพื่อลด noise (/metrics ย้ายไป port แยก :9464 แล้ว — ใครยิง :3000/metrics = 404 และถูกบันทึก)
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -32,9 +32,8 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private write(ctx: ExecutionContext, req: any, start: number): void {
-    // ข้าม health check และ metrics - ไม่มีประโยชน์ใน audit trail
-    if (req.url?.startsWith('/health') || req.url?.startsWith('/metrics'))
-      return;
+    // ข้าม health check - ไม่มีประโยชน์ใน audit trail
+    if (req.url?.startsWith('/health')) return;
 
     const res = ctx.switchToHttp().getResponse();
     const user = req.user;

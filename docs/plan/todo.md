@@ -39,8 +39,8 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 
 | งาน | ทำไม | ที่มา |
 |---|---|---|
-| dashboard ใช้ `next/font/local` แทน Google Fonts | build ดึงฟอนต์จากเน็ตทุกครั้ง — CI แดงชั่วคราวมาแล้ว 1 ครั้ง · bootstrap บนเครื่องไม่มีเน็ตจะพัง | worklog หัวข้อ 38 |
-| `/metrics` ของ backend เปิดสาธารณะ | เปิดเผยจำนวน batch ตามสถานะ · ตอนนี้ bind localhost แล้วความเสี่ยงต่ำ · ถ้าจะเปิด LAN ต้องจำกัด | review B5 |
+| ✅ dashboard ใช้ `next/font/local` แทน Google Fonts | เสร็จ 2026-09-24 — ฟอนต์อยู่ `cylis-dashboard/src/app/fonts/` · build ผ่านใน container `--network none` | worklog 2026-09-24 หัวข้อ 4 |
+| ✅ `/metrics` ของ backend เปิดสาธารณะ | เสร็จ 2026-09-24 — ย้ายไป `:9464` ไม่ publish · detection-api `:8000/metrics` ยังเปิด (สถิติ HTTP ความเสี่ยงต่ำ) | worklog 2026-09-24 หัวข้อ 5 |
 | pip-audit ครอบ dependency ทางอ้อม | CI ใช้ `--no-deps` ตรวจเฉพาะที่ pin · ทางเลือก: lock file (`pip-compile`) หรือ audit image แบบตัด torch ออก | review B7 |
 | client key ของ Kafka เป็น 0644 | detection รันเป็น uid 10001 ต้องอ่านได้ · แก้ได้ด้วย group ร่วม หรือ copy + chown ตอน build | worklog หัวข้อ 35 |
 | Kafka PLAINTEXT `:9092` ใน docker network | inter-broker / kafka-init / kafka-exporter ยังใช้ · ย้ายเป็น SSL ทั้งหมดได้ แต่ต้องทดสอบ broker ครบ | worklog หัวข้อ 35 |

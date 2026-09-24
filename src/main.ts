@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { installUnhandledRejectionGuard } from './common/process/unhandled-rejection';
 import { MetricsService } from './metrics/metrics.service';
+import { startMetricsServer } from './metrics/metrics-server';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -16,9 +17,12 @@ async function bootstrap() {
   );
 
   const app = await NestFactory.create(AppModule);
-  ref.metrics = app.get(MetricsService);
+  const metrics = app.get(MetricsService);
+  ref.metrics = metrics;
+  // /metrics ไม่อยู่บน :3000 แล้ว — port แยกที่ไม่ publish ออก host (review B5)
+  startMetricsServer(metrics);
 
-  app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -41,7 +41,7 @@ describe('Alerts Integration', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1', { exclude: ['health', 'metrics'] });
+    app.setGlobalPrefix('api/v1', { exclude: ['health'] });
     await app.init();
 
     alertsService = app.get(AlertsService);

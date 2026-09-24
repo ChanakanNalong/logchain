@@ -637,7 +637,7 @@ services:
       # AppRole ต้องถูกสร้างก่อน ไม่งั้น vault login 403
       vault-init: {condition: service_completed_successfully}
     healthcheck:
-      # /health และ /metrics อยู่นอก global prefix api/v1 (ดู src/main.ts)
+      # /health อยู่นอก global prefix api/v1 (ดู src/main.ts) · /metrics อยู่ :9464 ไม่ publish (src/metrics/metrics-server.ts)
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health >/dev/null 2>&1 || exit 1"]
       interval: 15s
       timeout: 10s
