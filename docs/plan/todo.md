@@ -11,7 +11,7 @@
 | # | งาน | ใครทำ | ขนาด |
 |---|---|---|---|
 | 1 ✅ | 6.8 erasure → pseudonymize (หัวข้อ 1) | เสร็จ 2026-09-24 | — |
-| 2 | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เจ้าของ | 5 นาที |
+| 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
 | 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
 | 4 | 6.6 HTTPS (หัวข้อ 4) | Claude | ใหญ่ |
 | 5 | 6.7 encryption at rest (หัวข้อ 5) | เจ้าของ (ระดับเครื่อง) | ใหญ่ |
@@ -26,11 +26,12 @@
 
 ---
 
-## 2. เก็บ password ของ backup ไว้นอกเครื่อง + ตรวจ
+## 2. ✅ password ของ backup อยู่นอกเครื่องแล้ว (2026-09-24)
 
-- **password ของ rclone crypt 2 ตัว** ต้องอยู่ใน password manager — เครื่องหาย + ไม่มีค่านี้ = สำเนาบน Google Drive ถอดไม่ได้
-  (ถ้าไม่ได้จดตอนรัน `setup-offsite-backup.sh`: ก๊อปทั้งไฟล์ `infra/rclone/.secrets/rclone.conf` เข้า password manager แทน)
-- ทดสอบว่าจดถูก (ไม่บังคับ): สร้าง crypt remote ใหม่ในเครื่องอื่นด้วย password ที่จด แล้ว `rclone lsf` ต้องเห็นชื่อจริง
+password ของ rclone crypt 2 ตัวอยู่ใน password manager ของเจ้าของ · **ทดสอบแล้ว**: พิมพ์ค่าจาก password manager ใส่ crypt remote
+ชั่วคราว → `rclone lsf` เห็นชื่อโฟลเดอร์จริง (`20260923T151851Z/` …)
+- ลืมจด/หายจาก password manager แต่เครื่องยังอยู่: `rclone.conf` เก็บแบบ obscure ถอดได้ด้วย `rclone reveal` (worklog 2026-09-24 หัวข้อ 3)
+- ควรเก็บเพิ่ม (ยังไม่บังคับ): `.env` (seed Vault ตอนย้ายเครื่อง) · `infra/vault/.secrets/init.env` (unseal key — หาย = เปิด Vault เดิมไม่ได้)
 
 ---
 
