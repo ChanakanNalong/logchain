@@ -63,6 +63,7 @@
 - **B7 แก้แล้ว** (ข้อ 6.5): npm audit / Trivy vuln / pip-audit block ที่ HIGH+ · อัป torch 2.13.0 (CVE-2025-3000 หลุด scanner เพราะ `+cpu`) · PCI 6.2 → PASS · B6 (anti-malware) ยัง N/A
 - **B8 แก้แล้ว** (ข้อ 6.4): dashboard → `USER node` · kafka-exporter → `user: 65534` · เหลือ root ตั้งใจ: vault-unseal / vault-init (chown ไฟล์ secret) · dumb-init PID 1 ของ vault
 - **B3 แก้แล้ว** (ข้อ 6.3): Kafka mTLS เปิดใช้ (listener `DOCKER_SSL :9094`) · PCI 4.1 FAIL → PARTIAL (เหลือ HTTPS)
+- **B1 เตรียมแล้ว** (6.7 · 2026-09-24): runbook `docs/runbooks/encryption-at-rest.md` (ไฟล์ LUKS2 → `/srv/lcsecure` · Docker data-root + repo · ปลดล็อกด้วย TPM2 + PIN เพราะ Secure Boot ปิด) + `scripts/check-encryption-at-rest.sh` · ตรวจตอนนี้: ไม่ผ่าน 3 จุด (ยังไม่ได้รัน)
 - **B2 แก้แล้ว** (6.6 · 2026-09-24): HTTPS ผ่าน Caddy (`https-proxy` · 8443 / 3443 / 3453 · TLS 1.2+ · HSTS) · HTTP เดิม bind 127.0.0.1 เสมอ · issuer ของ Keycloak เป็น https · PCI 4.1 PARTIAL → PASS (Grafana / Vault ฯลฯ ยัง HTTP แต่ localhost เท่านั้น)
 - **B6 แก้บางส่วน** (todo ข้อ 3 · 2026-09-24): ClamAV สแกน repo ทุก push (block · ทดสอบ EICAR) · runtime anti-malware ไม่มี → ยอมรับความเสี่ยง (PCI E10 · ISO R09) · PCI 5.1 N/A → PARTIAL
 - **B5 แก้แล้ว** (todo ข้อ 3 · 2026-09-24): `/metrics` ของ backend ย้ายไป `:9464` ไม่ publish ออก host · `:3000/metrics` = 404 · Prometheus scrape `backend:9464` · detection-api `:8000/metrics` ยังเปิด (สถิติ HTTP อย่างเดียว ความเสี่ยงต่ำ)

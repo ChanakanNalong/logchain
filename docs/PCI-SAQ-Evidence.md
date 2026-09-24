@@ -14,7 +14,7 @@
 |-----|-------------|--------|----------|
 | 1.1 | Firewall configuration | PASS | service คุยกันใน Docker network · port ที่ publish ทั้ง 19 ตัว bind `127.0.0.1` (`PUBLISH_ADDR`) — ทดสอบจาก IP LAN ของเครื่องแล้วปิดทุกตัว · แก้ 2026-09-23 (เดิม `0.0.0.0` · review B15) |
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
-| 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) |
+| 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ยังไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) · แผนพร้อมแล้ว: LUKS2 + TPM2/PIN ครอบ Docker volume + repo (.env / key / backup) — `docs/runbooks/encryption-at-rest.md` · ตรวจด้วย `scripts/check-encryption-at-rest.sh` |
 | 4.1 | Encrypt transmission | PASS | **HTTPS** หน้า dashboard / backend / Keycloak (Caddy · TLS 1.2+ · HSTS · 2026-09-24 · review B2 · ดู E11) — HTTP ของ 3 ตัวนี้ bind 127.0.0.1 เสมอ · Kafka ในเน็ตเวิร์กเป็น **mTLS ทั้งหมด** (E08) · ⚠️ ข้อจำกัด: Grafana / Prometheus / Vault / Alertmanager / Postgres ยังเป็น plaintext แต่ bind 127.0.0.1 — ห้ามตั้ง `PUBLISH_ADDR=0.0.0.0` บนเครือข่ายที่ไม่ไว้ใจ |
 | 5.1 | Anti-malware | **PARTIAL** | ClamAV สแกนทุกไฟล์ใน repo ทุก push (block ถ้าเจอ · 2026-09-24 · ดู E10) · **ไม่มี anti-malware ตอน runtime** บน host / ใน container — ยอมรับความเสี่ยงพร้อมมาตรการชดเชย (E10 · review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |

@@ -14,7 +14,7 @@
 | 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
 | 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
 | 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ 2026-09-24 | — |
-| 5 | 6.7 encryption at rest (หัวข้อ 5) | เจ้าของ (ระดับเครื่อง) | ใหญ่ |
+| 5 🟡 | 6.7 encryption at rest (หัวข้อ 5) | **เจ้าของรัน runbook** | ~45 นาที |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 
 ---
@@ -57,10 +57,13 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 
 ---
 
-## 5. 6.7 — encryption at rest
+## 5. 🟡 6.7 — encryption at rest (เจ้าของเลือก LUKS · runbook พร้อม 2026-09-24)
 
-PCI 3.1 ยัง PARTIAL · Postgres ไม่มี TDE → ทำที่ระดับดิสก์ (LUKS) หรือ volume ที่เข้ารหัส — **เป็นเรื่องของเครื่อง ไม่ใช่โปรเจกต์**
-ถ้าไม่ทำ: เขียนเป็นความเสี่ยงที่ยอมรับใน ISO R03 (มีมาตรการชดเชย: PAN ถูก mask ก่อนเก็บ · port bind localhost · สำเนา backup เข้ารหัส)
+**ทำตาม `docs/runbooks/encryption-at-rest.md`** — ไฟล์ LUKS2 150 GB → `/srv/lcsecure` · ย้าย Docker data-root + repo (symlink ที่เดิม) ·
+ปลดล็อกตอน boot ด้วย TPM2 + PIN (Secure Boot ปิด → TPM อย่างเดียวไม่พอ) · recovery passphrase ใน password manager
+- ต้องใช้ sudo · stack ล่ม ~30–45 นาที · ต้องทดสอบ reboot (ขั้น 8)
+- เสร็จแล้ว `./scripts/check-encryption-at-rest.sh` ต้อง "ผ่าน" → บอก Claude ให้เปลี่ยน PCI 3.1 เป็น PASS + ISO R03
+- ตอนนี้ (ก่อนทำ) script ตรวจ: ❌ data-root · ❌ repo · ❌ backups · ⚠️ swap
 
 ---
 

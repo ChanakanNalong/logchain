@@ -157,7 +157,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
 | 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · เจ้าของ trust CA + login + OTP ผ่านเบราว์เซอร์แล้ว | B2 | เสร็จ 2026-09-24 |
-| 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
+| 6.7 🟡 | encryption at rest — **runbook พร้อม รอเจ้าของรัน** (ต้อง sudo · stack ล่ม ~30–45 นาที): `docs/runbooks/encryption-at-rest.md` · ตรวจผล `./scripts/check-encryption-at-rest.sh` | B1 | เจ้าของ |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
 ---

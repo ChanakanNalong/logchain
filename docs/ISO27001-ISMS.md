@@ -28,7 +28,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 |----|-------|--------|------------|--------|------------|---------|
 | R01 | Log data | Unauthorized modification | Medium | High | HIGH | Blockchain hash verification |
 | R02 | API endpoints | Unauthorized access | Medium | High | HIGH | JWT authentication |
-| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest |
+| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest — runbook LUKS2 + TPM2/PIN พร้อม (`docs/runbooks/encryption-at-rest.md`) รอเจ้าของเครื่องรัน |
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint — pseudonymize `audit_access` ด้วย HMAC (key ใน Vault) แทนการลบ ให้ audit trail ยังครบตาม PCI 10.5.1 · tombstone ใน `erasure_log` |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |
