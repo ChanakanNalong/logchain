@@ -13,7 +13,7 @@
 | 1 ✅ | 6.8 erasure → pseudonymize (หัวข้อ 1) | เสร็จ 2026-09-24 | — |
 | 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
 | 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
-| 4 | 6.6 HTTPS (หัวข้อ 4) | Claude | ใหญ่ |
+| 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ · **เจ้าของ login + OTP ทดสอบ** | — |
 | 5 | 6.7 encryption at rest (หัวข้อ 5) | เจ้าของ (ระดับเครื่อง) | ใหญ่ |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 
@@ -49,15 +49,13 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 
 ---
 
-## 4. 6.6 — HTTPS หน้า backend / dashboard / Keycloak
+## 4. ✅ 6.6 — HTTPS (เสร็จ 2026-09-24 · worklog หัวข้อ 11)
 
-PCI 4.1 ยัง PARTIAL เพราะข้อนี้ข้อเดียว · ตอนนี้ทุก port เปิดแค่ localhost ความจำเป็นลดลง — **คุ้มเมื่อจะเปิดให้เครื่องอื่นใช้**
-
-ต้องแตะ:
-- reverse proxy (Caddy / Traefik) + cert (CA ภายในแบบเดียวกับ Kafka หรือ mkcert)
-- `KEYCLOAK_URL` = issuer ใน token (**ห้าม**เปลี่ยนเป็นชื่อ service — ดู next-steps "ห้ามทำ") → ต้องเป็น `https://localhost:…`
-- `NEXT_PUBLIC_*` inline ตอน build → rebuild dashboard · CORS `ALLOWED_ORIGINS` · redirect URI ของ realm Keycloak
-- smoke test clone ใหม่ + e2e + login จริง (ต้องใช้ OTP ของเจ้าของ)
+Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboard `:3453` · HTTP เดิม bind 127.0.0.1 เสมอ · PCI 4.1 → PASS
+**เหลือให้เจ้าของทำ:**
+1. `sudo apt install libnss3-tools` → `./scripts/trust-web-ca.sh` → restart เบราว์เซอร์
+2. เปิด https://localhost:3453 → login `admin-user` + OTP → เปิดครบ 4 หน้า (Dashboard / Alerts / Integrity / Reports)
+3. (ไม่บังคับ) smoke test clone ใหม่ — `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (ดูตารางกับดักใน next-steps)
 
 ---
 

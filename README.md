@@ -55,18 +55,24 @@ git clone https://github.com/ChanakanNalong/logchain.git && cd logchain
 ./scripts/bootstrap.sh
 ```
 
-จบแล้วเปิด **http://localhost:3003**
+จบแล้ว **ครั้งแรกต่อเครื่อง** ให้เบราว์เซอร์ trust CA ของ HTTPS (ต้องมี `certutil`: `sudo apt install libnss3-tools`):
+
+```bash
+./scripts/trust-web-ca.sh      # Chrome / Firefox บนเครื่องนี้ · restart เบราว์เซอร์หลังรัน
+```
+
+แล้วเปิด **https://localhost:3453**
 
 `bootstrap.sh` idempotent — รันซ้ำได้ ข้ามขั้นที่ทำไปแล้วเอง มันทำ 6 อย่าง:
 
 | # | ขั้น | หมายเหตุ |
 |---|---|---|
 | 1 | `cp .env.example .env` + สุ่มค่าที่เป็น `CHANGE_ME` | ข้าม `BLOCKCHAIN_PRIVATE_KEY` ให้ใส่เอง |
-| 2 | `infra/kafka/gen-certs.sh` | CA + broker cert 3 ใบ + client cert (nestjs, detection) |
+| 2 | `infra/kafka/gen-certs.sh` + `infra/tls/gen-certs.sh` | Kafka: CA + broker 3 ใบ + client (nestjs, detection, admin, exporter) · HTTPS: CA + server cert ของ Caddy |
 | 3 | `docker compose up -d` เฉพาะ infra | postgres, keycloak, kafka×3, vault, prometheus, alertmanager, grafana |
 | 4 | รอ `vault-init` แล้ว merge AppRole เข้า `.env` | `infra/vault/.secrets/approle.env` |
-| 5 | `docker compose up -d --build` ฝั่งแอป | backend, dashboard, detection×2 |
-| 6 | `scripts/harden-master-admin.sh` | master realm: strong cred + MFA + automation SA |
+| 5 | `docker compose up -d --build` ฝั่งแอป | backend, dashboard, detection×2, https-proxy (Caddy) |
+| 6 | `scripts/harden-master-admin.sh` + `scripts/sync-keycloak-urls.sh` | master realm: strong cred + MFA + automation SA · redirect URI ของ dashboard HTTPS |
 
 > ขั้นที่ 4 มีอยู่เพราะ backend กับ detection-consumer **ปฏิเสธที่จะ start** ถ้าไม่มี
 > Vault AppRole — แต่ AppRole เพิ่งถูกสร้างหลัง Vault ขึ้น จึงต้องยกเป็น 2 รอบ
@@ -91,6 +97,9 @@ docker compose stop backend                 # กันชนพอร์ต 300
 nvm use                                     # อ่าน .nvmrc -> node 22.19.0
 npm install && npm run start:dev
 ```
+
+> **Keycloak:** ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` ใน `.env` — `KEYCLOAK_URL` (issuer) เป็น https ผ่าน Caddy ซึ่ง
+> Node ยังไม่ trust CA ของเรา ถ้าปล่อยว่าง backend จะดึง JWKS ไม่ได้ แล้วทุก request ได้ 401
 
 > **Prometheus:** target ของ backend ชี้ `backend:9464` (container · port metrics แยกจาก API) — หยุด container แล้ว alert `ServiceDown`
 > จะเด้ง (และส่ง email ถ้าตั้งไว้) ใน 2 นาที · เปลี่ยน target ของ job `nestjs-api` ใน
@@ -131,10 +140,10 @@ npm install && npm run start:dev
 
 | Service | URL | หมายเหตุ |
 |---|---|---|
-| dashboard (Next.js) | http://localhost:3003 | เริ่มที่นี่ — login ผ่าน Keycloak |
-| backend (NestJS) | http://localhost:3000 | `/health`, `/api`, `/api/v1/*` · metrics อยู่ `:9464/metrics` ใน docker network เท่านั้น (ไม่ publish) |
+| **dashboard** | **https://localhost:3453** | เริ่มที่นี่ — login ผ่าน Keycloak · HTTP `:3003` ใช้ได้เฉพาะเครื่องนี้ |
+| backend (NestJS) | https://localhost:3443 | `/health`, `/api`, `/api/v1/*` · HTTP `:3000` เฉพาะเครื่องนี้ (script / demo) · metrics อยู่ `:9464/metrics` ใน docker network เท่านั้น (ไม่ publish) |
 | detection (FastAPI) | http://localhost:8000 | `/health`, `/metrics`, `/api/v1/detect` |
-| keycloak | http://localhost:8080 | admin console |
+| keycloak | https://localhost:8443 | admin console · issuer ของ token · HTTP `:8080` เฉพาะเครื่องนี้ |
 | grafana | http://localhost:3002 | user `admin` |
 | prometheus | http://localhost:9090 | |
 | alertmanager | http://localhost:9093 | ส่ง email เมื่อตั้งค่า — ดู [Alert แจ้งทาง email](#alert-แจ้งทาง-email) |
@@ -145,8 +154,17 @@ npm install && npm run start:dev
 | kafka SSL (mTLS) | `localhost:39092-39094` | จาก host · ใน docker network backend/detection ใช้ `kafka-N:9094` (mTLS เปิดอยู่) |
 | detection-consumer metrics | `localhost:9101` | ไม่ได้ publish ออก host |
 
-ทุก port bind ที่ **`127.0.0.1`** (เข้าได้จากเครื่องนี้เท่านั้น) · ต้องให้เครื่องอื่นเข้า เช่น log source ข้ามเครื่องยิง
-`:3000` → ตั้ง `PUBLISH_ADDR` ใน `.env` แล้ว `docker compose up -d` (ระวัง: เปิดทุก port รวม Postgres / Vault / Alertmanager)
+ทุก port bind ที่ **`127.0.0.1`** (เข้าได้จากเครื่องนี้เท่านั้น) · HTTPS (8443 / 3443 / 3453) ผ่าน service `https-proxy` (Caddy ·
+cert จาก `infra/tls/gen-certs.sh` · TLS 1.2+ · HSTS) · HTTP ของ Keycloak / backend / dashboard (8080 / 3000 / 3003) bind 127.0.0.1
+**เสมอ** แม้ตั้ง `PUBLISH_ADDR` → เครื่องอื่นเข้าได้เฉพาะ HTTPS
+
+ต้องให้เครื่องอื่นเข้า (เช่น log source ข้ามเครื่องยิง `https://<host>:3443/api/v1/logs`):
+1. `.env`: `PUBLISH_ADDR=0.0.0.0` · `TLS_EXTRA_SANS=DNS:<ชื่อ>,IP:<ip>` · เปลี่ยน `KEYCLOAK_URL`, `NEXT_PUBLIC_API_URL`,
+   `NEXT_PUBLIC_KEYCLOAK_URL`, `ALLOWED_ORIGINS` เป็นชื่อนั้น
+2. `./infra/tls/gen-certs.sh --renew` · `docker compose up -d --build` · `DASHBOARD_PUBLIC_URL=https://<ชื่อ>:3453 ./scripts/sync-keycloak-urls.sh`
+3. เครื่องปลายทาง trust `infra/tls/certs/ca.crt`
+
+ระวัง: `PUBLISH_ADDR` เปิดทุก port รวม Postgres / Vault / Grafana / Alertmanager ซึ่งยังเป็น plaintext
 
 `/health` อยู่**นอก** global prefix `api/v1` โดยตั้งใจ — คือ `/health` ไม่ใช่ `/api/v1/health`
 
@@ -267,9 +285,12 @@ Alertmanager ข้างบนแจ้งเรื่อง **ระบบ** (
 | ยิง `/api/v1/*` แล้วได้ **404** | global prefix / route ไม่ต่อ | ไม่ใช่เรื่อง auth — ดู log backend |
 | ยิง `/api/v1/*` แล้วได้ **401** | ปกติ — แปลว่า route ต่อแล้ว แค่ยังไม่ได้แนบ token | `./scripts/ingest-log.sh` ขอ token ให้เอง |
 | `verify-now` ตอบ **403** | token ไม่มี realm role `admin` | login ด้วยบัญชี admin หรือใช้ service account ที่มี role ครบ |
-| `401 invalid issuer` ตอน backend อยู่ใน docker | `KEYCLOAK_URL` ถูก override เป็น `keycloak:8080` | `KEYCLOAK_URL` ต้องเป็น **public URL** (`localhost:8080`) เสมอ — ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL` |
-| login dashboard ด้วย `admin-user` + `KEYCLOAK_ADMIN_USER_PASSWORD` แล้วขึ้น *Invalid username or password* | Keycloak import realm (พร้อมรหัสจาก `.env`) **ครั้งเดียวตอน boot แรก** — ถ้าเคยเปลี่ยนรหัสผ่านหน้าเว็บ หรือแก้ `.env` ทีหลัง ค่าใน `.env` จะไม่ตรงกับของจริงอีกต่อไป | ใช้รหัสที่ตั้งไว้เอง หรือ reset ที่ Keycloak admin console (`http://localhost:8080` → realm `logchain` → Users) · ระวัง brute force protection ล็อกหลังพลาด 5 ครั้ง |
-| dashboard login แล้ว redirect กลับมาเปล่า ๆ | `NEXT_PUBLIC_*` ถูกตั้งเป็นชื่อ service | ต้องเป็น `localhost` เสมอ (inline ตอน build + รันบนเบราว์เซอร์ซึ่งอยู่นอก docker network) — แก้แล้วต้อง `--build` ใหม่ |
+| `401 invalid issuer` ตอน backend อยู่ใน docker | `KEYCLOAK_URL` ถูก override เป็น `keycloak:8080` หรือยังเป็น `http://localhost:8080` (`.env` ก่อน 2026-09-24) | `KEYCLOAK_URL` ต้องเป็น **public URL** `https://localhost:8443` (= `KC_HOSTNAME_URL` = issuer) — ที่อยู่ภายในใช้ `KEYCLOAK_INTERNAL_URL` · `.env` เก่า: `./scripts/bootstrap.sh` ย้ายให้ |
+| เบราว์เซอร์ขึ้น *Your connection is not private* / `NET::ERR_CERT_AUTHORITY_INVALID` ที่ `:3453` / `:8443` | ยังไม่ได้ trust CA ของเรา | `./scripts/trust-web-ca.sh` แล้ว restart เบราว์เซอร์ · สร้าง CA ใหม่ (ลบ `infra/tls/certs/`) ต้องรันซ้ำ |
+| Keycloak ขึ้น *Invalid parameter: redirect_uri* ตอน login dashboard | realm เดิม (import ก่อนมี HTTPS) ไม่มี `https://localhost:3453/*` | `./scripts/sync-keycloak-urls.sh` |
+| `curl https://localhost:3443/...` ได้ *SSL certificate problem* | curl ไม่ได้ใช้ NSS DB ของเบราว์เซอร์ | `curl --cacert infra/tls/certs/ca.crt …` หรือยิง `http://localhost:3000` บนเครื่องเดียวกัน |
+| login dashboard ด้วย `admin-user` + `KEYCLOAK_ADMIN_USER_PASSWORD` แล้วขึ้น *Invalid username or password* | Keycloak import realm (พร้อมรหัสจาก `.env`) **ครั้งเดียวตอน boot แรก** — ถ้าเคยเปลี่ยนรหัสผ่านหน้าเว็บ หรือแก้ `.env` ทีหลัง ค่าใน `.env` จะไม่ตรงกับของจริงอีกต่อไป | ใช้รหัสที่ตั้งไว้เอง หรือ reset ที่ Keycloak admin console (`https://localhost:8443` → realm `logchain` → Users) · ระวัง brute force protection ล็อกหลังพลาด 5 ครั้ง |
+| dashboard login แล้ว redirect กลับมาเปล่า ๆ | `NEXT_PUBLIC_*` ถูกตั้งเป็นชื่อ service หรือ `NEXT_PUBLIC_KEYCLOAK_URL` ≠ `KEYCLOAK_URL` | ต้องเป็น URL ที่เบราว์เซอร์เรียก (`https://localhost:8443` / `:3443`) เสมอ (inline ตอน build + รันบนเบราว์เซอร์ซึ่งอยู่นอก docker network) — แก้แล้วต้อง `--build` ใหม่ |
 | batch ค้างที่ `SEALED` ไม่ขึ้น `CONFIRMED` | ไม่ได้ตั้ง `CONTRACT_ADDRESS` / private key ใน Vault | **ปกติ** — batch ถูกปิดแล้ว proof กับ tamper detection ทำงานครบ แค่ยังไม่ได้ตรึง root ขึ้น chain · ตั้ง blockchain เมื่อไหร่ `anchorSealedBatches()` จะตามไป anchor ย้อนหลังให้เองภายใน 1 นาที |
 | batch ค้างที่ `UNVERIFIED` ไม่ขึ้น `CONFIRMED` | anchor ไปแล้วแต่ tx ยังไม่ confirm ใน `BLOCKCHAIN_TX_TIMEOUT_MS` หรือ RPC พังระหว่างรอ receipt | รอบ verify ถัดไปตามผลให้เอง — ไม่ใช่ `FAILED` |
 | batch ค้าง `UNVERIFIED` **เป็นชั่วโมง** · backend log `unverifiable — no root on chain` · alert `BatchStuckUnverified` (เกิน 30 นาที) | tx ถูก drop ไม่เคยลง chain (หรือ chain reset) · `INTEGRITY_AUTO_REANCHOR=false` (ค่าเริ่มต้น) ระบบจึง**ไม่ส่งใหม่เอง** — ตั้งใจ: re-anchor เอา `merkle_root` จาก DB ขึ้น chain ถ้า DB ถูกแก้มาก่อน ของปลอมจะถูกตรึงบน chain | ตรวจก่อนว่าไม่มีใครแก้ DB (`demo-tamper.sh` / audit log) แล้วตั้ง `INTEGRITY_AUTO_REANCHOR=true` ใน `.env` → `docker compose up -d --no-deps backend` · ส่งเสร็จปิดกลับได้ |

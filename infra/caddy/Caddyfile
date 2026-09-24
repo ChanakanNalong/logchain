@@ -1,0 +1,39 @@
+# HTTPS หน้า Keycloak / backend / dashboard (compliance review B2 · PCI 4.1) — cert จาก infra/tls/gen-certs.sh
+# port HTTP เดิม (8080 / 3000 / 3003) ของ service ข้างหลัง bind 127.0.0.1 เสมอ → เครื่องอื่นเข้าได้เฉพาะ HTTPS ตรงนี้
+# Caddy ใส่ X-Forwarded-For / -Proto / -Host ให้เอง (Keycloak ตั้ง KC_PROXY_HEADERS=xforwarded รับไว้)
+{
+	# ไม่ใช้ ACME / cert อัตโนมัติ และไม่ redirect :80 — ใช้ cert ของเราเองทุก site
+	auto_https off
+	# ไม่เปิด admin API (:2019) — config เปลี่ยนด้วยการ restart container เท่านั้น
+	admin off
+	# log เป็น JSON ลง stdout (docker logs)
+	log {
+		output stdout
+		format json
+	}
+}
+
+(tls_local) {
+	tls /certs/server.crt /certs/server.key {
+		protocols tls1.2 tls1.3
+	}
+	header Strict-Transport-Security "max-age=31536000"
+}
+
+# Keycloak — issuer ของ token คือ URL นี้ (KC_HOSTNAME_URL = KEYCLOAK_URL)
+https://:8443 {
+	import tls_local
+	reverse_proxy keycloak:8080
+}
+
+# backend API (+ Swagger /api)
+https://:3443 {
+	import tls_local
+	reverse_proxy backend:3000
+}
+
+# dashboard (Next.js)
+https://:3453 {
+	import tls_local
+	reverse_proxy cylis-dashboard:3000
+}

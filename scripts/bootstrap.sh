@@ -34,7 +34,7 @@ INFRA_SERVICES=(postgres postgres-standby postgres-exporter
                 kafka-1 kafka-2 kafka-3 kafka-init kafka-exporter
                 vault vault-unseal vault-init
                 prometheus alertmanager grafana node-exporter postgres-backup backup-offsite)
-APP_SERVICES=(backend cylis-dashboard detection-api detection-consumer)
+APP_SERVICES=(backend cylis-dashboard detection-api detection-consumer https-proxy)
 
 say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m✓ %s\033[0m\n' "$*"; }
@@ -89,6 +89,17 @@ fi
 PG_PASS="$(sed -nE 's/^POSTGRES_PASSWORD=(.*)$/\1/p' .env)"
 sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://logchain:${PG_PASS}@localhost:5433/logchain|" .env
 
+# .env ก่อน 2026-09-24 ใช้ Keycloak แบบ HTTP — dashboard build ด้วย URL แบบ HTTPS แล้ว issuer ต้องตรงกัน
+# ย้ายเฉพาะค่า default เดิม (ใครตั้งชื่อเครื่องเองไว้ = ไม่แตะ ให้แก้เองตาม README)
+if grep -q '^KEYCLOAK_URL=http://localhost:8080$' .env; then
+    sed -i 's|^KEYCLOAK_URL=http://localhost:8080$|KEYCLOAK_URL=https://localhost:8443|' .env
+    ok "KEYCLOAK_URL -> https://localhost:8443 (HTTPS ผ่าน Caddy)"
+fi
+if grep -q '^ALLOWED_ORIGINS=' .env && ! grep -q '^ALLOWED_ORIGINS=.*https://localhost:3453' .env; then
+    sed -i 's|^ALLOWED_ORIGINS=|ALLOWED_ORIGINS=https://localhost:3453,|' .env
+    ok "ALLOWED_ORIGINS += https://localhost:3453"
+fi
+
 if grep -q '^BLOCKCHAIN_PRIVATE_KEY=CHANGE_ME' .env; then
     warn "BLOCKCHAIN_PRIVATE_KEY ยังเป็น CHANGE_ME — batch จะเป็น SEALED ไม่ใช่ CONFIRMED"
     warn "  Merkle root / per-log proof / tamper detection ทำงานครบตามปกติ"
@@ -112,6 +123,10 @@ else
     ./infra/kafka/gen-certs.sh
     ok "สร้าง CA + broker cert 3 ใบ + client cert (nestjs, detection)"
 fi
+
+# HTTPS หน้า Keycloak / backend / dashboard — มีอยู่แล้วข้าม (CA เดิม เบราว์เซอร์ไม่ต้อง trust ใหม่)
+./infra/tls/gen-certs.sh
+ok "HTTPS cert (infra/tls/certs) — ให้เบราว์เซอร์ trust: ./scripts/trust-web-ca.sh"
 
 # โฟลเดอร์รหัส SMTP ของ Alertmanager (gitignored) — ต้องมีก่อน compose up ไม่งั้น docker สร้าง
 # bind mount ให้เองเป็นของ root แล้วเราเขียนไฟล์รหัสลงไปไม่ได้
@@ -204,6 +219,13 @@ else
     warn "harden-master-admin.sh ไม่ผ่าน — รันซ้ำเองได้ (idempotent): ./scripts/harden-master-admin.sh"
 fi
 
+# realm ที่ import ไปก่อนมี HTTPS ไม่มี redirect URI ของ https://localhost:3453 — เติมให้ (มีแล้ว = ไม่ทำอะไร)
+if ./scripts/sync-keycloak-urls.sh; then
+    ok "Keycloak redirect URI ครบ"
+else
+    warn "sync-keycloak-urls.sh ไม่ผ่าน — รันซ้ำเองได้: ./scripts/sync-keycloak-urls.sh"
+fi
+
 # ── สรุป ───────────────────────────────────────────────────────────────────
 KC_USER="$(sed -nE 's/^KEYCLOAK_ADMIN=(.*)$/\1/p' .env)"
 cat <<EOF
@@ -212,11 +234,11 @@ cat <<EOF
 ║  LogChain พร้อมใช้งาน                                                ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
-  Dashboard    http://localhost:3003     <- เริ่มที่นี่
-  API          http://localhost:3000     (/health, /metrics, /api/v1/*)
-  Swagger      http://localhost:3000/api
+  Dashboard    https://localhost:3453    <- เริ่มที่นี่ (ครั้งแรก: ./scripts/trust-web-ca.sh แล้ว restart เบราว์เซอร์)
+  API          https://localhost:3443    (/health, /api/v1/*) · บนเครื่องนี้ http://localhost:3000 ก็ได้
+  Swagger      https://localhost:3443/api
   Detection    http://localhost:8000/health
-  Keycloak     http://localhost:8080     admin console: ${KC_USER}
+  Keycloak     https://localhost:8443    admin console: ${KC_USER}
   Grafana      http://localhost:3002     admin / (ดู GRAFANA_ADMIN_PASSWORD ใน .env)
   Prometheus   http://localhost:9090
   Alertmanager http://localhost:9093     (ส่ง email เมื่อตั้งค่า — README หัวข้อ Alert แจ้งทาง email)

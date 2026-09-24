@@ -20,7 +20,9 @@ if [ -f "$(dirname "$0")/../.env" ]; then
   set +a
 fi
 
-KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
+# KEYCLOAK_URL ใน .env คือ issuer แบบ HTTPS (ผ่าน Caddy) — script บนเครื่องนี้ยิง HTTP ของ Keycloak ตรง ๆ (bind 127.0.0.1)
+# จะได้ไม่ต้อง trust CA ของเรา · token ที่ได้ยังมี iss = KEYCLOAK_URL (KC_HOSTNAME_URL) เหมือนกัน
+KEYCLOAK_URL="${KEYCLOAK_LOCAL_URL:-http://localhost:${KEYCLOAK_HOST_PORT:-8080}}"
 KEYCLOAK_REALM="${KEYCLOAK_REALM:-logchain}"
 API_URL="${API_URL:-http://localhost:3000}"
 CLIENT_ID="${INGESTOR_CLIENT_ID:-log-ingestor}"

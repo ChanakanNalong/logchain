@@ -156,7 +156,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.3 ✅ | Kafka mTLS เปิดแล้ว — listener `DOCKER_SSL` `kafka-N:9094` · backend + detection ใช้ client cert · ทดสอบครบทั้งสาย + ปฏิเสธ client ไม่มี cert (worklog หัวข้อ 35) | B3 | เสร็จ 2026-09-23 |
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
-| 6.6 | HTTPS หน้า backend / dashboard / Keycloak (reverse proxy + cert) | B2 | ใหญ่ — กระทบ Keycloak issuer + `NEXT_PUBLIC_*` |
+| 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · **รอเจ้าของ login + OTP ทดสอบ** | B2 | เสร็จ 2026-09-24 |
 | 6.7 | encryption at rest (เข้ารหัสดิสก์ / volume) | B1 | ใหญ่ — ระดับเครื่อง ไม่ใช่โปรเจกต์ |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
@@ -176,7 +176,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
   ในเอกสาร ~40 จุดใช้ไม่ได้ และยังชนพอร์ต 17 ตัว · กลับมาดูเมื่อต้องรัน CI ขนานเท่านั้น
 - **ห้ามปิด Vault user lockout เป็น default** — control ตาม PCI DSS Req 8.3.4 · ใช้ `scripts/vault-unlock.sh`
 - **ห้ามเดารหัส `admin-user` / ห้ามตั้ง TOTP แทนเจ้าของ** — brute force ล็อกที่ 5 ครั้ง
-- **ห้าม override `KEYCLOAK_URL` เป็นชื่อ service** (เป็น issuer ต้องตรงกับ `iss` ในโทเคน) ·
+- **ห้าม override `KEYCLOAK_URL` เป็นชื่อ service** (เป็น issuer ต้องตรงกับ `iss` ในโทเคน · ตั้งแต่ 2026-09-24 = `https://localhost:8443` และ Keycloak ใช้เป็น `KC_HOSTNAME_URL`) ·
   **ห้ามเปลี่ยน `NEXT_PUBLIC_*` เป็นชื่อ service** (inline ตอน build และรันบนเบราว์เซอร์นอก docker network)
 - **ห้ามใช้ `${VAR:?...}` ใน `docker-compose.yml`** — compose error ทั้งไฟล์
 - **ห้าม `docker compose down -v`** ตอนทดสอบ ถ้ายังอยากได้ข้อมูล demo เดิม
@@ -208,6 +208,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | container `logchain-*` มาจากสองโฟลเดอร์ปนกัน / Vault sealed ทั้งที่มี `init.env` / `vault-unseal` บอก "unseal key หาย" | เคยยก stack จากโฟลเดอร์ clone (เช่น `~/Documents/clone_logchain/logchain`) — ชื่อ project + volume เดียวกัน compose จึงทับ container กันไปมา · ดู `docker ps --format '{{.Names}} {{.Label "com.docker.compose.project.working_dir"}}'` · แก้: `docker compose up -d` จากโฟลเดอร์หลัก (volume เดิม ข้อมูลไม่หาย) · ทดสอบ clone ให้ `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (พอร์ต/`container_name` ชน) |
 | `curl localhost:3000/metrics` ได้ 404 | ตั้งใจ (review B5) — metrics ของ backend อยู่ `:9464` ใน docker network · `docker exec logchain-backend wget -qO- 127.0.0.1:9464/metrics` |
 | Kafka / backend / detection-consumer ต่อ SSL ไม่ได้ `Permission denied` ที่ไฟล์ `.key` | key เป็น 0640 อ่านผ่านกลุ่ม (`group_add: HOST_GID`) — ลืม `HOST_GID=$(id -g)` ตอน `docker compose up` แล้ว gid เครื่องไม่ใช่ 1000 · หรือ key เป็นของ user อื่น (`stat infra/kafka/certs/clients/*.key`) |
+| เบราว์เซอร์เตือน cert ที่ `:3453` / `:8443` · login ขึ้น `Invalid parameter: redirect_uri` | ยังไม่ trust CA → `./scripts/trust-web-ca.sh` (ต้องมี `libnss3-tools`) · realm เดิมไม่มี URL https → `./scripts/sync-keycloak-urls.sh` |
+| backend บน host (`start:dev`) ตอบ 401 ทุก request หลังเปลี่ยนเป็น HTTPS | `KEYCLOAK_INTERNAL_URL` ว่าง → ดึง JWKS จาก `https://localhost:8443` ที่ Node ไม่ trust — ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |

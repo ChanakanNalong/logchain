@@ -15,7 +15,7 @@
 | 1.1 | Firewall configuration | PASS | service คุยกันใน Docker network · port ที่ publish ทั้ง 19 ตัว bind `127.0.0.1` (`PUBLISH_ADDR`) — ทดสอบจาก IP LAN ของเครื่องแล้วปิดทุกตัว · แก้ 2026-09-23 (เดิม `0.0.0.0` · review B15) |
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
 | 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) |
-| 4.1 | Encrypt transmission | **PARTIAL** | Kafka ระหว่าง API Gateway ↔ Detection เป็น **mTLS แล้ว** (listener `DOCKER_SSL :9094` · บังคับ client cert · เปิด 2026-09-23 · ดู E08) · **ยังไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP (review B2) |
+| 4.1 | Encrypt transmission | PASS | **HTTPS** หน้า dashboard / backend / Keycloak (Caddy · TLS 1.2+ · HSTS · 2026-09-24 · review B2 · ดู E11) — HTTP ของ 3 ตัวนี้ bind 127.0.0.1 เสมอ · Kafka ในเน็ตเวิร์กเป็น **mTLS ทั้งหมด** (E08) · ⚠️ ข้อจำกัด: Grafana / Prometheus / Vault / Alertmanager / Postgres ยังเป็น plaintext แต่ bind 127.0.0.1 — ห้ามตั้ง `PUBLISH_ADDR=0.0.0.0` บนเครือข่ายที่ไม่ไว้ใจ |
 | 5.1 | Anti-malware | **PARTIAL** | ClamAV สแกนทุกไฟล์ใน repo ทุก push (block ถ้าเจอ · 2026-09-24 · ดู E10) · **ไม่มี anti-malware ตอน runtime** บน host / ใน container — ยอมรับความเสี่ยงพร้อมมาตรการชดเชย (E10 · review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
 | 6.2 | Vulnerability scan | PASS | ทุก push **block** เมื่อเจอ HIGH/CRITICAL: npm audit (backend + dashboard) · Trivy (มี fix แล้ว) · pip-audit (detection) — 2026-09-24 (review B7) |
@@ -100,6 +100,18 @@
 - ยังเหลือ: EXTERNAL `:29092` (plaintext · bind 127.0.0.1 · ใช้ตอนรันแอปบน host เท่านั้น)
 - 2026-09-24: private key ทุกตัว 0640 (`ca.key` 0600) · container ที่ใช้ key ได้กลุ่มเจ้าของไฟล์ผ่าน `group_add` ·
   backend / detection mount เฉพาะ cert + key ของตัวเอง (เดิม backend mount ทั้ง `certs/` รวม `ca.key` และอ่านได้)
+
+### E11 — HTTPS (Caddy) — Req. 4
+- service `https-proxy` (`caddy:2.10-alpine` · รันเป็น nobody) · `infra/caddy/Caddyfile`: `https://:8443` → Keycloak · `:3443` → backend ·
+  `:3453` → dashboard · `protocols tls1.2 tls1.3` · HSTS · ไม่มี ACME / admin API
+- cert: `infra/tls/gen-certs.sh` — CA `LogChain-Web-CA` **แยกจาก CA ของ Kafka** · server cert อายุ 397 วัน SAN `localhost`, `127.0.0.1`
+  (+ `TLS_EXTRA_SANS`) · key 0640 · CA key 0600 ไม่ mount เข้า container ไหน
+- HTTP ของ Keycloak / backend / dashboard (8080 / 3000 / 3003) bind `127.0.0.1` แบบตายตัว (ไม่ตาม `PUBLISH_ADDR`) → จากเครื่องอื่นมีแต่ HTTPS
+- Keycloak: `KC_HOSTNAME_URL` = `KEYCLOAK_URL` = `https://localhost:8443` → `iss` ของทุก token เป็น https ไม่ว่าจะขอผ่านทางไหน ·
+  `KC_PROXY_HEADERS=xforwarded`
+- ทดสอบ 2026-09-24: 3 endpoint ตอบ 200 + verify cert ผ่าน · TLS 1.1 ถูกปฏิเสธ (`protocol version` alert) · TLS 1.2/1.3 ผ่าน ·
+  HSTS · CORS preflight จาก `https://localhost:3453` · token ที่ขอผ่าน HTTP มี `iss` https และ backend รับทั้งทาง HTTPS/HTTP ·
+  ไม่มี token = 401 · Admin REST (backend → Keycloak ภายใน) ใช้ได้ · `PUBLISH_ADDR=0.0.0.0` → เปิดออก LAN เฉพาะ 8443/3443/3453
 
 ### E10 — Anti-malware — Req. 5
 - `.github/workflows/security.yml` step **ClamAV (blocking)** — `clamav/clamav:stable` · `freshclam` ก่อนสแกน (ไม่ได้ = ใช้ฐานข้อมูล

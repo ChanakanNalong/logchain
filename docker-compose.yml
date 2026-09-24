@@ -100,14 +100,19 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      # issuer (`iss`) ของทุก token = KEYCLOAK_URL (https ผ่าน Caddy) ไม่ว่าจะขอ token ทางไหน — script บน host ที่ขอผ่าน
+      # http://localhost:8080 ก็ได้ iss เดียวกัน backend จึงตรวจค่าเดียว (KEYCLOAK_URL) ได้ · ดู https-proxy
+      KC_HOSTNAME_URL: ${KEYCLOAK_URL:-https://localhost:8443}
+      KC_HOSTNAME_ADMIN_URL: ${KEYCLOAK_URL:-https://localhost:8443}
+      # เชื่อ X-Forwarded-* จาก Caddy (ไม่มี port นี้ออกนอกเครื่องนอกจากผ่าน Caddy — ดู ports ข้างล่าง)
+      KC_PROXY_HEADERS: xforwarded
     volumes:
       # realm rendered by keycloak-config into this shared volume
       - keycloak_import:/opt/keycloak/data/import:ro
     ports:
-      # default host port 8080 (container ยัง listen 8080 เหมือนเดิม). ถ้า 8080
-      # บนเครื่อง dev ชนกับโปรเจกต์อื่น ตั้ง KEYCLOAK_HOST_PORT ใน .env เป็นค่าอื่น
-      # แล้วอัปเดต KEYCLOAK_URL ของตัวเองให้ตรงกับพอร์ตที่เปลี่ยนด้วย
-      -  "${PUBLISH_ADDR:-127.0.0.1}:${KEYCLOAK_HOST_PORT:-8080}:8080"
+      # HTTP ไว้ใช้บนเครื่องนี้เท่านั้น (script / demo) — 127.0.0.1 เสมอ ไม่ตาม PUBLISH_ADDR
+      # เครื่องอื่นเข้าผ่าน https-proxy :8443 · ถ้า 8080 ชนโปรเจกต์อื่น ตั้ง KEYCLOAK_HOST_PORT ใน .env
+      - "127.0.0.1:${KEYCLOAK_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -660,7 +665,8 @@ services:
       # ตัวที่ backend ใช้ยิงจริงคือตัวนี้
       KEYCLOAK_INTERNAL_URL: "http://keycloak:8080"
     ports:
-      - "${PUBLISH_ADDR:-127.0.0.1}:3000:3000"
+      # HTTP เฉพาะเครื่องนี้ (script / demo / e2e) — เครื่องอื่นใช้ https://<host>:3443 ผ่าน https-proxy
+      - "127.0.0.1:3000:3000"
     volumes:
       # เฉพาะ 3 ไฟล์ของ backend — เดิม mount ทั้ง certs/ ซึ่งมี ca.key (+ key ของ detection) และ backend (uid 1000)
       # เป็นเจ้าของไฟล์บนเครื่อง dev = อ่าน private key ของ CA ได้ → โดนเจาะ backend แล้วออก cert เข้า Kafka เองได้
@@ -693,15 +699,17 @@ services:
     build:
       context: ./cylis-dashboard
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8080}
+        # URL ที่เบราว์เซอร์เรียก — HTTPS ผ่าน https-proxy (NEXT_PUBLIC_KEYCLOAK_URL ต้องเท่ากับ KEYCLOAK_URL = issuer)
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://localhost:3443/api/v1}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-https://localhost:8443}
         NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-logchain}
         NEXT_PUBLIC_KEYCLOAK_CLIENT_ID: ${NEXT_PUBLIC_KEYCLOAK_CLIENT_ID:-logchain-frontend}
     image: cylis-dashboard:dev
     container_name: cylis-dashboard-app
     restart: unless-stopped
     ports:
-      - "${PUBLISH_ADDR:-127.0.0.1}:3003:3000"
+      # HTTP เฉพาะเครื่องนี้ — ใช้งานจริงผ่าน https://localhost:3453 (https-proxy)
+      - "127.0.0.1:3003:3000"
     depends_on:
       backend: {condition: service_started}
     healthcheck:
@@ -711,6 +719,31 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+  # ── HTTPS หน้า Keycloak / backend / dashboard (compliance review B2 · PCI 4.1) ──
+  # cert: infra/tls/gen-certs.sh (CA แยกจาก Kafka) · เบราว์เซอร์ต้อง trust CA ก่อน: ./scripts/trust-web-ca.sh
+  https-proxy:
+    image: caddy:2.10-alpine
+    container_name: logchain-https-proxy
+    restart: unless-stopped
+    # ไม่ต้องใช้ root: port ทั้งหมด > 1024 · ไม่มี ACME ไม่เขียน /data · server.key 0640 อ่านผ่านกลุ่ม
+    user: "65534:65534"
+    group_add: ["${HOST_GID:-1000}"]
+    environment:
+      XDG_DATA_HOME: /tmp
+      XDG_CONFIG_HOME: /tmp
+    ports:
+      - "${PUBLISH_ADDR:-127.0.0.1}:8443:8443"   # Keycloak
+      - "${PUBLISH_ADDR:-127.0.0.1}:3443:3443"   # backend API
+      - "${PUBLISH_ADDR:-127.0.0.1}:3453:3453"   # dashboard
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/tls/certs/server.crt:/certs/server.crt:ro
+      - ./infra/tls/certs/server.key:/certs/server.key:ro
+    depends_on:
+      - keycloak
+      - backend
+      - cylis-dashboard
 
   # ── Detection: FastAPI (Deeplog inference) ──
   # แยกเป็น 2 service จาก image เดียวกัน คนละ command — restart/debug แยกกันได้

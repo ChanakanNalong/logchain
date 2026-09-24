@@ -18,6 +18,10 @@ case "$HEALTH" in
   *)                     bad "อ่านสถานะ kafkaConsumer จาก /health ไม่ได้" ;;
 esac
 curl -sf localhost:3003 >/dev/null && ok "frontend :3003" || bad "frontend ไม่ตอบ"
+# HTTPS (Caddy) — cert ต้อง verify กับ CA ของเราผ่าน ไม่ใช่แค่ port เปิด (เบราว์เซอร์ใช้ทางนี้)
+for u in https://localhost:3453 https://localhost:3443/health https://localhost:8443/realms/logchain; do
+  curl -sf --cacert infra/tls/certs/ca.crt "$u" >/dev/null && ok "https ${u#https://}" || bad "$u ไม่ตอบ / cert ไม่ผ่าน"
+done
 RPC=$(grep -E '^BLOCKCHAIN_RPC_URL=' .env | cut -d= -f2- | tr -d '\r')
 if [ -z "$RPC" ]; then
   bad "ไม่เจอ BLOCKCHAIN_RPC_URL ใน .env"
