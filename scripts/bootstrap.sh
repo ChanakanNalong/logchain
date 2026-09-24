@@ -105,6 +105,9 @@ if [ -f infra/kafka/certs/ca.crt ]; then
     # cert ที่สร้างก่อน 2026-09-24 มี key เป็น 0644 — บีบให้ตรงกับ gen-certs.sh ปัจจุบัน
     chmod 640 infra/kafka/certs/*/kafka.keystore.key infra/kafka/certs/clients/*.key
     chmod 600 infra/kafka/certs/ca.key
+    # cert ที่สร้างก่อน 2026-09-24 ยังไม่มี client ของ kafka-init / kafka-exporter (ตอนนั้นใช้ PLAINTEXT) — ออกเพิ่มด้วย CA เดิม
+    ./infra/kafka/gen-certs.sh client admin
+    ./infra/kafka/gen-certs.sh client exporter
 else
     ./infra/kafka/gen-certs.sh
     ok "สร้าง CA + broker cert 3 ใบ + client cert (nestjs, detection)"

@@ -5,7 +5,8 @@ C="infra/kafka/certs"
 K() { docker exec logchain-kafka-1 "$@"; }
 
 echo "═══ 1) ต่อ Kafka พร้อม client certificate ═══"
-docker run --rm --network host -v "$PWD/infra/kafka/certs:/certs:ro" \
+# --group-add: client key เป็น 0640 อ่านผ่านกลุ่มเจ้าของไฟล์ (ใน container รันเป็น uid 1001)
+docker run --rm --network host --group-add "$(id -g)" -v "$PWD/infra/kafka/certs:/certs:ro" \
   bitnamilegacy/kafka:3.7.1 bash -c '
 cat /certs/clients/nestjs.crt /certs/clients/nestjs.key > /tmp/c.pem
 printf "security.protocol=SSL\nssl.truststore.type=PEM\nssl.truststore.location=/certs/ca.crt\nssl.keystore.type=PEM\nssl.keystore.location=/tmp/c.pem\n" > /tmp/ok.properties

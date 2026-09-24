@@ -15,7 +15,9 @@
 #   ดู docs/runbooks/kafka-topics.md สำหรับเคสเต็ม
 set -eu
 
-BOOTSTRAP="${KAFKA_BOOTSTRAP:-kafka-1:9092}"
+BOOTSTRAP="${KAFKA_BOOTSTRAP:-kafka-1:9094}"
+# listener ในเน็ตเวิร์กเป็น mTLS ทั้งหมด — ต้องมี client cert (compose ส่ง KAFKA_SSL_* ของ `admin` มา)
+CMD_CONFIG=$(sh /opt/logchain/client-ssl.sh "$KAFKA_SSL_CERT" "$KAFKA_SSL_KEY" "$KAFKA_SSL_CA")
 
 # 3 partition = 1 leader ต่อ broker กระจายโหลดเท่ากัน และเปิดทางให้ consumer group
 # ขยายได้ถึง 3 ตัว   RF 3 + min.insync.replicas 2 = ทน broker ตาย 1 ตัวโดยยังเขียนได้
@@ -26,7 +28,7 @@ MIN_ISR="${KAFKA_TOPIC_MIN_ISR:-2}"
 # depends_on: service_healthy การันตีแค่ kafka-1 ตอบ ไม่ได้แปลว่า quorum พร้อมรับ
 # --replication-factor 3 แล้ว — ถ้ายิงเร็วไปจะเจอ INVALID_REPLICATION_FACTOR
 echo "▶ Waiting for Kafka at $BOOTSTRAP ..."
-until kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --list >/dev/null 2>&1; do
+until kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --command-config "$CMD_CONFIG" --list >/dev/null 2>&1; do
     sleep 2
 done
 echo "✓ Kafka responding"
@@ -35,7 +37,7 @@ create_topic() {
     _topic="$1"
     # --if-not-exists = idempotent: รันซ้ำบน cluster เดิมไม่ error และไม่แตะ topic เก่า
     # (topic ที่มีอยู่แล้วจะคง partition count เดิมไว้ ไม่ถูกปรับตาม $PARTITIONS)
-    kafka-topics.sh --bootstrap-server "$BOOTSTRAP" \
+    kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --command-config "$CMD_CONFIG" \
         --create --if-not-exists \
         --topic "$_topic" \
         --partitions "$PARTITIONS" \
@@ -52,5 +54,5 @@ create_topic alerts.raw     # detection → api-gateway (alert ทั่วไ�
 create_topic alerts.cde     # detection → api-gateway (alert ใน CDE scope, PCI)
 
 echo "▶ Topics ทั้งหมดตอนนี้:"
-kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --list | grep -v '^__' | sed 's/^/    /'
+kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --command-config "$CMD_CONFIG" --list | grep -v '^__' | sed 's/^/    /'
 echo "✓ kafka-init เสร็จแล้ว"

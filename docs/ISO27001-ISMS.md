@@ -76,7 +76,8 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 ตรวจซ้ำได้ด้วย `scripts/demo-mtls.sh`
 
 **สถานะจริง (2026-09-23):** เปิดใช้แล้ว — backend / detection ต่อ listener `DOCKER_SSL` (`kafka-N:9094`) ด้วย client cert
-แยกต่อ service · broker ปฏิเสธ client ที่ไม่มี cert (ทดสอบบน stack) · PLAINTEXT `:9092` เหลือไว้ให้ inter-broker / tooling
+แยกต่อ service · broker ปฏิเสธ client ที่ไม่มี cert (ทดสอบบน stack) · **2026-09-24:** ในเน็ตเวิร์กเป็น mTLS ทั้งหมด —
+inter-broker + KRaft controller + kafka-init (`admin`) + kafka-exporter (`exporter`) · PLAINTEXT เหลือแค่ EXTERNAL `:29092` จาก host (bind 127.0.0.1)
 
 ---
 

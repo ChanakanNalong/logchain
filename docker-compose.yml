@@ -128,17 +128,19 @@ services:
       # แล้ว Raft จะ vote กันไม่ได้ (INCONSISTENT_CLUSTER_ID)
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
-      # 9092 = internal (container-to-container), 29092 = external (host, PLAINTEXT)
-      # 9094 DOCKER_SSL = mTLS ใน docker network (advertise kafka-N:9094) — backend / detection ใช้ตัวนี้
-      #   SSL (39092) advertise localhost ใช้ได้จาก host เท่านั้น: container ต่อแล้ว metadata ชี้กลับ localhost ของตัวเอง
+      # ใน docker network ทุกเส้นเป็น mTLS (2026-09-24 · เดิม PLAINTEXT :9092 สำหรับ inter-broker / kafka-init / exporter):
+      #   9094 DOCKER_SSL = client ทุกตัว + inter-broker (advertise kafka-N:9094)
+      #   9093 CONTROLLER = KRaft quorum — SSL ด้วย cert ของ broker (SAN kafka-N)
       #   ssl.* + client auth (KAFKA_TLS_CLIENT_AUTH) เป็นค่า global ครอบทุก listener ที่ map เป็น SSL
-      #   PLAINTEXT 9092 ยังเหลือไว้ให้ inter-broker / kafka-init / kafka-exporter (ไม่ publish ออก host)
+      # จาก host: 29092 EXTERNAL = PLAINTEXT (ไว้รันแอปบน host · bind 127.0.0.1) · 39092 SSL = mTLS
+      #   SSL (39092) advertise localhost ใช้ได้จาก host เท่านั้น: container ต่อแล้ว metadata ชี้กลับ localhost ของตัวเอง
+      # เปลี่ยน protocol ของ CONTROLLER ต้อง recreate ทั้ง 3 ตัวพร้อมกัน — quorum คุยข้าม protocol ไม่ได้
       # 39092 = external mTLS — ชื่อ listener ต้องโผล่ใน PROTOCOL_MAP เป็น SSL:SSL
       # ไม่งั้น kafka_has_ssl_listener() ใน libkafka.sh return false แล้ว
       # kafka_configure_ssl() จะไม่ถูกเรียก -> ไม่มี ssl.keystore.*/ssl.truststore.* ใน server.properties
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092,SSL://:39092,DOCKER_SSL://:9094"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-1:9092,EXTERNAL://localhost:29092,SSL://localhost:39092,DOCKER_SSL://kafka-1:9094"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
+      KAFKA_CFG_LISTENERS: "CONTROLLER://:9093,EXTERNAL://:29092,SSL://:39092,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "EXTERNAL://localhost:29092,SSL://localhost:39092,DOCKER_SSL://kafka-1:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:SSL,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -149,7 +151,7 @@ services:
       KAFKA_TLS_TYPE: "PEM"
       KAFKA_TLS_CLIENT_AUTH: "required"
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "DOCKER_SSL"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
       # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
@@ -169,11 +171,14 @@ services:
     volumes:
       - kafka_1_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-1:/opt/bitnami/kafka/config/certs:ro
+      - ./infra/kafka/client-ssl.sh:/opt/logchain/client-ssl.sh:ro
+      - ./infra/kafka/kafka-cli.sh:/opt/logchain/kafka-cli.sh:ro
     # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
     # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
     group_add: ["${HOST_GID:-1000}"]
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      # ไม่มี PLAINTEXT ในเน็ตเวิร์กแล้ว — ต่อ DOCKER_SSL ด้วย cert ของ broker เอง (infra/kafka/kafka-cli.sh)
+      test: ["CMD-SHELL", "sh /opt/logchain/kafka-cli.sh kafka-topics.sh --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
       # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
       timeout: 25s
@@ -190,9 +195,9 @@ services:
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29093,SSL://:39093,DOCKER_SSL://:9094"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-2:9092,EXTERNAL://localhost:29093,SSL://localhost:39093,DOCKER_SSL://kafka-2:9094"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
+      KAFKA_CFG_LISTENERS: "CONTROLLER://:9093,EXTERNAL://:29093,SSL://:39093,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "EXTERNAL://localhost:29093,SSL://localhost:39093,DOCKER_SSL://kafka-2:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:SSL,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -203,7 +208,7 @@ services:
       KAFKA_TLS_TYPE: "PEM"
       KAFKA_TLS_CLIENT_AUTH: "required"
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "DOCKER_SSL"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
       # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
@@ -225,11 +230,14 @@ services:
     volumes:
       - kafka_2_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-2:/opt/bitnami/kafka/config/certs:ro
+      - ./infra/kafka/client-ssl.sh:/opt/logchain/client-ssl.sh:ro
+      - ./infra/kafka/kafka-cli.sh:/opt/logchain/kafka-cli.sh:ro
     # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
     # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
     group_add: ["${HOST_GID:-1000}"]
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      # ไม่มี PLAINTEXT ในเน็ตเวิร์กแล้ว — ต่อ DOCKER_SSL ด้วย cert ของ broker เอง (infra/kafka/kafka-cli.sh)
+      test: ["CMD-SHELL", "sh /opt/logchain/kafka-cli.sh kafka-topics.sh --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
       # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
       timeout: 25s
@@ -246,9 +254,9 @@ services:
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
       KAFKA_KRAFT_CLUSTER_ID: "${KAFKA_KRAFT_CLUSTER_ID:-fa18wiRZTcaEzLyvh5qO7A}"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29094,SSL://:39094,DOCKER_SSL://:9094"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka-3:9092,EXTERNAL://localhost:29094,SSL://localhost:39094,DOCKER_SSL://kafka-3:9094"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
+      KAFKA_CFG_LISTENERS: "CONTROLLER://:9093,EXTERNAL://:29094,SSL://:39094,DOCKER_SSL://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "EXTERNAL://localhost:29094,SSL://localhost:39094,DOCKER_SSL://kafka-3:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:SSL,EXTERNAL:PLAINTEXT,SSL:SSL,DOCKER_SSL:SSL"
       # ---- mTLS (PEM) ----
       # ชื่อไฟล์ถูก hardcode ใน libkafka.sh: kafka.keystore.pem / kafka.keystore.key /
       # kafka.truststore.pem ใน $KAFKA_CERTS_DIR = /opt/bitnami/kafka/config/certs
@@ -259,7 +267,7 @@ services:
       KAFKA_TLS_TYPE: "PEM"
       KAFKA_TLS_CLIENT_AUTH: "required"
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "DOCKER_SSL"
       KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
       # cluster-wide defaults ตาม scope (3 broker + ISR)
       # NUM_PARTITIONS ต้องตรงกับ create-topics.sh: client ที่ต่อมาก่อน kafka-init
@@ -279,11 +287,14 @@ services:
     volumes:
       - kafka_3_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-3:/opt/bitnami/kafka/config/certs:ro
+      - ./infra/kafka/client-ssl.sh:/opt/logchain/client-ssl.sh:ro
+      - ./infra/kafka/kafka-cli.sh:/opt/logchain/kafka-cli.sh:ro
     # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
     # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
     group_add: ["${HOST_GID:-1000}"]
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
+      # ไม่มี PLAINTEXT ในเน็ตเวิร์กแล้ว — ต่อ DOCKER_SSL ด้วย cert ของ broker เอง (infra/kafka/kafka-cli.sh)
+      test: ["CMD-SHELL", "sh /opt/logchain/kafka-cli.sh kafka-topics.sh --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
       # JVM startup ของ kafka-topics.sh กินเวลาเกิน 10s ได้ตอนเครื่องโหลดหนัก
       timeout: 25s
@@ -298,16 +309,23 @@ services:
   kafka-init:
     image: bitnamilegacy/kafka:3.7.1
     container_name: logchain-kafka-init
-    # ยิงผ่าน internal listener PLAINTEXT :9092 จากในเน็ตเวิร์ก compose
-    # จะได้ไม่ต้อง mount cert + ตั้ง ssl config ให้ kafka-topics.sh เหมือน external :39092
+    # ต่อ DOCKER_SSL :9094 ด้วย client cert `admin` (ไม่มี PLAINTEXT ในเน็ตเวิร์กแล้ว)
     environment:
-      KAFKA_BOOTSTRAP: "kafka-1:9092"
+      KAFKA_BOOTSTRAP: "kafka-1:9094"
+      KAFKA_SSL_CERT: /certs/admin.crt
+      KAFKA_SSL_KEY: /certs/admin.key
+      KAFKA_SSL_CA: /certs/ca.crt
+    group_add: ["${HOST_GID:-1000}"]   # อ่าน admin.key (0640) — ดู kafka-1
     depends_on:
       kafka-1: {condition: service_healthy}
       kafka-2: {condition: service_healthy}
       kafka-3: {condition: service_healthy}
     volumes:
       - ./infra/kafka/create-topics.sh:/kafka/create-topics.sh:ro
+      - ./infra/kafka/client-ssl.sh:/opt/logchain/client-ssl.sh:ro
+      - ./infra/kafka/certs/clients/ca.crt:/certs/ca.crt:ro
+      - ./infra/kafka/certs/clients/admin.crt:/certs/admin.crt:ro
+      - ./infra/kafka/certs/clients/admin.key:/certs/admin.key:ro
     entrypoint: ["/bin/bash", "/kafka/create-topics.sh"]
     restart: "no"
     networks:
@@ -320,10 +338,20 @@ services:
     user: "65534:65534"
     container_name: logchain-kafka-exporter
     restart: unless-stopped
+    # mTLS ผ่าน DOCKER_SSL :9094 ด้วย client cert `exporter`
     command:
-      - "--kafka.server=kafka-1:9092"
-      - "--kafka.server=kafka-2:9092"
-      - "--kafka.server=kafka-3:9092"
+      - "--kafka.server=kafka-1:9094"
+      - "--kafka.server=kafka-2:9094"
+      - "--kafka.server=kafka-3:9094"
+      - "--tls.enabled"
+      - "--tls.ca-file=/certs/ca.crt"
+      - "--tls.cert-file=/certs/exporter.crt"
+      - "--tls.key-file=/certs/exporter.key"
+    group_add: ["${HOST_GID:-1000}"]   # อ่าน exporter.key (0640) — ดู kafka-1
+    volumes:
+      - ./infra/kafka/certs/clients/ca.crt:/certs/ca.crt:ro
+      - ./infra/kafka/certs/clients/exporter.crt:/certs/exporter.crt:ro
+      - ./infra/kafka/certs/clients/exporter.key:/certs/exporter.key:ro
     ports:
       - "${PUBLISH_ADDR:-127.0.0.1}:9308:9308"
     depends_on:

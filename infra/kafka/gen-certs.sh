@@ -1,9 +1,45 @@
 #!/usr/bin/env bash
 # สร้าง CA + cert สำหรับ Kafka mTLS (dev)
 # รัน: ./infra/kafka/gen-certs.sh   แล้ว docker compose up -d --force-recreate kafka-1 kafka-2 kafka-3
+#
+# ./infra/kafka/gen-certs.sh client <ชื่อ> — ออก client cert เพิ่มด้วย CA เดิม (มีอยู่แล้ว = ข้าม)
+#   ไม่ลบอะไร · bootstrap.sh ใช้เติม cert ที่เพิ่มทีหลังให้เครื่องที่ generate ไว้ก่อน (admin / exporter)
 set -euo pipefail
 CERT_DIR="$(cd "$(dirname "$0")" && pwd)/certs"
 DAYS=825
+# client ทั้งหมดที่ระบบใช้ — nestjs = backend · detection = detection-consumer
+# admin = kafka-init (สร้าง topic) · exporter = kafka-exporter (อ่าน metadata / lag ให้ Prometheus)
+CLIENTS="nestjs detection admin exporter"
+
+# CRLF → LF (ดูคอมเมนต์ท้ายไฟล์) + สิทธิ์ของ client cert หนึ่งใบ
+issue_client() {
+  c="$1"
+  MSYS_NO_PATHCONV=1 openssl req -newkey rsa:2048 -sha256 -nodes \
+    -keyout "clients/$c.key" -out "clients/$c.csr" \
+    -subj "/C=TH/O=LogChain/CN=$c" 2>/dev/null
+  extfile="$(mktemp)"
+  printf "extendedKeyUsage=clientAuth\n" > "$extfile"
+  openssl x509 -req -in "clients/$c.csr" -CA ca.crt -CAkey ca.key -CAcreateserial \
+    -out "clients/$c.crt" -days $DAYS -sha256 \
+    -extfile "$extfile" 2>/dev/null
+  rm -f "$extfile" "clients/$c.csr"
+  sed -i 's/\r$//' "clients/$c.key" "clients/$c.crt"
+  chmod 644 "clients/$c.crt"
+  chmod 640 "clients/$c.key"
+  echo "✅ client $c"
+}
+
+if [ "${1:-}" = "client" ]; then
+  name="${2:?ใช้: gen-certs.sh client <ชื่อ>}"
+  cd "$CERT_DIR"
+  [ -f ca.key ] || { echo "ไม่มี $CERT_DIR/ca.key — รัน gen-certs.sh แบบไม่มี argument ก่อน" >&2; exit 1; }
+  if [ -f "clients/$name.crt" ] && [ -f "clients/$name.key" ]; then
+    echo "✓ client $name มีอยู่แล้ว — ข้าม"
+  else
+    issue_client "$name"
+  fi
+  exit 0
+fi
 
 rm -rf "$CERT_DIR"; mkdir -p "$CERT_DIR"; cd "$CERT_DIR"
 
@@ -37,18 +73,7 @@ done
 
 # ---------- 3. client certs (mTLS) ----------
 mkdir -p clients
-for c in nestjs detection; do
-  MSYS_NO_PATHCONV=1 openssl req -newkey rsa:2048 -sha256 -nodes \
-    -keyout "clients/$c.key" -out "clients/$c.csr" \
-    -subj "/C=TH/O=LogChain/CN=$c"
-  extfile="$(mktemp)"
-  printf "extendedKeyUsage=clientAuth\n" > "$extfile"
-  openssl x509 -req -in "clients/$c.csr" -CA ca.crt -CAkey ca.key -CAcreateserial \
-    -out "clients/$c.crt" -days $DAYS -sha256 \
-    -extfile "$extfile"
-  rm -f "$extfile" "clients/$c.csr"
-  echo "✅ client $c"
-done
+for c in $CLIENTS; do issue_client "$c"; done
 cp ca.crt clients/ca.crt
 
 # native openssl.exe (Git for Windows) เขียน CRLF ลง PEM ที่ generate — Kafka

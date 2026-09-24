@@ -103,8 +103,8 @@ tests:
               summary: 'consumer detection-service ค้างบน logs.raw (lag 5)'
               description: >-
                 มี message รอ 5 ใบ แต่ offset ไม่ขยับมา 10 นาทีขึ้นไป
-                `docker exec logchain-kafka-1 /opt/bitnami/kafka/bin/kafka-consumer-groups.sh
-                --bootstrap-server localhost:9092 --describe --group detection-service`
+                `docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-consumer-groups.sh
+                --describe --group detection-service`
 
   # lag 0 และ offset คงที่ (ระบบเงียบ ไม่มี log เข้า) → ไม่ใช่ค้าง
   - interval: 1m

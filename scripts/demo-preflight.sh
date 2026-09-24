@@ -33,8 +33,8 @@ echo "── kafka topics ──"
 # detection ยิง alert ออกมาได้ (log ขึ้น 🚨 ALERT) แต่ไม่มี topic ให้ backend subscribe
 # → alert ไม่เคยเข้า DB และไม่มี error โผล่ทั้งสองฝั่ง เหตุผลเต็มอยู่ใน
 # infra/kafka/create-topics.sh
-TOPICS=$(docker exec logchain-kafka-1 kafka-topics.sh \
-  --bootstrap-server localhost:9092 --list 2>/dev/null)
+# ไม่มี PLAINTEXT ในเน็ตเวิร์กแล้ว — kafka-cli.sh ต่อ mTLS ด้วย cert ของ broker ให้
+TOPICS=$(docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --list 2>/dev/null)
 for t in logs.raw alerts.raw alerts.cde; do
   if echo "$TOPICS" | grep -qx "$t"; then
     ok "topic $t"

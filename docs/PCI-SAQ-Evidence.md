@@ -93,8 +93,11 @@
   (`kafka-N:9094`, advertise ชื่อใน docker network) ด้วย cert `nestjs` / `detection` · `ssl.client.auth=required`
 - ทดสอบบน stack: log → Kafka → detection → `alerts.raw` → backend → DB ครบทั้งสายผ่าน mTLS (rule 60001) ·
   kafka client ไม่มี cert → broker `Failed authentication (SSL handshake failed)` · มี cert → เห็น topic ครบ
-- ยังเหลือ: listener PLAINTEXT `:9092` (inter-broker · kafka-init · kafka-exporter · ไม่ publish ออก host) และ
-  EXTERNAL `:29092` (plaintext · localhost เท่านั้น · ใช้ตอนรันแอปบน host)
+- 2026-09-24: เอา listener PLAINTEXT `:9092` ออก — inter-broker ใช้ `DOCKER_SSL` · KRaft controller `:9093` เป็น SSL ·
+  kafka-init / kafka-exporter ใช้ client cert ของตัวเอง (`admin` / `exporter`) · healthcheck + คำสั่งดูแลใช้ `infra/kafka/kafka-cli.sh`
+  ทดสอบ: broker ไม่ listen :9092 แล้ว · controller ตอบ TLS 1.3 · quorum 3 เสียง · ไม่มี partition ขาด replica ·
+  offset ของ consumer group ต่อเนื่อง · log → detection → alert ครบสาย · restart broker ทีละตัวผ่าน
+- ยังเหลือ: EXTERNAL `:29092` (plaintext · bind 127.0.0.1 · ใช้ตอนรันแอปบน host เท่านั้น)
 - 2026-09-24: private key ทุกตัว 0640 (`ca.key` 0600) · container ที่ใช้ key ได้กลุ่มเจ้าของไฟล์ผ่าน `group_add` ·
   backend / detection mount เฉพาะ cert + key ของตัวเอง (เดิม backend mount ทั้ง `certs/` รวม `ca.key` และอ่านได้)
 

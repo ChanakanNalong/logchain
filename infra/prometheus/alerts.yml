@@ -49,8 +49,8 @@ groups:
           summary: 'consumer {{ $labels.consumergroup }} ค้างบน {{ $labels.topic }} (lag {{ $value }})'
           description: >-
             มี message รอ {{ $value }} ใบ แต่ offset ไม่ขยับมา 10 นาทีขึ้นไป
-            `docker exec logchain-kafka-1 /opt/bitnami/kafka/bin/kafka-consumer-groups.sh
-            --bootstrap-server localhost:9092 --describe --group {{ $labels.consumergroup }}`
+            `docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-consumer-groups.sh
+            --describe --group {{ $labels.consumergroup }}`
 
   - name: logchain-infra
     rules:

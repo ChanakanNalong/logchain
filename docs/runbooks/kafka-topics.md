@@ -13,9 +13,8 @@
 `infra/kafka/create-topics.sh` แบบ one-shot หลัง broker ทั้ง 3 ตัว healthy
 (partitions 3, replication-factor 3, `min.insync.replicas=2`)
 
-`kafka-init` ยิงผ่าน internal listener `kafka-1:9092` (PLAINTEXT) จากในเน็ตเวิร์ก
-compose จึงไม่ต้อง mount cert หรือตั้ง ssl config ให้ `kafka-topics.sh` แบบที่ external
-listener `:39092` (mTLS) ต้องทำ
+`kafka-init` ยิงผ่าน `kafka-1:9094` (DOCKER_SSL · mTLS) ด้วย client cert `admin` —
+ตั้งแต่ 2026-09-24 ในเน็ตเวิร์กไม่มี listener PLAINTEXT แล้ว (`infra/kafka/client-ssl.sh` สร้าง `--command-config` ให้)
 
 ## ทำไมไม่ปล่อยให้ auto-create
 
@@ -55,12 +54,14 @@ NestJS consumer ชิงสร้างก่อน จึงตั้ง `KAFK
 ## ตรวจสอบ
 
 ```bash
-docker exec logchain-kafka-1 kafka-topics.sh \
-  --bootstrap-server localhost:9092 --list
+# kafka-cli.sh ใส่ --bootstrap-server localhost:9094 + config mTLS (cert ของ broker) ให้เอง
+docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --list
 
 # ดูรายละเอียด partition / ISR ของ topic เดียว
-docker exec logchain-kafka-1 kafka-topics.sh \
-  --bootstrap-server localhost:9092 --describe --topic alerts.raw
+docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --describe --topic alerts.raw
+
+# consumer group / lag
+docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-consumer-groups.sh --describe --all-groups
 ```
 
 `scripts/demo-preflight.sh` เช็ค `logs.raw`, `alerts.raw`, `alerts.cde` ให้อยู่แล้ว
