@@ -102,6 +102,9 @@ say "2/6  Kafka mTLS certs"
 
 if [ -f infra/kafka/certs/ca.crt ]; then
     ok "infra/kafka/certs/ มีอยู่แล้ว — ข้าม (gen-certs.sh ลบของเดิมทิ้งทุกครั้ง)"
+    # cert ที่สร้างก่อน 2026-09-24 มี key เป็น 0644 — บีบให้ตรงกับ gen-certs.sh ปัจจุบัน
+    chmod 640 infra/kafka/certs/*/kafka.keystore.key infra/kafka/certs/clients/*.key
+    chmod 600 infra/kafka/certs/ca.key
 else
     ./infra/kafka/gen-certs.sh
     ok "สร้าง CA + broker cert 3 ใบ + client cert (nestjs, detection)"

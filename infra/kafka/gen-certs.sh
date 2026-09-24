@@ -56,5 +56,9 @@ cp ca.crt clients/ca.crt
 # บังคับ LF ทุกไฟล์ที่ inline เข้า server.properties
 find . -type f \( -name "*.key" -o -name "*.pem" -o -name "*.crt" \) -exec sed -i 's/\r$//' {} +
 
-chmod 644 */kafka.keystore.* */kafka.truststore.pem clients/* ca.crt
+# cert เปิดอ่านได้ · private key อ่านได้เฉพาะเจ้าของ + กลุ่ม (container ได้กลุ่มผ่าน group_add ใน compose)
+# · ca.key เฉพาะเจ้าของ — ไม่มี container ไหนต้องใช้
+chmod 644 */kafka.keystore.pem */kafka.truststore.pem clients/*.crt ca.crt
+chmod 640 */kafka.keystore.key clients/*.key
+chmod 600 ca.key
 echo; echo "cert อยู่ที่ $CERT_DIR"

@@ -169,6 +169,9 @@ services:
     volumes:
       - kafka_1_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-1:/opt/bitnami/kafka/config/certs:ro
+    # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
+    # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
+    group_add: ["${HOST_GID:-1000}"]
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -222,6 +225,9 @@ services:
     volumes:
       - kafka_2_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-2:/opt/bitnami/kafka/config/certs:ro
+    # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
+    # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
+    group_add: ["${HOST_GID:-1000}"]
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -273,6 +279,9 @@ services:
     volumes:
       - kafka_3_data:/bitnami/kafka
       - ./infra/kafka/certs/kafka-3:/opt/bitnami/kafka/config/certs:ro
+    # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
+    # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
+    group_add: ["${HOST_GID:-1000}"]
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -615,7 +624,7 @@ services:
       # internal listener เป็น PLAINTEXT — mTLS มีเฉพาะ EXTERNAL (39092-39094)
       # ที่ไว้ demo การต่อจาก host ดู scripts/demo-mtls.sh
       KAFKA_SSL_ENABLED: "true"
-      KAFKA_SSL_CA: /app/infra/kafka/certs/ca.crt
+      KAFKA_SSL_CA: /app/infra/kafka/certs/clients/ca.crt
       KAFKA_SSL_CERT: /app/infra/kafka/certs/clients/nestjs.crt
       KAFKA_SSL_KEY: /app/infra/kafka/certs/clients/nestjs.key
       VAULT_ADDR: "http://vault:8200"
@@ -625,9 +634,14 @@ services:
     ports:
       - "${PUBLISH_ADDR:-127.0.0.1}:3000:3000"
     volumes:
-      # ให้สลับ KAFKA_SSL_ENABLED=true ได้โดยไม่ต้อง rebuild image
-      # path ใน .env เป็น ./infra/kafka/certs/... ซึ่ง resolve จาก WORKDIR /app พอดี
-      - ./infra/kafka/certs:/app/infra/kafka/certs:ro
+      # เฉพาะ 3 ไฟล์ของ backend — เดิม mount ทั้ง certs/ ซึ่งมี ca.key (+ key ของ detection) และ backend (uid 1000)
+      # เป็นเจ้าของไฟล์บนเครื่อง dev = อ่าน private key ของ CA ได้ → โดนเจาะ backend แล้วออก cert เข้า Kafka เองได้
+      - ./infra/kafka/certs/clients/ca.crt:/app/infra/kafka/certs/clients/ca.crt:ro
+      - ./infra/kafka/certs/clients/nestjs.crt:/app/infra/kafka/certs/clients/nestjs.crt:ro
+      - ./infra/kafka/certs/clients/nestjs.key:/app/infra/kafka/certs/clients/nestjs.key:ro
+    # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
+    # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
+    group_add: ["${HOST_GID:-1000}"]
     depends_on:
       postgres: {condition: service_healthy}
       keycloak: {condition: service_started}
@@ -720,8 +734,13 @@ services:
       kafka-init: {condition: service_completed_successfully}
       vault-init: {condition: service_completed_successfully}
     volumes:
-      # client cert สำหรับ mTLS ของ Kafka (DOCKER_SSL :9094)
-      - ./infra/kafka/certs/clients:/certs:ro
+      # client cert สำหรับ mTLS ของ Kafka (DOCKER_SSL :9094) — เฉพาะของ detection ไม่เห็น key ของ backend
+      - ./infra/kafka/certs/clients/ca.crt:/certs/ca.crt:ro
+      - ./infra/kafka/certs/clients/detection.crt:/certs/detection.crt:ro
+      - ./infra/kafka/certs/clients/detection.key:/certs/detection.key:ro
+    # key ของ Kafka เป็น 0640 (เจ้าของ = คนที่รัน gen-certs.sh) — ให้ process ใน container อ่านได้ผ่านกลุ่มนั้น
+    # ไม่ต้องเปิด key ให้ทุก user อ่าน (เดิม 0644 เพราะ uid ใน container ไม่ตรงเจ้าของไฟล์) · worklog 2026-09-24 หัวข้อ 7
+    group_add: ["${HOST_GID:-1000}"]
 
 volumes:
   postgres_data:

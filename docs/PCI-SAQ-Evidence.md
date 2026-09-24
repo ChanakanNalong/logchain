@@ -94,8 +94,9 @@
 - ทดสอบบน stack: log → Kafka → detection → `alerts.raw` → backend → DB ครบทั้งสายผ่าน mTLS (rule 60001) ·
   kafka client ไม่มี cert → broker `Failed authentication (SSL handshake failed)` · มี cert → เห็น topic ครบ
 - ยังเหลือ: listener PLAINTEXT `:9092` (inter-broker · kafka-init · kafka-exporter · ไม่ publish ออก host) และ
-  EXTERNAL `:29092` (plaintext · localhost เท่านั้น · ใช้ตอนรันแอปบน host) · client key ในโฟลเดอร์ cert เป็น 0644
-  (detection รันเป็น uid 10001 ต้องอ่านได้)
+  EXTERNAL `:29092` (plaintext · localhost เท่านั้น · ใช้ตอนรันแอปบน host)
+- 2026-09-24: private key ทุกตัว 0640 (`ca.key` 0600) · container ที่ใช้ key ได้กลุ่มเจ้าของไฟล์ผ่าน `group_add` ·
+  backend / detection mount เฉพาะ cert + key ของตัวเอง (เดิม backend mount ทั้ง `certs/` รวม `ca.key` และอ่านได้)
 
 ### E09 — Access Control / User Management — Req. 7
 - admin จัดการสิทธิ์ผ่าน Keycloak ได้ โดยมี guard 3 ชั้น:
