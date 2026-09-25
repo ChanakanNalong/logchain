@@ -128,7 +128,9 @@
 - ไฟล์ LUKS2 `/var/lib/lcsecure.img` (150 GB · root 0600) → `/dev/mapper/lcsecure` (ext4) mount ที่ `/srv/lcsecure` · ขั้นตอน `docs/runbooks/encryption-at-rest.md`
 - ในไฟล์เข้ารหัส: Docker data-root `/srv/lcsecure/docker` (volume ของ Postgres / standby / Vault / Kafka / Grafana / Prometheus + image) ·
   repo `/srv/lcsecure/home/logchain` (`.env` · `infra/vault/.secrets/` · key ของ Kafka / TLS · `rclone.conf` · `backups/`) — ที่เดิม `~/Documents/logchain` เป็น symlink
-- key slot: recovery passphrase (อยู่ใน password manager ของเจ้าของ) + TPM2 ผูก PCR 7 **พร้อม PIN** (Secure Boot ปิด → TPM อย่างเดียวไม่พอ) · PIN ผิดซ้ำ TPM ล็อกเอง
+- cipher `aes-xts-plain64` key 512 bit · keyslot 0 = recovery passphrase (argon2id · อยู่ใน password manager ของเจ้าของ) ·
+  keyslot 1 = token `systemd-tpm2` ผูก PCR 7 (sha256) **พร้อม PIN** (`tpm2-pin: true` · Secure Boot ปิด → TPM อย่างเดียวไม่พอ) · PIN ผิดซ้ำ TPM ล็อกเอง
+  (ตรวจ `cryptsetup luksDump` 2026-09-25)
 - Docker มี drop-in `RequiresMountsFor=/srv/lcsecure` — ยังไม่ปลดล็อก = Docker ไม่ขึ้น (ไม่สร้าง data-root เปล่าบนดิสก์ธรรมดา)
 - ทดสอบ 2026-09-25: reboot → ปลดล็อกตอน boot → stack ขึ้นเองครบ 21 container · `scripts/check-encryption-at-rest.sh` = **ผ่าน**
   (data-root · repo · backups อยู่บน `/dev/mapper/lcsecure`)

@@ -65,8 +65,8 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 **เก็บตก (เจ้าของ · ต้อง sudo):**
 - [x] ลบ `/var/lib/docker.old` (volume เดิม **ไม่เข้ารหัส**) — ทำแล้ว 2026-09-25 · rollback ไม่ได้แล้ว
 - [x] ปิด swap — ทำแล้ว 2026-09-25 · script ✅ ครบ 4 ข้อ
-- [ ] (ไม่บังคับ) ลบไฟล์ `/swapfile` 8 GB ที่ปิดใช้แล้ว: `sudo rm /swapfile && sudo fstrim -v /`
-- [ ] (ไม่บังคับ) ยืนยัน slot TPM: `sudo cryptsetup luksDump /var/lib/lcsecure.img` ต้องเห็น token `systemd-tpm2`
+- [x] ลบไฟล์ `/swapfile` 8 GB + `fstrim` (2026-09-25 · trim 21.6 GiB)
+- [x] ยืนยัน slot TPM (2026-09-25): keyslot 0 passphrase + keyslot 1 token `systemd-tpm2` · PCR 7 · `tpm2-pin: true`
 
 <details><summary>แผนเดิม (2026-09-24)</summary>
 
