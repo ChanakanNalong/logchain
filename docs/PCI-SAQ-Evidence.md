@@ -4,7 +4,7 @@
 **Version:** 1.0
 **Date:** 2026-06-04
 **Prepared by:** Logchain Team
-**Reviewed:** 2026-09-23 — สถานะปรับให้ตรงกับระบบที่รันจริง รายละเอียด + หลักฐานใน `docs/compliance-review-2026-09-23.md`
+**Reviewed:** 2026-09-23 (อัปเดต 2026-09-25: 3.1 → PASS) — สถานะปรับให้ตรงกับระบบที่รันจริง รายละเอียด + หลักฐานใน `docs/compliance-review-2026-09-23.md`
 
 ---
 
@@ -14,7 +14,7 @@
 |-----|-------------|--------|----------|
 | 1.1 | Firewall configuration | PASS | service คุยกันใน Docker network · port ที่ publish ทั้ง 19 ตัว bind `127.0.0.1` (`PUBLISH_ADDR`) — ทดสอบจาก IP LAN ของเครื่องแล้วปิดทุกตัว · แก้ 2026-09-23 (เดิม `0.0.0.0` · review B15) |
 | 2.1 | No vendor-supplied defaults | PASS | Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS (ไม่มี shared secret) · `bootstrap.sh` สุ่ม password / secret ทุกตัว |
-| 3.1 | Protect stored data | **PARTIAL** | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **ยังไม่มี encryption at rest** — Postgres ไม่มี TDE และดิสก์ไม่ได้เข้ารหัส (review B1) · แผนพร้อมแล้ว: LUKS2 + TPM2/PIN ครอบ Docker volume + repo (.env / key / backup) — `docs/runbooks/encryption-at-rest.md` · ตรวจด้วย `scripts/check-encryption-at-rest.sh` |
+| 3.1 | Protect stored data | PASS | PAN ถูก mask ก่อนเก็บ (ไม่มี PAN เต็มใน DB · Req 3.4) · **encryption at rest** ด้วย LUKS2 ครอบ Docker volume ทั้งหมด (Postgres / standby / Vault / Kafka …) + repo (.env / key / secrets / backup) · ปลดล็อกตอน boot ด้วย TPM2 + PIN · 2026-09-25 · review B1 · ดู E12 |
 | 4.1 | Encrypt transmission | PASS | **HTTPS** หน้า dashboard / backend / Keycloak (Caddy · TLS 1.2+ · HSTS · 2026-09-24 · review B2 · ดู E11) — HTTP ของ 3 ตัวนี้ bind 127.0.0.1 เสมอ · Kafka ในเน็ตเวิร์กเป็น **mTLS ทั้งหมด** (E08) · ⚠️ ข้อจำกัด: Grafana / Prometheus / Vault / Alertmanager / Postgres ยังเป็น plaintext แต่ bind 127.0.0.1 — ห้ามตั้ง `PUBLISH_ADDR=0.0.0.0` บนเครือข่ายที่ไม่ไว้ใจ |
 | 5.1 | Anti-malware | **PARTIAL** | ClamAV สแกนทุกไฟล์ใน repo ทุก push (block ถ้าเจอ · 2026-09-24 · ดู E10) · **ไม่มี anti-malware ตอน runtime** บน host / ใน container — ยอมรับความเสี่ยงพร้อมมาตรการชดเชย (E10 · review B6) |
 | 6.1 | Secure development | PASS | GitHub Actions security workflow |
@@ -123,6 +123,16 @@
   image สร้างจาก base ทางการ + scan ช่องโหว่ · process ใน container เป็น non-root (ISO R07) · cert / config mount `:ro` ·
   port ทุกตัว bind `127.0.0.1` · `logs` append-only + Merkle root บน blockchain (แก้ข้อมูลแล้วตรวจเจอ)
 - ถ้าขึ้น production: ติด anti-malware ระดับ host (เช่น ClamAV `clamd` + on-access scan หรือ EDR ขององค์กร)
+
+### E12 — Encryption at Rest (LUKS2) — Req. 3
+- ไฟล์ LUKS2 `/var/lib/lcsecure.img` (150 GB · root 0600) → `/dev/mapper/lcsecure` (ext4) mount ที่ `/srv/lcsecure` · ขั้นตอน `docs/runbooks/encryption-at-rest.md`
+- ในไฟล์เข้ารหัส: Docker data-root `/srv/lcsecure/docker` (volume ของ Postgres / standby / Vault / Kafka / Grafana / Prometheus + image) ·
+  repo `/srv/lcsecure/home/logchain` (`.env` · `infra/vault/.secrets/` · key ของ Kafka / TLS · `rclone.conf` · `backups/`) — ที่เดิม `~/Documents/logchain` เป็น symlink
+- key slot: recovery passphrase (อยู่ใน password manager ของเจ้าของ) + TPM2 ผูก PCR 7 **พร้อม PIN** (Secure Boot ปิด → TPM อย่างเดียวไม่พอ) · PIN ผิดซ้ำ TPM ล็อกเอง
+- Docker มี drop-in `RequiresMountsFor=/srv/lcsecure` — ยังไม่ปลดล็อก = Docker ไม่ขึ้น (ไม่สร้าง data-root เปล่าบนดิสก์ธรรมดา)
+- ทดสอบ 2026-09-25: reboot → ปลดล็อกตอน boot → stack ขึ้นเองครบ 21 container · `scripts/check-encryption-at-rest.sh` = **ผ่าน**
+  (data-root · repo · backups อยู่บน `/dev/mapper/lcsecure`)
+- ข้อจำกัด: `/swapfile` ยังไม่เข้ารหัส (runbook ขั้น 9) · ข้อมูล plaintext เดิมบน SSD อาจกู้ได้ — rotate secret รอบถัดไป (ภายใน 2026-12-16) ทำให้ค่าเก่าใช้ไม่ได้
 
 ### E09 — Access Control / User Management — Req. 7
 - admin จัดการสิทธิ์ผ่าน Keycloak ได้ โดยมี guard 3 ชั้น:

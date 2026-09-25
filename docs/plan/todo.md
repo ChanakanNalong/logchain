@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-09-24 (ท้ายวัน · HEAD `9de6134` — ข้อ 1–4 ปิดครบ ดู worklog 2026-09-24) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
+> อัปเดต 2026-09-25 (HEAD `fcd6f56` — ข้อ 1–5 ปิดครบ ดู worklog 2026-09-25) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-24.md`](../summary-2026-09-17-to-09-24.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -14,7 +14,7 @@
 | 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
 | 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
 | 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ 2026-09-24 | — |
-| 5 🟡 | 6.7 encryption at rest (หัวข้อ 5) | **เจ้าของรัน runbook** | ~45 นาที |
+| 5 ✅ | 6.7 encryption at rest (หัวข้อ 5) | เสร็จ 2026-09-25 · เหลือเก็บตก 2 ข้อของเจ้าของ | — |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 
 ---
@@ -57,13 +57,25 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 
 ---
 
-## 5. 🟡 6.7 — encryption at rest (เจ้าของเลือก LUKS · runbook พร้อม 2026-09-24)
+## 5. ✅ 6.7 — encryption at rest (เสร็จ 2026-09-25 · worklog 2026-09-25)
+
+รัน runbook ครบขั้น 0–8 · reboot → ปลดล็อก + stack ขึ้นเองครบ · `check-encryption-at-rest.sh` **ผ่าน** · PCI 3.1 → PASS (E12) · ISO R03 · review B1 ✅
+
+**เก็บตก (เจ้าของ · ต้อง sudo):**
+- [ ] ลบ `/var/lib/docker.old` (volume เดิม **ไม่เข้ารหัส**) + `sudo fstrim -v /` — runbook ขั้น 8 ท้าย · ลบแล้ว rollback ไม่ได้
+- [ ] ปิด swap หรือทำ swap เข้ารหัส — runbook ขั้น 9 · script ยังขึ้น ⚠️ swap
+- [ ] (ไม่บังคับ) ยืนยัน slot TPM: `sudo cryptsetup luksDump /var/lib/lcsecure.img` ต้องเห็น token `systemd-tpm2`
+
+<details><summary>แผนเดิม (2026-09-24)</summary>
+
 
 **ทำตาม `docs/runbooks/encryption-at-rest.md`** — ไฟล์ LUKS2 150 GB → `/srv/lcsecure` · ย้าย Docker data-root + repo (symlink ที่เดิม) ·
 ปลดล็อกตอน boot ด้วย TPM2 + PIN (Secure Boot ปิด → TPM อย่างเดียวไม่พอ) · recovery passphrase ใน password manager
 - ต้องใช้ sudo · stack ล่ม ~30–45 นาที · ต้องทดสอบ reboot (ขั้น 8)
 - เสร็จแล้ว `./scripts/check-encryption-at-rest.sh` ต้อง "ผ่าน" → บอก Claude ให้เปลี่ยน PCI 3.1 เป็น PASS + ISO R03
-- ตอนนี้ (ก่อนทำ) script ตรวจ: ❌ data-root · ❌ repo · ❌ backups · ⚠️ swap
+- ก่อนทำ script ตรวจ: ❌ data-root · ❌ repo · ❌ backups · ⚠️ swap → หลังทำ: ✅ ✅ ✅ · ⚠️ swap
+
+</details>
 
 ---
 

@@ -29,7 +29,7 @@
 
 | # | เอกสาร | ข้อความ | ของจริง | หลักฐาน |
 |---|---|---|---|---|
-| B1 | PCI 3.1 · ISO R03 | "PostgreSQL encryption at rest" (PASS) | **ไม่มี** — Postgres ไม่มี TDE · ดิสก์ไม่ได้เข้ารหัส (ไม่มี LUKS) · `show ssl` = off | `lsblk -o FSTYPE` ไม่มี crypto_LUKS |
+| B1 ✅ | PCI 3.1 · ISO R03 | "PostgreSQL encryption at rest" (PASS) | **ไม่มี** — Postgres ไม่มี TDE · ดิสก์ไม่ได้เข้ารหัส (ไม่มี LUKS) · `show ssl` = off | `lsblk -o FSTYPE` ไม่มี crypto_LUKS |
 | B2 | PCI 4.1 | "HTTPS enforced" (PASS) | **ไม่มี HTTPS** — backend / dashboard / Keycloak เป็น HTTP ล้วน | `src/main.ts` ไม่มี httpsOptions · compose ไม่มี reverse proxy/TLS |
 | B3 ✅ | PCI 4.1 · E08 · ISO A.13.2.1 §5 | Kafka mTLS ระหว่าง Detection ↔ API Gateway | **มีความสามารถ แต่ปิดอยู่** — `KAFKA_SSL_ENABLED=false` ทั้ง `.env` และ compose (backend hard-code `"false"`) · ใช้ listener plaintext 9092 | `docker exec … printenv KAFKA_SSL_ENABLED` = false ทั้ง backend และ consumer |
 | B4 | PCI 2.1 | "Custom JWT secret" | ไม่มี shared secret — Keycloak ออก JWT แบบ RS256 ตรวจด้วย JWKS | `src/auth/strategies/jwt.strategy.ts` `passportJwtSecret({ jwksUri })` |
@@ -64,6 +64,7 @@
 - **B8 แก้แล้ว** (ข้อ 6.4): dashboard → `USER node` · kafka-exporter → `user: 65534` · เหลือ root ตั้งใจ: vault-unseal / vault-init (chown ไฟล์ secret) · dumb-init PID 1 ของ vault
 - **B3 แก้แล้ว** (ข้อ 6.3): Kafka mTLS เปิดใช้ (listener `DOCKER_SSL :9094`) · PCI 4.1 FAIL → PARTIAL (เหลือ HTTPS)
 - **B1 เตรียมแล้ว** (6.7 · 2026-09-24): runbook `docs/runbooks/encryption-at-rest.md` (ไฟล์ LUKS2 → `/srv/lcsecure` · Docker data-root + repo · ปลดล็อกด้วย TPM2 + PIN เพราะ Secure Boot ปิด) + `scripts/check-encryption-at-rest.sh` · ตรวจตอนนี้: ไม่ผ่าน 3 จุด (ยังไม่ได้รัน)
+- **B1 แก้แล้ว** (6.7 · 2026-09-25): เจ้าของรัน runbook ครบ + ทดสอบ reboot · `check-encryption-at-rest.sh` ผ่าน · PCI 3.1 PARTIAL → PASS (E12) · ISO R03 อัปเดต control · เหลือ ⚠️ swap ไม่เข้ารหัส
 - **B2 แก้แล้ว** (6.6 · 2026-09-24): HTTPS ผ่าน Caddy (`https-proxy` · 8443 / 3443 / 3453 · TLS 1.2+ · HSTS) · HTTP เดิม bind 127.0.0.1 เสมอ · issuer ของ Keycloak เป็น https · PCI 4.1 PARTIAL → PASS (Grafana / Vault ฯลฯ ยัง HTTP แต่ localhost เท่านั้น)
 - **B6 แก้บางส่วน** (todo ข้อ 3 · 2026-09-24): ClamAV สแกน repo ทุก push (block · ทดสอบ EICAR) · runtime anti-malware ไม่มี → ยอมรับความเสี่ยง (PCI E10 · ISO R09) · PCI 5.1 N/A → PARTIAL
 - **B5 แก้แล้ว** (todo ข้อ 3 · 2026-09-24): `/metrics` ของ backend ย้ายไป `:9464` ไม่ publish ออก host · `:3000/metrics` = 404 · Prometheus scrape `backend:9464` · detection-api `:8000/metrics` ยังเปิด (สถิติ HTTP อย่างเดียว ความเสี่ยงต่ำ)

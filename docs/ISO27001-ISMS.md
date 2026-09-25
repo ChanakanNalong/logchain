@@ -4,7 +4,7 @@
 **Version:** 1.0
 **Date:** 2026-06-04
 **Prepared by:** Logchain Team
-**Reviewed:** 2026-09-23 — ปรับให้ตรงกับระบบจริง (`docs/compliance-review-2026-09-23.md`)
+**Reviewed:** 2026-09-23 (อัปเดต 2026-09-25: R03) — ปรับให้ตรงกับระบบจริง (`docs/compliance-review-2026-09-23.md`)
 
 ---
 
@@ -28,7 +28,7 @@ Data store ของระบบใช้ PostgreSQL อย่างเดีย
 |----|-------|--------|------------|--------|------------|---------|
 | R01 | Log data | Unauthorized modification | Medium | High | HIGH | Blockchain hash verification |
 | R02 | API endpoints | Unauthorized access | Medium | High | HIGH | JWT authentication |
-| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · ⚠️ ไม่มี encryption at rest — runbook LUKS2 + TPM2/PIN พร้อม (`docs/runbooks/encryption-at-rest.md`) รอเจ้าของเครื่องรัน |
+| R03 | Database | Data breach | Low | Critical | HIGH | access control (password auth) · Postgres bind `127.0.0.1` เท่านั้น · PAN mask ก่อนเก็บ · **encryption at rest** LUKS2 + TPM2/PIN ครอบ volume ของ DB / Vault / Kafka + backup + secret (2026-09-25 · PCI E12 · `docs/runbooks/encryption-at-rest.md`) |
 | R04 | Private keys | Key theft | Low | Critical | HIGH | Vault service, key rotation |
 | R05 | Personal data | PDPA violation | Low | High | MEDIUM | Right-to-erasure endpoint — pseudonymize `audit_access` ด้วย HMAC (key ใน Vault) แทนการลบ ให้ audit trail ยังครบตาม PCI 10.5.1 · tombstone ใน `erasure_log` |
 | R06 | Log retention | Data over-retention | Low | Medium | LOW | RetentionService cron 365 days |

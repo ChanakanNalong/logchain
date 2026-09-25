@@ -12,6 +12,8 @@
 - Docker ถูกตั้งให้ **รอ** `/srv/lcsecure` — ยังไม่ปลดล็อก = Docker ไม่ขึ้น (โปรเจกต์ Docker อื่นบนเครื่องย้ายไปด้วย)
 - ตรวจผล: `./scripts/check-encryption-at-rest.sh` (อ่านอย่างเดียว · ใช้เป็นหลักฐาน audit)
 
+> **สถานะ:** รันครบขั้น 0–8 แล้ว 2026-09-25 (reboot ผ่าน · `check-encryption-at-rest.sh` ผ่าน · worklog 2026-09-25) · เหลือขั้น 8 ท้าย (ลบ `docker.old`) + ขั้น 9 (swap)
+
 ใช้เวลา ~30–45 นาที (ส่วนใหญ่คือ rsync ~35 GB) · ระหว่างนั้น stack ทั้งหมด **ล่ม** · ทุกคำสั่งรันใน terminal ของเจ้าของเครื่อง
 
 ---
@@ -62,12 +64,13 @@ sudo losetup -d "$LOOP"
 ## 4. ปลดล็อกอัตโนมัติตอน boot + mount
 
 ```bash
-echo 'lcsecure /var/lib/lcsecure.img none luks,tpm2-device=auto,nofail' | sudo tee -a /etc/crypttab
+echo 'lcsecure /var/lib/lcsecure.img none luks,tpm2-device=auto,timeout=180' | sudo tee -a /etc/crypttab
+#   timeout=180 = รอใส่ PIN ตอน boot 3 นาที (ตรงกับเครื่องจริง 2026-09-25 · ร่างแรกใช้ nofail) · พลาด → ดู "ใช้งานประจำวัน"
 sudo systemctl daemon-reload
 sudo systemctl start systemd-cryptsetup@lcsecure.service     # ถาม PIN
 sudo mkfs.ext4 -L lcsecure /dev/mapper/lcsecure
 sudo mkdir -p /srv/lcsecure
-echo '/dev/mapper/lcsecure /srv/lcsecure ext4 defaults,nofail 0 2' | sudo tee -a /etc/fstab
+echo "UUID=$(sudo blkid -s UUID -o value /dev/mapper/lcsecure) /srv/lcsecure ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
 sudo systemctl daemon-reload
 sudo mount /srv/lcsecure
 findmnt /srv/lcsecure        # SOURCE ต้องเป็น /dev/mapper/lcsecure
@@ -81,7 +84,7 @@ sudo mv /var/lib/docker /var/lib/docker.old        # เก็บไว้ rollb
 echo '{ "data-root": "/srv/lcsecure/docker" }' | sudo tee /etc/docker/daemon.json
 # Docker ต้องรอให้ไฟล์ถูกปลดล็อก + mount ก่อน — ไม่งั้นจะสร้าง data-root เปล่าบนดิสก์ธรรมดาแล้วขึ้นมาแบบไม่มีอะไรเลย
 sudo mkdir -p /etc/systemd/system/docker.service.d
-printf '[Unit]\nRequiresMountsFor=/srv/lcsecure\n' | sudo tee /etc/systemd/system/docker.service.d/lcsecure.conf
+printf '[Unit]\nRequiresMountsFor=/srv/lcsecure\n' | sudo tee /etc/systemd/system/docker.service.d/10-lcsecure.conf
 sudo systemctl daemon-reload
 ```
 
@@ -144,7 +147,7 @@ sudo fstrim -v /
 cd ~ && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f ~/Documents/logchain/docker-compose.yml stop
 sudo systemctl stop docker.socket docker.service
 rm ~/Documents/logchain && mv /srv/lcsecure/home/logchain ~/Documents/logchain
-sudo rm /etc/docker/daemon.json /etc/systemd/system/docker.service.d/lcsecure.conf
+sudo rm /etc/docker/daemon.json /etc/systemd/system/docker.service.d/10-lcsecure.conf
 sudo mv /var/lib/docker.old /var/lib/docker
 sudo umount /srv/lcsecure && sudo systemctl stop systemd-cryptsetup@lcsecure.service
 # ลบบรรทัด lcsecure ใน /etc/crypttab และ /etc/fstab

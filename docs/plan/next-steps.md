@@ -4,8 +4,8 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-24 (อัปเดตท้ายวัน) · **HEAD:** `9de6134` (push แล้ว · CI เขียวครบ 5 job + Security Scan) · งานวันนี้: `docs/worklog/2026-09-24.md`
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **เขียนเมื่อ:** 2026-09-25 · **HEAD:** `fcd6f56` · งานวันนี้: `docs/worklog/2026-09-25.md` (6.7 encryption at rest เสร็จ)
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -17,7 +17,9 @@
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
 - Prometheus มี alert rule 13 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
-- งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 ใหม่: ช่องว่าง compliance จากการทบทวน**
+- งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 (ช่องว่าง compliance) ปิดครบ 6.1–6.8**
+- **ข้อมูลทั้งหมดอยู่บนดิสก์เข้ารหัส** (2026-09-25): repo จริงอยู่ `/srv/lcsecure/home/logchain` (`~/Documents/logchain` = symlink) ·
+  Docker data-root `/srv/lcsecure/docker` · boot แล้วต้องใส่ PIN ของ `lcsecure` ไม่งั้น Docker ไม่ขึ้น
 - มี migration แล้ว 5 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog` · `ErasurePseudonymize`
 
@@ -144,7 +146,7 @@ config + token: `infra/rclone/.secrets/rclone.conf` (gitignored) · password ข
 ถ้า token หมดอายุ / ถูกถอนสิทธิ์ → `OffsiteBackupFailing` → รัน script ใหม่ (reconnect เอง password crypt ไม่เปลี่ยน)
 
 
-## 6. 🟡 ทำระบบให้ตรงเอกสาร compliance — จากการทบทวน 2026-09-23
+## 6. ✅ ทำระบบให้ตรงเอกสาร compliance — จากการทบทวน 2026-09-23
 
 รายงานเต็ม + หลักฐาน: `docs/compliance-review-2026-09-23.md` · เอกสารต้นฉบับแก้ให้ตรงความจริงแล้ว (PASS ที่ไม่จริง →
 PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว · ที่เหลือคือทำให้ระบบผ่าน เรียงตามความคุ้ม:
@@ -157,7 +159,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
 | 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · เจ้าของ trust CA + login + OTP ผ่านเบราว์เซอร์แล้ว | B2 | เสร็จ 2026-09-24 |
-| 6.7 🟡 | encryption at rest — **runbook พร้อม รอเจ้าของรัน** (ต้อง sudo · stack ล่ม ~30–45 นาที): `docs/runbooks/encryption-at-rest.md` · ตรวจผล `./scripts/check-encryption-at-rest.sh` | B1 | เจ้าของ |
+| 6.7 ✅ | encryption at rest — LUKS2 + TPM2/PIN ที่ `/srv/lcsecure` (Docker data-root + repo) · reboot ผ่าน · `./scripts/check-encryption-at-rest.sh` ผ่าน · PCI 3.1 → PASS (E12) · เหลือของเจ้าของ: ลบ `/var/lib/docker.old` + swap (runbook ขั้น 8 ท้าย / 9) (worklog 2026-09-25) | B1 | เสร็จ 2026-09-25 |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
 ---
@@ -193,6 +195,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 
 | อาการ | ที่จริงคือ |
 |---|---|
+| Docker ไม่ขึ้นหลัง boot · `docker ps` ต่อ daemon ไม่ได้ · `/srv/lcsecure` ว่าง | ยังไม่ได้ปลดล็อกไฟล์ LUKS (พลาดช่องใส่ PIN ตอน boot) — Docker รอ mount โดยตั้งใจ · `sudo systemctl start systemd-cryptsetup@lcsecure.service` → `sudo mount /srv/lcsecure` → `sudo systemctl start docker` (runbook "ใช้งานประจำวัน") |
 | lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 667`) |
 | เครื่องอื่นใน LAN เข้า service ไม่ได้ (log source ข้ามเครื่อง ฯลฯ) | ตั้งใจ — port bind `127.0.0.1` · ตั้ง `PUBLISH_ADDR=0.0.0.0` ใน `.env` แล้ว `docker compose up -d` (เปิดทุก port) |
 | ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | (1) `select count(*) from kafka_pending_logs` — ค้างคิวเพราะ Kafka ล่มไหม (2) มี alert OPEN ของ rule + host เดียวกันอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
