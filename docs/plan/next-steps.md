@@ -4,7 +4,7 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-25 · **HEAD:** `fcd6f56` · งานวันนี้: `docs/worklog/2026-09-25.md` (6.7 encryption at rest เสร็จ)
+> **เขียนเมื่อ:** 2026-09-25 · **HEAD:** `f798173` · งานวันนี้: `docs/worklog/2026-09-25.md` (6.7 encryption at rest เสร็จ)
 > **บันทึกงานเต็ม:** `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
 
 ---
@@ -159,7 +159,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.4 ✅ | dashboard (`USER node` + `COPY --chown`) · kafka-exporter (`user: 65534`) · ทุก service รัน process หลักเป็น non-root ยกเว้น vault-unseal/init (ตั้งใจ — worklog หัวข้อ 36) | B8 | เสร็จ 2026-09-24 |
 | 6.5 ✅ | npm audit + Trivy vuln + pip-audit block ที่ HIGH+ · torch 2.12 → 2.13 (CVE-2025-3000) · pip/setuptools ใน image (worklog หัวข้อ 37) | B7 | เสร็จ 2026-09-24 |
 | 6.6 ✅ | HTTPS ผ่าน Caddy — dashboard `https://localhost:3453` · backend `:3443` · Keycloak `:8443` (= issuer) · HTTP เดิม bind 127.0.0.1 เสมอ (worklog 2026-09-24 หัวข้อ 11) · เจ้าของ trust CA + login + OTP ผ่านเบราว์เซอร์แล้ว | B2 | เสร็จ 2026-09-24 |
-| 6.7 ✅ | encryption at rest — LUKS2 + TPM2/PIN ที่ `/srv/lcsecure` (Docker data-root + repo) · reboot ผ่าน · `./scripts/check-encryption-at-rest.sh` ผ่าน · PCI 3.1 → PASS (E12) · เหลือของเจ้าของ: ลบ `/var/lib/docker.old` + swap (runbook ขั้น 8 ท้าย / 9) (worklog 2026-09-25) | B1 | เสร็จ 2026-09-25 |
+| 6.7 ✅ | encryption at rest — LUKS2 + TPM2/PIN ที่ `/srv/lcsecure` (Docker data-root + repo) · reboot ผ่าน · `./scripts/check-encryption-at-rest.sh` ผ่าน · PCI 3.1 → PASS (E12) · ลบ `docker.old` + ปิด swap แล้ว (worklog 2026-09-25) | B1 | เสร็จ 2026-09-25 |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
 ---

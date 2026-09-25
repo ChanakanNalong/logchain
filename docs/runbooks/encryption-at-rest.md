@@ -12,7 +12,8 @@
 - Docker ถูกตั้งให้ **รอ** `/srv/lcsecure` — ยังไม่ปลดล็อก = Docker ไม่ขึ้น (โปรเจกต์ Docker อื่นบนเครื่องย้ายไปด้วย)
 - ตรวจผล: `./scripts/check-encryption-at-rest.sh` (อ่านอย่างเดียว · ใช้เป็นหลักฐาน audit)
 
-> **สถานะ:** รันครบขั้น 0–8 แล้ว 2026-09-25 (reboot ผ่าน · `check-encryption-at-rest.sh` ผ่าน · worklog 2026-09-25) · เหลือขั้น 8 ท้าย (ลบ `docker.old`) + ขั้น 9 (swap)
+> **สถานะ:** รันครบทุกขั้น (0–9) แล้ว 2026-09-25 — reboot ผ่าน · ลบ `docker.old` + ปิด swap แล้ว · `check-encryption-at-rest.sh` ✅ ครบ (worklog 2026-09-25)
+> ⚠️ `/var/lib/docker.old` ถูกลบแล้ว — หัวข้อ **Rollback** ข้างล่างใช้ไม่ได้อีก
 
 ใช้เวลา ~30–45 นาที (ส่วนใหญ่คือ rsync ~35 GB) · ระหว่างนั้น stack ทั้งหมด **ล่ม** · ทุกคำสั่งรันใน terminal ของเจ้าของเครื่อง
 

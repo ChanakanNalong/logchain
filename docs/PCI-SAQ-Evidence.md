@@ -132,7 +132,8 @@
 - Docker มี drop-in `RequiresMountsFor=/srv/lcsecure` — ยังไม่ปลดล็อก = Docker ไม่ขึ้น (ไม่สร้าง data-root เปล่าบนดิสก์ธรรมดา)
 - ทดสอบ 2026-09-25: reboot → ปลดล็อกตอน boot → stack ขึ้นเองครบ 21 container · `scripts/check-encryption-at-rest.sh` = **ผ่าน**
   (data-root · repo · backups อยู่บน `/dev/mapper/lcsecure`)
-- ข้อจำกัด: `/swapfile` ยังไม่เข้ารหัส (runbook ขั้น 9) · ข้อมูล plaintext เดิมบน SSD อาจกู้ได้ — rotate secret รอบถัดไป (ภายใน 2026-12-16) ทำให้ค่าเก่าใช้ไม่ได้
+- swap ปิดแล้ว (runbook ขั้น 9) · data-root เดิม `/var/lib/docker.old` ลบแล้ว · script ✅ ครบ 4 ข้อ
+- ข้อจำกัด: ข้อมูล plaintext เดิมบน SSD อาจกู้ได้ — rotate secret รอบถัดไป (ภายใน 2026-12-16) ทำให้ค่าเก่าใช้ไม่ได้
 
 ### E09 — Access Control / User Management — Req. 7
 - admin จัดการสิทธิ์ผ่าน Keycloak ได้ โดยมี guard 3 ชั้น:
