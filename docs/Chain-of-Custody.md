@@ -18,7 +18,7 @@
 | 4 | Anchoring | Hash batch anchored on blockchain | Smart Contract | Polygon Amoy testnet | txHash recorded |
 | 5 | Verification | Integrity verified via API | Verifier | IntegrityService (NestJS) + smart contract | Verified/Tampered |
 | 6 | Retention | `logs` ไม่ถูกลบ (append-only) · `alerts` / `audit_access` ลบเมื่อเกิน 365 วัน | RetentionService | Cron Job | - |
-| 7 | Erasure | ลบ `audit_access` ของ user ตามคำขอ PDPA (`logs` ไม่ถูกแตะ — PII mask แล้ว) | ErasureService | API | Tombstone ลง `erasure_log` (append-only) ใน transaction เดียวกับการลบ |
+| 7 | Erasure | **pseudonymize** `audit_access` ของ user ตามคำขอ PDPA — `user_id` → `anon-<HMAC>` · `username` / `ip_address` → NULL (ไม่ลบแถว audit trail จึงครบตาม PCI 10.5.1 · ตั้งแต่ 2026-09-24) · `logs` ไม่ถูกแตะ (PII mask แล้ว) | ErasureService | API | Tombstone ลง `erasure_log` (append-only · มี `method` + `pseudonym`) ใน transaction เดียวกับการ pseudonymize |
 
 Contract ที่ใช้ anchor: `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
 (ตรวจสอบได้ที่ amoy.polygonscan.com)

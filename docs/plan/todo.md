@@ -16,6 +16,7 @@
 | 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ 2026-09-24 | — |
 | 5 ✅ | 6.7 encryption at rest (หัวข้อ 5) | เสร็จ 2026-09-25 · เหลือเก็บตก 2 ข้อของเจ้าของ | — |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
+| 7 | เอกสาร sign-off — Claude เตรียมแล้ว 2026-09-25 เหลือลงนาม (หัวข้อ 7) | เจ้าของ + ทีม | เล็ก |
 
 ---
 
@@ -96,7 +97,23 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 | rotate Gmail app password (180 วัน) — แก้ 2 ที่: Alertmanager + `.env` `MAIL_PASS` | ภายใน 2027-03-22 | Key-Rotation §3 SMTP |
 | ทดสอบกู้คืนจาก backup (ในเครื่อง + จาก Google Drive) | ทุกไตรมาส — ครั้งถัดไป ~2026-12 | `docs/RTO-RPO-Compliance-Signoff.md` §3.1–3.2 |
 | ตรวจกล่อง email ว่ายังได้ alert (ทดสอบ: หยุด `node-exporter` > 2 นาที) | ทุกเดือน | worklog หัวข้อ 27 |
-| เซ็นเอกสาร sign-off (ช่องลายเซ็นยังว่างทุกไฟล์) | ก่อนส่งงาน | RTO-RPO §5 · Chain-of-Custody · PCI Attestation |
+| เซ็นเอกสาร sign-off — ดูหัวข้อ 7 | ก่อนส่งงาน | RTO-RPO §5 · Chain-of-Custody · PCI Attestation |
+
+---
+
+## 7. เอกสาร sign-off (Claude เตรียมแล้ว 2026-09-25 — เหลือคนลงนาม)
+
+ที่ Claude ทำแล้ว (ข้อเท็จจริงที่ตรวจได้เท่านั้น ไม่ใส่ชื่อ / ลายเซ็นแทนใคร):
+- PCI Attestation: ข้อยกเว้นเป็นตาราง (5.1 PARTIAL · 9.1 N/A · **MFA kc-admin เปิดอยู่**) · Date เปลี่ยนเป็นช่องวันที่ลงนาม (เดิมค้าง 2026-06-04)
+- RTO-RPO §4: แถวใหม่ backup / offsite / mTLS / HTTPS / encryption at rest / MFA — ช่อง Verified By ว่างให้คนตรวจ
+- Chain-of-Custody แถว 7: แก้ "ลบ" → **pseudonymize** (ของเดิมผิดตั้งแต่ 6.8)
+- Key-Rotation: แถว (initial) = 2026-07-15 · Chanakan (commit `9d6c229`)
+
+ที่ต้องเป็นคนทำ:
+- [ ] แก้ MFA `kc-admin` (ข้อ 5.1) **ก่อนเซ็น** แล้วลบแถว MFA ออกจาก PCI Attestation + RTO-RPO §4 (หรือบอก Claude)
+- [ ] RTO-RPO §4: ใส่ชื่อคนตรวจในแถวใหม่ 6 แถว
+- [ ] Chain-of-Custody T001–T003: Date + Authorized By
+- [ ] ชื่อ Person 3 + Supervisor · ลายเซ็น + วันที่: PCI Attestation · RTO-RPO §5 · Chain-of-Custody Signatures
 
 ---
 
