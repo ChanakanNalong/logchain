@@ -40,6 +40,8 @@ say()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m✓ %s\033[0m\n' "$*"; }
 warn() { printf '\033[0;33m! %s\033[0m\n' "$*"; }
 die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+# แก้ไฟล์ในที่ — `sed -i` ของ GNU (Linux/WSL) กับ BSD (macOS) รับ argument ต่างกัน · `-i.bak` ใช้ได้ทั้งคู่ แล้วลบ .bak ทิ้ง
+sedi() { sed -i.bak "$1" "$2" && rm -f "$2.bak"; }
 
 command -v docker >/dev/null || die "ไม่มี docker — ติดตั้งก่อน"
 docker compose version >/dev/null 2>&1 || die "ไม่มี docker compose v2 (plugin)"
@@ -74,7 +76,7 @@ while IFS= read -r key; do
         *)          value="$(rand)" ;;
     esac
     # ใช้ | เป็น delimiter — ค่าที่สุ่มถูก strip / ออกแล้วจึงไม่ชนกัน
-    sed -i "s|^${key}=.*|${key}=${value}|" .env
+    sedi "s|^${key}=.*|${key}=${value}|" .env
     filled=$((filled + 1))
 done < <(grep -E '^[A-Z_][A-Z_0-9]*=CHANGE_ME' .env | cut -d= -f1)
 
@@ -87,16 +89,16 @@ fi
 # DATABASE_URL มี password ฝังอยู่ในสตริง — sync ให้ตรงกับ POSTGRES_PASSWORD
 # ตัวแอปไม่ได้อ่านค่านี้ (password มาจาก Vault) แต่ psql/runbook ใช้
 PG_PASS="$(sed -nE 's/^POSTGRES_PASSWORD=(.*)$/\1/p' .env)"
-sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://logchain:${PG_PASS}@localhost:5433/logchain|" .env
+sedi "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://logchain:${PG_PASS}@localhost:5433/logchain|" .env
 
 # .env ก่อน 2026-09-24 ใช้ Keycloak แบบ HTTP — dashboard build ด้วย URL แบบ HTTPS แล้ว issuer ต้องตรงกัน
 # ย้ายเฉพาะค่า default เดิม (ใครตั้งชื่อเครื่องเองไว้ = ไม่แตะ ให้แก้เองตาม README)
 if grep -q '^KEYCLOAK_URL=http://localhost:8080$' .env; then
-    sed -i 's|^KEYCLOAK_URL=http://localhost:8080$|KEYCLOAK_URL=https://localhost:8443|' .env
+    sedi 's|^KEYCLOAK_URL=http://localhost:8080$|KEYCLOAK_URL=https://localhost:8443|' .env
     ok "KEYCLOAK_URL -> https://localhost:8443 (HTTPS ผ่าน Caddy)"
 fi
 if grep -q '^ALLOWED_ORIGINS=' .env && ! grep -q '^ALLOWED_ORIGINS=.*https://localhost:3453' .env; then
-    sed -i 's|^ALLOWED_ORIGINS=|ALLOWED_ORIGINS=https://localhost:3453,|' .env
+    sedi 's|^ALLOWED_ORIGINS=|ALLOWED_ORIGINS=https://localhost:3453,|' .env
     ok "ALLOWED_ORIGINS += https://localhost:3453"
 fi
 
@@ -165,7 +167,7 @@ ok "เจอ $APPROLE_FILE"
 while IFS='=' read -r key value; do
     case "$key" in VAULT_*) ;; *) continue ;; esac
     if grep -q "^${key}=" .env; then
-        sed -i "s|^${key}=.*|${key}=${value}|" .env
+        sedi "s|^${key}=.*|${key}=${value}|" .env
     else
         printf '%s=%s\n' "$key" "$value" >> .env
     fi
@@ -179,7 +181,7 @@ fi
 while IFS='=' read -r key value; do
     case "$key" in VAULT_DETECTION_*) ;; *) continue ;; esac
     if grep -q "^${key}=" detection/.env; then
-        sed -i "s|^${key}=.*|${key}=${value}|" detection/.env
+        sedi "s|^${key}=.*|${key}=${value}|" detection/.env
     else
         printf '%s=%s\n' "$key" "$value" >> detection/.env
     fi

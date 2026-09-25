@@ -12,6 +12,10 @@ DIR="$(cd "$(dirname "$0")" && pwd)/certs"
 mkdir -p "$DIR"; cd "$DIR"
 umask 077
 
+# CRLF → LF — ไม่ใช้ `sed -i 's/\r$//'`: sed ของ macOS รับ -i ต่างจาก GNU และไม่รู้จัก \r (ลบตัว r ท้ายบรรทัดแทน = PEM พัง)
+# เขียนกลับด้วย > ลงไฟล์เดิม สิทธิ์ของไฟล์จึงไม่เปลี่ยน · ไฟล์ชั่วคราว umask 077 (บางไฟล์เป็น private key)
+strip_cr() { local f; for f in "$@"; do ( umask 077; tr -d '\r' < "$f" > "$f.lf" && cat "$f.lf" > "$f" && rm -f "$f.lf" ); done; }
+
 if [ ! -f ca.key ]; then
   MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:4096 -sha256 -days 1650 -nodes \
     -keyout ca.key -out ca.crt -subj "/C=TH/O=LogChain/CN=LogChain-Web-CA" 2>/dev/null
@@ -33,7 +37,7 @@ else
   echo "✅ server cert ($san)"
 fi
 
-sed -i 's/\r$//' ./*.crt ./*.key
+strip_cr ./*.crt ./*.key
 # cert เปิดอ่านได้ · server.key อ่านผ่านกลุ่ม (Caddy รันเป็น nobody + group_add) · ca.key เฉพาะเจ้าของ
 chmod 644 ca.crt server.crt
 chmod 640 server.key

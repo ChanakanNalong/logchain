@@ -11,6 +11,10 @@ DAYS=825
 # admin = kafka-init (สร้าง topic) · exporter = kafka-exporter (อ่าน metadata / lag ให้ Prometheus)
 CLIENTS="nestjs detection admin exporter"
 
+# CRLF → LF — ไม่ใช้ `sed -i 's/\r$//'`: sed ของ macOS รับ -i ต่างจาก GNU และไม่รู้จัก \r (ลบตัว r ท้ายบรรทัดแทน = PEM พัง)
+# เขียนกลับด้วย > ลงไฟล์เดิม สิทธิ์ของไฟล์จึงไม่เปลี่ยน · ไฟล์ชั่วคราว umask 077 (บางไฟล์เป็น private key)
+strip_cr() { local f; for f in "$@"; do ( umask 077; tr -d '\r' < "$f" > "$f.lf" && cat "$f.lf" > "$f" && rm -f "$f.lf" ); done; }
+
 # CRLF → LF (ดูคอมเมนต์ท้ายไฟล์) + สิทธิ์ของ client cert หนึ่งใบ
 issue_client() {
   c="$1"
@@ -23,7 +27,7 @@ issue_client() {
     -out "clients/$c.crt" -days $DAYS -sha256 \
     -extfile "$extfile" 2>/dev/null
   rm -f "$extfile" "clients/$c.csr"
-  sed -i 's/\r$//' "clients/$c.key" "clients/$c.crt"
+  strip_cr "clients/$c.key" "clients/$c.crt"
   chmod 644 "clients/$c.crt"
   chmod 640 "clients/$c.key"
   echo "✅ client $c"
@@ -79,7 +83,7 @@ cp ca.crt clients/ca.crt
 # native openssl.exe (Git for Windows) เขียน CRLF ลง PEM ที่ generate — Kafka
 # (Java PEM parser) อ่านไม่ผ่าน: "No matching PRIVATE KEY entries in PEM file"
 # บังคับ LF ทุกไฟล์ที่ inline เข้า server.properties
-find . -type f \( -name "*.key" -o -name "*.pem" -o -name "*.crt" \) -exec sed -i 's/\r$//' {} +
+find . -type f \( -name "*.key" -o -name "*.pem" -o -name "*.crt" \) | while IFS= read -r f; do strip_cr "$f"; done
 
 # cert เปิดอ่านได้ · private key อ่านได้เฉพาะเจ้าของ + กลุ่ม (container ได้กลุ่มผ่าน group_add ใน compose)
 # · ca.key เฉพาะเจ้าของ — ไม่มี container ไหนต้องใช้
