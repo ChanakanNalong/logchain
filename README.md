@@ -48,20 +48,176 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 
 ## Setup & Run
 
-### ทางลัด — คำสั่งเดียวจบ
+### เริ่มต้นใช้งาน — จาก clone จนเห็นหน้าเว็บ
+
+> ฉบับ PDF สำหรับส่งต่อ: [`docs/guides/getting-started.pdf`](docs/guides/getting-started.pdf)
+
+| OS | สถานะ |
+|---|---|
+| Linux (Ubuntu) | ✅ ทดสอบ clone ใหม่ครบทั้งสาย (2026-09-25) |
+| Windows 10/11 — ผ่าน **WSL2** | 🟡 script รองรับแล้ว ยังไม่ได้ทดสอบบนเครื่องจริง |
+| macOS (Intel / Apple Silicon) | 🟡 script รองรับแล้ว ยังไม่ได้ทดสอบบนเครื่องจริง · image ทุกตัวมี arm64 แต่ยังไม่ได้ build บน arm64 |
+
+เครื่อง: RAM ≥ 8 GB (ระบบใช้จริง ~3.5 GB · Windows / macOS แนะนำ 16 GB) · ดิสก์ว่าง ≥ 15 GB
+
+**0. ติดตั้งโปรแกรมที่ต้องใช้** (ครั้งเดียวต่อเครื่อง) — `bootstrap.sh` เช็คให้แค่ `docker` กับ `openssl` แต่ script ย่อยใช้ `jq` และ `python3` ด้วย
+
+*Linux (Ubuntu)*
 
 ```bash
-git clone https://github.com/ChanakanNalong/logchain.git && cd logchain
+sudo apt update
+sudo apt install -y git curl jq openssl python3 libnss3-tools   # libnss3-tools = ให้เบราว์เซอร์ trust CA (ขั้น 3)
+curl -fsSL https://get.docker.com | sh      # ถ้ายังไม่มี Docker + Compose v2
+sudo usermod -aG docker $USER               # แล้ว logout/login ใหม่ 1 ครั้ง
+docker compose version                      # ต้องขึ้น v2.x
+```
+
+*Windows 10/11* — script เป็น bash จึงรันใน **WSL2 (Ubuntu)** · ทุกคำสั่งตั้งแต่นี้ไปพิมพ์ใน terminal "Ubuntu" ไม่ใช่ PowerShell
+
+1. PowerShell แบบ **Run as administrator**: `wsl --install -d Ubuntu` → restart เครื่อง → เปิดแอป "Ubuntu" ตั้ง username / password
+2. ติดตั้ง [Docker Desktop](https://www.docker.com/products/docker-desktop/) → Settings → Resources → **WSL integration** → เปิด Ubuntu
+3. ใน terminal Ubuntu:
+
+```bash
+sudo apt update && sudo apt install -y git curl jq openssl python3
+docker compose version                      # ต้องขึ้น v2.x (มาจาก Docker Desktop)
+```
+
+*macOS*
+
+1. ติดตั้ง [Docker Desktop](https://www.docker.com/products/docker-desktop/) (เลือก Apple Silicon หรือ Intel ให้ตรงเครื่อง) →
+   Settings → Resources → Memory **≥ 6 GB**
+2. ใน Terminal:
+
+```bash
+xcode-select --install                      # git + python3 (ถ้ามีแล้วจะขึ้นว่าติดตั้งอยู่แล้ว)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"   # Homebrew ถ้ายังไม่มี
+brew install jq
+docker compose version                      # ต้องขึ้น v2.x
+```
+
+curl / openssl มากับ macOS อยู่แล้ว
+
+**1. clone**
+
+```bash
+cd ~                                        # Windows: ต้องอยู่ในโฟลเดอร์ของ Ubuntu — ห้ามใต้ /mnt/c/...
+git clone https://github.com/ChanakanNalong/logchain.git
+cd logchain
+```
+
+> **Windows:** clone ใน terminal Ubuntu เท่านั้น — ใต้ `/mnt/c` ตั้งสิทธิ์ไฟล์ 0600/0640 ไม่ได้ (Kafka อ่าน key ไม่ผ่าน) และช้ามาก ·
+> clone ด้วย Git for Windows จะได้ `/bin/bash^M: bad interpreter`
+
+**2. ยกทั้งระบบ — คำสั่งเดียว**
+
+```bash
 ./scripts/bootstrap.sh
+docker compose ps          # ทุกตัวต้อง Up / healthy · ไม่มี Restarting
 ```
 
-จบแล้ว **ครั้งแรกต่อเครื่อง** ให้เบราว์เซอร์ trust CA ของ HTTPS (ต้องมี `certutil`: `sudo apt install libnss3-tools`):
+ครั้งแรกบนเครื่องใหม่ build image ~10–20 นาที (รอบต่อไป ~2–3 นาที) · Windows / macOS: เปิด Docker Desktop ค้างไว้ก่อนรัน ·
+จบแล้วต้องเห็นกรอบ **"LogChain พร้อมใช้งาน"**
+
+**3. ให้เบราว์เซอร์ trust HTTPS** (ครั้งเดียวต่อเครื่อง)
 
 ```bash
-./scripts/trust-web-ca.sh      # Chrome / Firefox บนเครื่องนี้ · restart เบราว์เซอร์หลังรัน
+./scripts/trust-web-ca.sh  # เลือกวิธีตาม OS ให้เอง · แล้วปิดเบราว์เซอร์ทุกหน้าต่าง เปิดใหม่
 ```
 
-แล้วเปิด **https://localhost:3453**
+| OS | script ทำอะไร | ต้องทำเพิ่ม |
+|---|---|---|
+| Linux | ใส่ CA ลง NSS ของ Chrome / Edge / Firefox | – |
+| Windows (WSL) | ใส่ CA ลง cert store ของ user ฝั่ง Windows (Chrome / Edge) | Windows เด้งหน้าต่าง **Security Warning** → กด **Yes** |
+| macOS | ใส่ CA ลง login keychain (Chrome / Safari / Edge) | ใส่รหัสผ่านเครื่อง / Touch ID |
+
+Firefox บน Windows / macOS ใช้ store ของตัวเอง — ถ้ายังเตือน: `about:config` → `security.enterprise_roots.enabled` = `true`
+
+**4. เปิด https://localhost:3453 แล้ว login** (Windows: เปิดในเบราว์เซอร์ฝั่ง Windows ได้เลย)
+
+| ช่อง | ค่า |
+|---|---|
+| Username | `admin-user` |
+| Password | `grep KEYCLOAK_ADMIN_USER_PASSWORD .env` |
+
+login ครั้งแรก Keycloak ให้ตั้ง **OTP** — เปิดแอป Authenticator (Google / Microsoft Authenticator ฯลฯ) สแกน QR แล้วใส่รหัส 6 หลัก ·
+ครั้งต่อไปใช้รหัสผ่าน + OTP
+
+**5. ยิงข้อมูล demo ให้หน้าเว็บมีอะไรให้ดู**
+
+```bash
+./scripts/ingest-log.sh                 # log 1 รายการ (PAN ถูก mask เป็น [PAN])
+
+set -a; . ./.env; set +a
+T=$(curl -sf -X POST http://localhost:8080/realms/logchain/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=log-ingestor \
+  -d "client_secret=$LOGCHAIN_INGESTOR_SECRET" | jq -r .access_token)
+./scripts/demo-brute-force.sh "$T"      # 6 AUTH_FAILURE → alert brute force (rule 5710)
+```
+
+รอ ~1 นาทีแล้ว refresh: **Logs** มี log ที่ยิง · **Alerts** มี alert CRITICAL · **Integrity** มี batch `SEALED`
+(ขึ้น `CONFIRMED` บน blockchain ต้องใส่ `BLOCKCHAIN_PRIVATE_KEY` เอง — ไม่บังคับ)
+
+**6. ใช้งาน dashboard** — เมนูแถบซ้าย · `admin-user` มีครบทุก role จึงเห็นทุกเมนู
+
+| เมนู | ใช้ทำอะไร | role |
+|---|---|---|
+| Dashboard | จำนวน log · Chain Integrity · กราฟปริมาณ log (1H – All) · IP ต้นทางที่เจอบ่อย · log ล่าสุด | analyst · operator · admin |
+| Logs | ค้นหา ID / source / IP / event · กรองประเภทการโจมตี + severity | analyst · operator · admin |
+| ML Detection | ผล train DeepLog (confusion matrix) + detection ที่เกิดจริง | analyst · operator · admin |
+| Dataset | ข้อมูลอ้างอิง dataset HDFS ที่ใช้ train (คงที่ ไม่ได้ดึงจากระบบ) | – |
+| Verify | สถานะ chain (Integrity · Sealed · Tampered · Anchored) + ตรวจ Merkle proof ของ log | analyst · operator · admin |
+| Alerts | กรอง status / severity / ประเภท · กดแถวดูรายละเอียด · **Resolve** | ดู: analyst ขึ้นไป · Resolve: operator · admin |
+| Reports | รายงาน compliance ตามช่วงวันที่ · **Export CSV** | auditor · admin |
+| Settings | เพิ่ม / ถอด role · ปิดบัญชี (ถอด admin ตัวเองหรือคนสุดท้ายไม่ได้) | admin |
+
+ลองทำตาม:
+- **จัดการ alert:** ขั้น 5 → **Alerts** → กรอง `OPEN` → alert CRITICAL brute force → กดแถว → **Resolve** → `RESOLVED`
+- **พิสูจน์ว่า log ไม่ถูกแก้:** **Verify** → Chain integrity 100% · Tampered 0 → กด **Verify** ที่ log ในรายการ →
+  **"Verified — proof valid"** (ขึ้น "not yet sealed" = รอ 1 นาทีให้ปิด batch ก่อน)
+- **ออกรายงาน:** **Reports** → เลือก From / To → **Export CSV** → `compliance_<from>_<to>.csv`
+
+**หน้าอื่น**
+
+| อะไร | URL | login |
+|---|---|---|
+| Swagger (API) | https://localhost:3443/api | – |
+| Grafana | http://localhost:3002 | `admin` / `GRAFANA_ADMIN_PASSWORD` ใน `.env` |
+| Prometheus | http://localhost:9090 | – |
+| Keycloak admin | https://localhost:8443/admin | `kc-admin` / `KEYCLOAK_ADMIN_PASSWORD` (ครั้งแรกตั้ง OTP) |
+
+**ปัญหาที่เจอบ่อยตอนเริ่ม** (ที่เหลือดู [Troubleshooting](#troubleshooting))
+
+| อาการ | แก้ |
+|---|---|
+| เบราว์เซอร์เตือน cert | ยังไม่รัน `./scripts/trust-web-ca.sh` หรือยังไม่ restart เบราว์เซอร์ |
+| `Invalid parameter: redirect_uri` | `./scripts/sync-keycloak-urls.sh` |
+| `permission denied` ตอนใช้ docker | ยังไม่ logout/login หลัง `usermod -aG docker` |
+| `address already in use` | มีโปรแกรมอื่นใช้พอร์ต (เช่น LogChain อีกชุดบนเครื่องเดียวกัน) — ปิดก่อน |
+| Windows: `ports are not available` / `access a socket in a way forbidden` | Windows จองพอร์ตไว้ — PowerShell (admin): `net stop winnat` แล้ว `net start winnat` แล้วรัน bootstrap ซ้ำ |
+| Windows: Kafka ขึ้นไม่ได้ `Permission denied` ที่ `.key` · `bad interpreter` | repo อยู่ใต้ `/mnt/c` หรือ clone ด้วย Git for Windows — clone ใหม่ใน `~` ของ Ubuntu |
+| Windows / macOS: container ตายเอง (`Exited (137)`) หรือช้ามาก | Docker Desktop ได้ RAM น้อยไป — Settings → Resources → Memory ≥ 6 GB |
+| เคยพิมพ์ `docker compose up -d` เปล่า ๆ แล้ว Vault / Kafka / backend พัง | รัน `./scripts/bootstrap.sh` ซ้ำ — ใส่ `HOST_UID` / `HOST_GID` ให้เองแล้วสร้าง container ใหม่ |
+| อยากเริ่มใหม่หมด (**ข้อมูลหาย**) | `docker compose down -v && rm -rf .env infra/vault/.secrets infra/kafka/certs infra/tls/certs` แล้ว bootstrap ใหม่ |
+
+**ปิดระบบ และเปิดใช้ครั้งต่อไป**
+
+| สถานการณ์ | ทำอะไร |
+|---|---|
+| ปิดคอม / รีสตาร์ตเฉย ๆ (ไม่ได้สั่ง `down`) | กลับมาเองเมื่อ Docker เริ่มทำงาน (`restart: unless-stopped`) · Windows / macOS: เปิด Docker Desktop แล้วรอ 1–2 นาที |
+| ปิดระบบเอง | `docker compose down` — ข้อมูลยังอยู่ |
+| เปิดหลังสั่ง `down` / container ไม่ขึ้นเอง | คำสั่งข้างล่าง — ไม่ต้อง trust HTTPS หรือตั้ง OTP ใหม่ |
+| ลบทิ้งทั้งหมด | `docker compose down -v` — **ข้อมูลหาย** |
+
+```bash
+cd ~/logchain                               # Windows: ในหน้าต่าง Ubuntu · เปิด Docker Desktop ก่อน
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
+```
+
+> **ห้ามพิมพ์แค่ `docker compose up -d`** — ไม่มี `HOST_UID` / `HOST_GID` ไฟล์ของ Vault จะเป็นของ root และบน macOS (gid 20 ไม่ใช่ 1000)
+> Kafka อ่าน key ไม่ได้ · จำไม่ได้ให้รัน `./scripts/bootstrap.sh` ซ้ำแทน (รันซ้ำได้)
+
+#### `bootstrap.sh` ทำอะไรบ้าง
 
 `bootstrap.sh` idempotent — รันซ้ำได้ ข้ามขั้นที่ทำไปแล้วเอง มันทำ 6 อย่าง:
 

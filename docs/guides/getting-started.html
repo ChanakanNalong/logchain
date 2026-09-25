@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>LogChain — คู่มือเริ่มต้นใช้งาน</title>
+<!-- ต้นฉบับของ getting-started.pdf · สร้างใหม่:
+     google-chrome --headless --no-pdf-header-footer --print-to-pdf=docs/guides/getting-started.pdf docs/guides/getting-started.html -->
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root {
+    --ink: #1c2330; --muted: #5b6474; --line: #dde2ea; --soft: #f4f6f9;
+    --accent: #1f5fbf; --accent-soft: #e8f0fc; --warn: #9a5b00; --warn-soft: #fff4e0;
+    --ok: #1d7a46; --code-bg: #0f172a; --code-ink: #e2e8f0; --code-cmt: #8b9bb4;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: "Noto Sans Thai", "Noto Sans", sans-serif; font-size: 10.5pt;
+         line-height: 1.6; color: var(--ink); background: #fff; }
+  code, pre { font-family: "DejaVu Sans Mono", "Noto Sans Mono", "Noto Sans Thai", monospace; }
+  h1, h2, h3 { line-height: 1.3; margin: 0; }
+  /* สระบน/วรรณยุกต์ของหัวข้อบรรทัดแรกของหน้าล้นขึ้นไปหน้าก่อน — เว้นที่ด้านบนไว้ในกล่องเดียวกัน */
+  .step, .section { padding-top: 6px; }
+
+  .cover { border-bottom: 3px solid var(--accent); padding-bottom: 12px; margin-bottom: 16px; }
+  .cover .tag { color: var(--accent); font-weight: 700; font-size: 9.5pt; letter-spacing: .04em; }
+  .cover h1 { font-size: 22pt; margin: 2px 0 4px; }
+  .cover p { margin: 0; color: var(--muted); }
+  .meta { display: flex; gap: 18px; margin-top: 8px; font-size: 9pt; color: var(--muted); }
+
+  .flow { display: flex; gap: 6px; margin: 12px 0 4px; }
+  .flow div { flex: 1; background: var(--soft); border: 1px solid var(--line); border-radius: 6px;
+              padding: 6px 8px; font-size: 8.8pt; text-align: center; }
+  .flow b { display: block; color: var(--accent); font-size: 9.5pt; }
+
+  h2 { font-size: 13.5pt; margin: 18px 0 8px; display: flex; align-items: center; gap: 8px; }
+  h2 .n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff;
+          font-size: 10.5pt; display: inline-flex; align-items: center; justify-content: center; }
+  h3 { font-size: 11pt; margin: 12px 0 4px; }
+  p { margin: 4px 0 8px; }
+  ul { margin: 4px 0 8px; padding-left: 20px; }
+  li { margin: 2px 0; }
+
+  pre { background: var(--code-bg); color: var(--code-ink); border-radius: 6px; padding: 9px 12px;
+        font-size: 8.6pt; line-height: 1.5; white-space: pre-wrap; word-break: break-all; margin: 6px 0 10px;
+        break-inside: avoid; }
+  pre .c { color: var(--code-cmt); }
+  code { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 8.8pt; }
+  pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 9.5pt; break-inside: avoid; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 700; }
+
+  .note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 7px 11px;
+          border-radius: 0 6px 6px 0; margin: 8px 0 10px; break-inside: avoid; }
+  .warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note b:first-child { display: block; margin-bottom: 2px; }
+  .ok { color: var(--ok); font-weight: 700; }
+  .section { break-inside: avoid; }
+  h2 { break-after: avoid; }
+  .step { break-inside: avoid; }
+  .os { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 4px; margin: 8px 0 10px; break-inside: avoid; }
+  .os h3 { margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+  .os h3 .badge { font-size: 8.5pt; font-weight: 600; border-radius: 10px; padding: 1px 8px; }
+  .tested { background: #e3f4ea; color: var(--ok); }
+  .untested { background: var(--warn-soft); color: var(--warn); }
+  ol { margin: 4px 0 8px; padding-left: 20px; }
+  .foot { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 6px; font-size: 8.5pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="tag">LOGCHAIN · คู่มือเริ่มต้นใช้งาน</div>
+  <h1>จาก clone จนเห็นหน้าเว็บจริง</h1>
+  <p>ระบบเก็บ log แบบตรวจสอบย้อนหลังได้ — mask ข้อมูลส่วนตัว · ตรวจจับการโจมตี · พิสูจน์ว่า log ไม่ถูกแก้ด้วย Merkle root บน blockchain</p>
+  <div class="meta"><span>Linux · Windows (WSL2) · macOS</span><span>เวลาที่ใช้ ~20–30 นาที (ครั้งแรก)</span><span>อัปเดต 2026-09-25</span></div>
+  <div class="flow">
+    <div><b>0</b>ติดตั้งโปรแกรม</div>
+    <div><b>1</b>clone</div>
+    <div><b>2</b>bootstrap</div>
+    <div><b>3</b>trust HTTPS</div>
+    <div><b>4</b>login + OTP</div>
+    <div><b>5</b>ยิงข้อมูล demo</div>
+    <div><b>6</b>ใช้งาน dashboard</div>
+  </div>
+</div>
+
+<div class="section">
+<h3>เครื่องที่ต้องใช้</h3>
+<table>
+  <tr><th style="width:22%">Linux (Ubuntu)</th><td><span class="ok">ทดสอบแล้ว</span> — clone ใหม่แล้วรันครบทั้งสาย (2026-09-25)</td></tr>
+  <tr><th>Windows 10 / 11</th><td>รันผ่าน <b>WSL2</b> · script รองรับแล้ว แต่<b>ยังไม่ได้ทดสอบบนเครื่องจริง</b></td></tr>
+  <tr><th>macOS</th><td>Intel / Apple Silicon · script รองรับแล้ว แต่<b>ยังไม่ได้ทดสอบบนเครื่องจริง</b></td></tr>
+  <tr><th>RAM</th><td>อย่างน้อย 8 GB (ระบบใช้จริงราว 3.5 GB · Windows / macOS แนะนำ 16 GB)</td></tr>
+  <tr><th>พื้นที่ดิสก์</th><td>ว่างอย่างน้อย 15 GB (Docker image รวมราว 6 GB + build cache)</td></tr>
+  <tr><th>อินเทอร์เน็ต</th><td>ต้องมีตอน clone และ build ครั้งแรก</td></tr>
+</table>
+</div>
+
+<h2><span class="n">0</span>ติดตั้งโปรแกรมที่ต้องใช้ <span style="font-weight:400;color:var(--muted);font-size:10pt">(ครั้งเดียวต่อเครื่อง · ทำเฉพาะ OS ของตัวเอง)</span></h2>
+
+<div class="os">
+<h3>Linux (Ubuntu) <span class="badge tested">ทดสอบแล้ว</span></h3>
+<pre><code>sudo apt update
+sudo apt install -y git curl jq openssl python3 libnss3-tools
+
+<span class="c"># Docker + Compose v2 (ถ้ายังไม่มี)</span>
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER      <span class="c"># แล้ว logout / login ใหม่ 1 ครั้ง</span>
+docker compose version             <span class="c"># ต้องขึ้น v2.x</span></code></pre>
+</div>
+
+<div class="os">
+<h3>Windows 10 / 11 <span class="badge untested">ยังไม่ได้ทดสอบ</span></h3>
+<p>script ของระบบเป็น bash จึงต้องรันใน <b>WSL2 (Ubuntu ที่อยู่ใน Windows)</b></p>
+<ol>
+  <li>เปิด PowerShell แบบ <b>Run as administrator</b> แล้วพิมพ์ <code>wsl --install -d Ubuntu</code> → restart เครื่อง →
+      เปิดแอป <b>Ubuntu</b> จากเมนู Start แล้วตั้ง username / password</li>
+  <li>ติดตั้ง <b>Docker Desktop</b> (docker.com/products/docker-desktop) → Settings → Resources → <b>WSL integration</b> → เปิด Ubuntu</li>
+  <li>ในหน้าต่าง Ubuntu:</li>
+</ol>
+<pre><code>sudo apt update &amp;&amp; sudo apt install -y git curl jq openssl python3
+docker compose version             <span class="c"># ต้องขึ้น v2.x (มาจาก Docker Desktop)</span></code></pre>
+<div class="note warn"><b>ทุกคำสั่งในคู่มือนี้ พิมพ์ในหน้าต่าง Ubuntu</b>ไม่ใช่ PowerShell หรือ Command Prompt · ส่วนหน้าเว็บเปิดด้วยเบราว์เซอร์ของ Windows ได้ตามปกติ</div>
+</div>
+
+<div class="os">
+<h3>macOS <span class="badge untested">ยังไม่ได้ทดสอบ</span></h3>
+<ol>
+  <li>ติดตั้ง <b>Docker Desktop</b> (เลือกรุ่น Apple Silicon หรือ Intel ให้ตรงเครื่อง) → Settings → Resources → Memory <b>อย่างน้อย 6 GB</b></li>
+  <li>ใน Terminal:</li>
+</ol>
+<pre><code>xcode-select --install             <span class="c"># ได้ git + python3 (ถ้ามีแล้วจะแจ้งว่าติดตั้งอยู่แล้ว)</span>
+<span class="c"># Homebrew (ถ้ายังไม่มี) — ดูคำสั่งติดตั้งที่ brew.sh</span>
+brew install jq
+docker compose version             <span class="c"># ต้องขึ้น v2.x</span></code></pre>
+<p>curl และ openssl มากับ macOS อยู่แล้ว</p>
+</div>
+
+<div class="step">
+<h2><span class="n">1</span>Clone โปรเจกต์</h2>
+<pre><code>cd ~
+git clone https://github.com/ChanakanNalong/logchain.git
+cd logchain</code></pre>
+<div class="note warn"><b>Windows: clone ในหน้าต่าง Ubuntu และอยู่ในโฟลเดอร์ ~ เท่านั้น</b>ห้ามไว้ใต้ <code>/mnt/c/...</code> (ตั้งสิทธิ์ไฟล์ key ไม่ได้ → Kafka ขึ้นไม่ได้ และช้ามาก) ·
+ห้าม clone ด้วย Git for Windows (จะเจอ <code>/bin/bash^M: bad interpreter</code>)</div>
+</div>
+
+<div class="step">
+<h2><span class="n">2</span>ยกทั้งระบบ — คำสั่งเดียว</h2>
+<pre><code>./scripts/bootstrap.sh</code></pre>
+<p>script จะทำให้ทั้งหมด: สุ่มรหัสผ่านทุกตัวลงไฟล์ <code>.env</code> · สร้าง certificate · เปิดฐานข้อมูล, Vault, Kafka, Keycloak ·
+build และเปิด backend, dashboard, ระบบตรวจจับ</p>
+<ul>
+  <li>ครั้งแรกบนเครื่องใหม่ต้อง build image — <b>ราว 10–20 นาที</b> (ครั้งต่อไป 2–3 นาที)</li>
+  <li>Windows / macOS: เปิด Docker Desktop ค้างไว้ก่อนรัน</li>
+  <li>จบแล้วต้องเห็นกรอบ <b>“LogChain พร้อมใช้งาน”</b> พร้อมรายการ URL</li>
+</ul>
+<p>ตรวจว่าทุกอย่างขึ้นครบ:</p>
+<pre><code>docker compose ps      <span class="c"># ทุกตัวต้องเป็น Up / healthy — ไม่มี Restarting</span></code></pre>
+</div>
+
+<div class="step">
+<h2><span class="n">3</span>ให้เบราว์เซอร์เชื่อถือ HTTPS <span style="font-weight:400;color:var(--muted);font-size:10pt">(ครั้งเดียวต่อเครื่อง)</span></h2>
+<pre><code>./scripts/trust-web-ca.sh          <span class="c"># เลือกวิธีตาม OS ให้เอง</span></code></pre>
+<table>
+  <tr><th style="width:18%">OS</th><th style="width:44%">script ทำอะไร</th><th>ต้องทำเพิ่ม</th></tr>
+  <tr><td>Linux</td><td>ใส่ CA ลง Chrome / Edge / Firefox</td><td>–</td></tr>
+  <tr><td>Windows</td><td>ใส่ CA ลง cert store ของ Windows (Chrome / Edge)</td><td>หน้าต่าง <b>Security Warning</b> เด้งขึ้น → กด <b>Yes</b></td></tr>
+  <tr><td>macOS</td><td>ใส่ CA ลง login keychain (Chrome / Safari / Edge)</td><td>ใส่รหัสผ่านเครื่อง หรือ Touch ID</td></tr>
+</table>
+<div class="note warn"><b>สำคัญ</b>รันแล้ว <b>ปิดเบราว์เซอร์ทุกหน้าต่างแล้วเปิดใหม่</b> — ถ้าข้ามขั้นนี้จะเจอหน้าเตือน “การเชื่อมต่อไม่เป็นส่วนตัว” ·
+Firefox บน Windows / macOS: ถ้ายังเตือน ไปที่ <code>about:config</code> → ตั้ง <code>security.enterprise_roots.enabled</code> เป็น <code>true</code></div>
+</div>
+
+<div class="step">
+<h2><span class="n">4</span>เปิดหน้าเว็บ แล้ว login</h2>
+<p>เปิด <b style="color:var(--accent)">https://localhost:3453</b> ระบบจะพาไปหน้า login ของ Keycloak</p>
+<table>
+  <tr><th style="width:28%">Username</th><td><code>admin-user</code></td></tr>
+  <tr><th>Password</th><td>อยู่ในไฟล์ <code>.env</code> — ดูด้วยคำสั่ง <code>grep KEYCLOAK_ADMIN_USER_PASSWORD .env</code></td></tr>
+</table>
+<div class="note"><b>login ครั้งแรกต้องตั้ง OTP (ยืนยันตัวตน 2 ขั้น)</b>
+1) เปิดแอป Authenticator ในมือถือ (Google Authenticator, Microsoft Authenticator ฯลฯ) ·
+2) สแกน QR code ที่ขึ้นบนจอ · 3) พิมพ์รหัส 6 หลักจากแอป → เข้า dashboard ได้<br>
+ครั้งต่อไป login ด้วยรหัสผ่าน + รหัส OTP จากแอป</div>
+</div>
+
+<div class="step">
+<h2><span class="n">5</span>ยิงข้อมูล demo ให้หน้าเว็บมีอะไรให้ดู</h2>
+<p>ระบบที่เพิ่งติดตั้งยังไม่มี log เลย — ใช้ script ยิงข้อมูลตัวอย่าง (รันในโฟลเดอร์ <code>logchain</code>):</p>
+<pre><code><span class="c"># 1) log 1 รายการ — เลขบัตรในข้อความจะถูก mask เป็น [PAN] ก่อนเก็บ</span>
+./scripts/ingest-log.sh
+
+<span class="c"># 2) จำลองการเดารหัสผ่าน (brute force) 6 ครั้ง → ระบบตรวจจับแล้วออก alert</span>
+set -a; . ./.env; set +a
+T=$(curl -sf -X POST http://localhost:8080/realms/logchain/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=log-ingestor \
+  -d "client_secret=$LOGCHAIN_INGESTOR_SECRET" | jq -r .access_token)
+./scripts/demo-brute-force.sh "$T"</code></pre>
+<p>รอราว 1 นาทีแล้ว refresh หน้าเว็บ จะเห็น:</p>
+<table>
+  <tr><th style="width:22%">หน้า</th><th>สิ่งที่ควรเห็น</th></tr>
+  <tr><td>Logs</td><td>log ที่ยิงเข้าไป — ข้อมูลส่วนตัวถูก mask แล้ว</td></tr>
+  <tr><td>Alerts</td><td>alert ระดับ <b>CRITICAL</b> “Multiple authentication failures (brute force)”</td></tr>
+  <tr><td>Integrity</td><td>batch สถานะ <b>SEALED</b> — log ถูกรวมเป็น Merkle root ทุก 1 นาที ·
+      จะขึ้น <b>CONFIRMED</b> (บันทึกบน blockchain) ต้องใส่ <code>BLOCKCHAIN_PRIVATE_KEY</code> ใน <code>.env</code> เอง (ไม่บังคับ)</td></tr>
+</table>
+
+</div>
+<div class="step">
+<h2><span class="n">6</span>ใช้งาน dashboard</h2>
+<p>เมนูอยู่แถบซ้าย · <code>admin-user</code> มีครบทุก role จึงเห็นทุกเมนู (บัญชีอื่นเห็นตาม role ของตัวเอง)</p>
+<table>
+  <tr><th style="width:17%">เมนู</th><th>ใช้ทำอะไร</th><th style="width:22%">role ที่ต้องมี</th></tr>
+  <tr><td><b>Dashboard</b></td><td>ภาพรวม: จำนวน log · Chain Integrity (%) · กราฟปริมาณ log (เลือกช่วง 1H – All) · IP ต้นทางที่เจอบ่อย · log ล่าสุด</td><td>analyst · operator · admin</td></tr>
+  <tr><td><b>Logs</b></td><td>ค้นหาด้วย ID / source / IP / event · กรองตามประเภทการโจมตีและ severity · เลื่อนหน้า</td><td>analyst · operator · admin</td></tr>
+  <tr><td><b>ML Detection</b></td><td>ผลการ train โมเดล DeepLog (confusion matrix) + การตรวจจับที่เกิดขึ้นจริงในระบบ</td><td>analyst · operator · admin</td></tr>
+  <tr><td><b>Dataset</b></td><td>ข้อมูลอ้างอิงของ dataset HDFS ที่ใช้ train (ข้อมูลคงที่ ไม่ได้ดึงจากระบบ)</td><td>–</td></tr>
+  <tr><td><b>Verify</b></td><td>สถานะ chain (Integrity · Sealed · Tampered · Anchored) + ตรวจ Merkle proof ของ log ทีละรายการ</td><td>analyst · operator · admin</td></tr>
+  <tr><td><b>Alerts</b></td><td>รายการ alert · กรองตาม status / severity / ประเภท · กดแถวเพื่อดูรายละเอียด · ปุ่ม <b>Resolve</b></td><td>ดู: analyst ขึ้นไป · Resolve: operator · admin</td></tr>
+  <tr><td><b>Reports</b></td><td>รายงาน compliance ตามช่วงวันที่ (integrity รายวัน · audit · คำขอลบข้อมูล PDPA) · ปุ่ม <b>Export CSV</b></td><td>auditor · admin</td></tr>
+  <tr><td><b>Settings</b></td><td>จัดการผู้ใช้: เพิ่ม / ถอด role · ปิดบัญชี (ถอด admin ของตัวเองหรือคนสุดท้ายไม่ได้ — ระบบกันไว้)</td><td>admin</td></tr>
+</table>
+</div>
+
+<div class="step">
+<h3>ลองทำตาม 3 สถานการณ์</h3>
+<div class="os">
+<h3>ก. เจอการโจมตี → จัดการ alert</h3>
+<ol>
+  <li>รันขั้นที่ 5 (brute force) แล้วรอ ~1 นาที</li>
+  <li>เมนู <b>Alerts</b> → ตั้งตัวกรอง status เป็น <b>OPEN</b> → เห็น alert <b>CRITICAL</b> “Multiple authentication failures (brute force)”</li>
+  <li>กดที่แถวเพื่อดูรายละเอียด (host · จำนวนครั้งที่เกิดซ้ำ) → กด <b>Resolve</b> → status เปลี่ยนเป็น <b>RESOLVED</b></li>
+</ol>
+</div>
+<div class="os">
+<h3>ข. พิสูจน์ว่า log ไม่ถูกแก้</h3>
+<ol>
+  <li>เมนู <b>Verify</b> → การ์ด Chain status ต้องขึ้น Chain integrity <b>100%</b> และ Tampered <b>0</b></li>
+  <li>ในรายการ log ล่าสุด กดปุ่ม <b>Verify</b> ของ log ใดก็ได้ → ต้องขึ้น <b>“Verified — proof valid”</b>
+      พร้อม hash ที่คำนวณใหม่ · Merkle path · root ของ batch</li>
+  <li>ถ้าขึ้น “Log not found, or not yet sealed into a batch” = log เพิ่งเข้า ยังไม่ถูกปิด batch — รอ 1 นาทีแล้วลองใหม่</li>
+</ol>
+<p>batch สถานะ <b>SEALED</b> = ตรวจความถูกต้องในเครื่องทุกนาทีแล้ว · <b>CONFIRMED</b> = บันทึก root บน blockchain ด้วย (ต้องตั้ง <code>BLOCKCHAIN_PRIVATE_KEY</code>)</p>
+</div>
+<div class="os">
+<h3>ค. ออกรายงาน</h3>
+<ol>
+  <li>เมนู <b>Reports</b> → เลือกช่วงวันที่ <b>From / To</b></li>
+  <li>ดูตาราง integrity รายวัน (Tampered · Unverified · Pending) และสถิติ audit</li>
+  <li>กด <b>Export CSV</b> → ได้ไฟล์ <code>compliance_&lt;from&gt;_&lt;to&gt;.csv</code></li>
+</ol>
+</div>
+</div>
+
+<div class="section">
+<h3>หน้าอื่นที่เปิดดูได้</h3>
+<table>
+  <tr><th style="width:20%">อะไร</th><th style="width:38%">URL</th><th>login</th></tr>
+  <tr><td>Swagger (API)</td><td>https://localhost:3443/api</td><td>–</td></tr>
+  <tr><td>Grafana</td><td>http://localhost:3002</td><td><code>admin</code> / <code>GRAFANA_ADMIN_PASSWORD</code> ใน <code>.env</code></td></tr>
+  <tr><td>Prometheus</td><td>http://localhost:9090</td><td>–</td></tr>
+  <tr><td>Keycloak admin</td><td>https://localhost:8443/admin</td><td><code>kc-admin</code> / <code>KEYCLOAK_ADMIN_PASSWORD</code> (ครั้งแรกตั้ง OTP)</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>ปัญหาที่เจอบ่อย</h3>
+<table>
+  <tr><th style="width:36%">อาการ</th><th>วิธีแก้</th></tr>
+  <tr><td>เบราว์เซอร์เตือนเรื่อง certificate</td><td>ยังไม่รัน <code>./scripts/trust-web-ca.sh</code> หรือยังไม่ได้ปิด-เปิดเบราว์เซอร์ใหม่</td></tr>
+  <tr><td><code>Invalid parameter: redirect_uri</code></td><td><code>./scripts/sync-keycloak-urls.sh</code></td></tr>
+  <tr><td><code>permission denied</code> ตอนใช้ docker</td><td>ยังไม่ logout / login หลัง <code>usermod -aG docker</code></td></tr>
+  <tr><td><code>address already in use</code></td><td>มีโปรแกรมอื่นใช้พอร์ตเดียวกันอยู่ — ปิดโปรแกรมนั้นก่อน</td></tr>
+  <tr><td>Windows: <code>ports are not available</code></td><td>Windows จองพอร์ตไว้ — PowerShell (admin): <code>net stop winnat</code> แล้ว <code>net start winnat</code> แล้วรัน bootstrap ซ้ำ</td></tr>
+  <tr><td>Windows: Kafka ขึ้นไม่ได้ <code>Permission denied</code> · <code>bad interpreter</code></td><td>repo อยู่ใต้ <code>/mnt/c</code> หรือ clone ด้วย Git for Windows — clone ใหม่ใน <code>~</code> ของ Ubuntu</td></tr>
+  <tr><td>Windows / macOS: container ตายเอง (<code>Exited (137)</code>) หรือช้ามาก</td><td>Docker Desktop ได้ RAM น้อยไป — Settings → Resources → Memory อย่างน้อย 6 GB</td></tr>
+  <tr><td>container ขึ้น <code>Restarting</code></td><td>ดูสาเหตุ: <code>docker compose logs &lt;ชื่อ service&gt;</code> · ส่วนใหญ่แก้ได้ด้วยรัน <code>./scripts/bootstrap.sh</code> ซ้ำ</td></tr>
+  <tr><td>เคยพิมพ์ <code>docker compose up -d</code> เปล่า ๆ แล้ว Vault / Kafka / backend พัง</td><td>รัน <code>./scripts/bootstrap.sh</code> ซ้ำ — ใส่ <code>HOST_UID</code> / <code>HOST_GID</code> ให้เองแล้วสร้าง container ใหม่ · ถ้ายังพัง ส่ง error มาให้เจ้าของโปรเจกต์</td></tr>
+  <tr><td>อยากเริ่มใหม่ทั้งหมด</td><td><code>docker compose down -v &amp;&amp; rm -rf .env infra/vault/.secrets infra/kafka/certs infra/tls/certs</code>
+      แล้วรัน bootstrap ใหม่ — <b>ข้อมูลหายทั้งหมด</b></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>ปิดระบบ และเปิดใช้ครั้งต่อไป</h3>
+<table>
+  <tr><th style="width:34%">สถานการณ์</th><th>ทำอะไร</th></tr>
+  <tr><td>ปิดคอมหรือรีสตาร์ตเฉย ๆ<br>(ไม่ได้สั่ง <code>down</code>)</td><td>ระบบกลับมาเองเมื่อ Docker เริ่มทำงาน ·
+      Windows / macOS: <b>เปิด Docker Desktop</b> แล้วรอ 1–2 นาที → เปิด https://localhost:3453</td></tr>
+  <tr><td>ปิดระบบเอง</td><td><code>docker compose down</code> — ข้อมูลยังอยู่</td></tr>
+  <tr><td>เปิดหลังสั่ง <code>down</code><br>หรือ container ไม่ขึ้นเอง</td><td>คำสั่งข้างล่าง — ไม่ต้อง trust HTTPS ใหม่ ไม่ต้องตั้ง OTP ใหม่</td></tr>
+  <tr><td>ลบทิ้งทั้งหมด</td><td><code>docker compose down -v</code> — <b>ข้อมูลหายทั้งหมด</b></td></tr>
+</table>
+<pre><code>cd ~/logchain                      <span class="c"># Windows: ในหน้าต่าง Ubuntu · เปิด Docker Desktop ก่อน</span>
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d</code></pre>
+<div class="note warn"><b>ห้ามพิมพ์แค่ <code>docker compose up -d</code></b>ต้องมี <code>HOST_UID</code> / <code>HOST_GID</code> นำหน้าเสมอ —
+ไม่งั้นไฟล์ของ Vault กลายเป็นของ root และบน macOS Kafka จะอ่านไฟล์ key ไม่ได้ ·
+จำไม่ได้ก็รัน <code>./scripts/bootstrap.sh</code> ซ้ำแทน (รันซ้ำได้ ข้ามสิ่งที่ทำไปแล้ว)</div>
+<div class="note warn"><b>อย่าส่งไฟล์ .env ให้คนอื่น</b>ไฟล์ <code>.env</code> และโฟลเดอร์ <code>infra/vault/.secrets</code> มีรหัสผ่านของเครื่องคุณ ·
+แต่ละเครื่องรัน <code>bootstrap.sh</code> สร้างของตัวเอง</div>
+</div>
+
+<div class="note"><b>เจอปัญหาที่ไม่อยู่ในตาราง</b>ส่งให้เจ้าของโปรเจกต์: OS ที่ใช้ · ภาพหน้าจอ error · ผลของ <code>docker compose ps</code> ·
+และ <code>docker compose logs &lt;service ที่มีปัญหา&gt; | tail -50</code> <b>(อย่าส่งไฟล์ .env)</b></div>
+
+<div class="foot">LogChain · github.com/ChanakanNalong/logchain · รายละเอียดเพิ่มเติมและ Troubleshooting ฉบับเต็มอยู่ใน README.md</div>
+</body>
+</html>
