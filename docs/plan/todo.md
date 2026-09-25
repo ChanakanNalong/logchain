@@ -53,7 +53,7 @@ password ของ rclone crypt 2 ตัวอยู่ใน password manager �
 
 Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboard `:3453` · HTTP เดิม bind 127.0.0.1 เสมอ · PCI 4.1 → PASS
 เจ้าของ trust CA (`./scripts/trust-web-ca.sh`) + login `admin-user` + OTP ที่ https://localhost:3453 ผ่านแล้ว (2026-09-24)
-เหลือ (ไม่บังคับ): smoke test clone ใหม่ — `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (ดูตารางกับดักใน next-steps)
+✅ smoke test clone ใหม่จาก GitHub (`ce1eacc`) ผ่านครบ 2026-09-25 — worklog 2026-09-25 หัวข้อ 3 · เจอ + แก้ `sync-keycloak-urls.sh` ล้มหลัง harden
 
 ---
 
@@ -77,6 +77,14 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 - ก่อนทำ script ตรวจ: ❌ data-root · ❌ repo · ❌ backups · ⚠️ swap → หลังทำ: ✅ ✅ ✅ ✅
 
 </details>
+
+---
+
+## 5.1 🔴 MFA ของ `kc-admin` (master realm) ไม่ได้บังคับ — เจอ 2026-09-25
+
+`kc-admin` มีแค่ password ไม่มี OTP · requiredActions ว่าง (worklog 2026-09-25 หัวข้อ 3) · PCI 8.4
+- [ ] เจ้าของ: `./scripts/harden-master-admin.sh` → login `https://localhost:8443/admin` ด้วย `kc-admin` → สแกน QR ตั้ง TOTP
+- [ ] ยืนยัน: credential ของ `kc-admin` มี `otp` (Claude ตรวจให้ได้)
 
 ---
 

@@ -13,10 +13,32 @@ URL="${URL%/}"
 KC=/opt/keycloak/bin/kcadm.sh
 CFG=/tmp/kcadm-sync.config
 
+# เช็คจาก endpoint สาธารณะก่อน (ไม่ต้อง login): authorize ตอบ 200 เฉพาะ redirect_uri ที่ลงทะเบียน (ไม่งั้น 400)
+# และ token endpoint ใส่ CORS header เฉพาะ origin ที่อยู่ใน webOrigins · realm ที่ import จาก template ปัจจุบันมีครบแล้ว
+# → ไม่ต้อง login ซึ่งจำเป็น เพราะหลัง harden-master-admin.sh `kc-admin` ติด CONFIGURE_TOTP login ด้วยรหัสอย่างเดียวไม่ได้
+OIDC="http://localhost:${KEYCLOAK_HOST_PORT:-8080}/realms/logchain/protocol/openid-connect"
+auth_code=$(curl -s -o /dev/null -w '%{http_code}' \
+  "$OIDC/auth?client_id=logchain-frontend&response_type=code&scope=openid&redirect_uri=$URL/callback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256" || true)
+cors=$(curl -s -D - -o /dev/null -X POST "$OIDC/token" -H "Origin: $URL" \
+  -d client_id=logchain-frontend -d grant_type=authorization_code -d code=x -d "redirect_uri=$URL/callback" \
+  | tr -d '\r' | grep -i '^access-control-allow-origin:' || true)
+if [ "$auth_code" = 200 ] && [ "${cors#*: }" = "$URL" ]; then
+  echo "✓ logchain-frontend มี $URL อยู่แล้ว"
+  exit 0
+fi
+
 # master admin จาก .env · ส่งรหัสทาง env ไม่ใช่ argument ของ docker exec (ไม่ค้างใน `ps` ของ host)
-docker exec -e KC_PW="$KEYCLOAK_ADMIN_PASSWORD" logchain-keycloak sh -c \
-  "$KC config credentials --config $CFG --server http://localhost:8080 --realm master --user '$KEYCLOAK_ADMIN' --password \"\$KC_PW\"" >/dev/null 2>&1 \
-  || { echo "kcadm login ไม่ผ่าน (KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ใน .env)" >&2; exit 1; }
+if ! err=$(docker exec -e KC_PW="$KEYCLOAK_ADMIN_PASSWORD" logchain-keycloak sh -c \
+  "$KC config credentials --config $CFG --server http://localhost:8080 --realm master --user '$KEYCLOAK_ADMIN' --password \"\$KC_PW\"" 2>&1); then
+  if grep -q 'not fully set up' <<<"$err"; then
+    echo "kcadm login ไม่ได้: '$KEYCLOAK_ADMIN' ต้องตั้ง TOTP ก่อน (harden-master-admin.sh บังคับ MFA)" >&2
+    echo "  เพิ่มเองใน admin console https://localhost:8443/admin → realm logchain → Clients → logchain-frontend:" >&2
+    echo "  Valid redirect URIs += $URL/*  ·  Web origins += $URL" >&2
+  else
+    echo "kcadm login ไม่ผ่าน (KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ใน .env)" >&2
+  fi
+  exit 1
+fi
 trap 'docker exec logchain-keycloak rm -f "$CFG"' EXIT
 
 client=$(docker exec logchain-keycloak $KC get clients --config "$CFG" -r logchain -q clientId=logchain-frontend --fields id,redirectUris,webOrigins)
