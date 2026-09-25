@@ -155,7 +155,6 @@
 |---|---|---|
 | 5.1 Anti-malware | PARTIAL | ClamAV สแกน repo ทุก push (block) · ไม่มี anti-malware ตอน runtime — ยอมรับความเสี่ยง มาตรการชดเชยใน E10 |
 | 9.1 Physical access | N/A | ระบบ dev / demo บนเครื่องเดียว ไม่มีศูนย์ข้อมูล · ดิสก์เข้ารหัส LUKS2 + TPM2/PIN (E12) |
-| 8 MFA ของ master admin (`kc-admin`) | **เปิดอยู่** | เจอ 2026-09-25: บนเครื่องที่ deploy ยังไม่มี OTP — รอเจ้าของรัน `scripts/harden-master-admin.sh` + ตั้ง TOTP (`docs/plan/todo.md` ข้อ 5.1) · **ลบแถวนี้เมื่อแก้แล้ว** |
 
 **Signed:** ______________________
 **Date:** ______________________ (วันที่ลงนาม)

@@ -81,11 +81,11 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 
 ---
 
-## 5.1 🔴 MFA ของ `kc-admin` (master realm) ไม่ได้บังคับ — เจอ 2026-09-25
+## 5.1 ✅ MFA ของ `kc-admin` (master realm) — เจอ + แก้ 2026-09-25
 
 `kc-admin` มีแค่ password ไม่มี OTP · requiredActions ว่าง (worklog 2026-09-25 หัวข้อ 3) · PCI 8.4
-- [ ] เจ้าของ: `./scripts/harden-master-admin.sh` → login `https://localhost:8443/admin` ด้วย `kc-admin` → สแกน QR ตั้ง TOTP
-- [ ] ยืนยัน: credential ของ `kc-admin` มี `otp` (Claude ตรวจให้ได้)
+- [x] เจ้าของ: `./scripts/harden-master-admin.sh` → login `https://localhost:8443/admin` ด้วย `kc-admin` → สแกน QR ตั้ง TOTP
+- [x] ยืนยัน: credential `otp` สร้าง 2026-09-25 15:25 UTC · login รหัสอย่างเดียว = `invalid_grant`
 
 ---
 
@@ -110,7 +110,7 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 - Key-Rotation: แถว (initial) = 2026-07-15 · Chanakan (commit `9d6c229`)
 
 ที่ต้องเป็นคนทำ:
-- [ ] แก้ MFA `kc-admin` (ข้อ 5.1) **ก่อนเซ็น** แล้วลบแถว MFA ออกจาก PCI Attestation + RTO-RPO §4 (หรือบอก Claude)
+- [x] แก้ MFA `kc-admin` (ข้อ 5.1) — ลบแถวจาก PCI Attestation · RTO-RPO §4 เป็น DONE แล้ว
 - [ ] RTO-RPO §4: ใส่ชื่อคนตรวจในแถวใหม่ 6 แถว
 - [ ] Chain-of-Custody T001–T003: Date + Authorized By
 - [ ] ชื่อ Person 3 + Supervisor · ลายเซ็น + วันที่: PCI Attestation · RTO-RPO §5 · Chain-of-Custody Signatures

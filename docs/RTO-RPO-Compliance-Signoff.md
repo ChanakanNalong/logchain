@@ -149,7 +149,7 @@ keycloak 92/92) · owner ถูก · append-only ทำงาน** = กู้�
 | Kafka mTLS ทุกเส้นทางใน network | DONE — PCI E08 | ______ | 2026-09-24 |
 | HTTPS หน้า dashboard / backend / Keycloak | DONE — PCI E11 | ______ | 2026-09-24 |
 | Encryption at rest (LUKS2 + TPM2/PIN) | DONE — PCI E12 · `scripts/check-encryption-at-rest.sh` ผ่าน | ______ | 2026-09-25 |
-| MFA ของ master admin (`kc-admin`) | **OPEN** — todo ข้อ 5.1 | ______ | ______ |
+| MFA ของ master admin (`kc-admin`) | DONE — credential `otp` มีแล้ว · login ด้วยรหัสอย่างเดียวถูกปฏิเสธ (worklog 2026-09-25 หัวข้อ 6) | ______ | 2026-09-25 |
 
 ---
 

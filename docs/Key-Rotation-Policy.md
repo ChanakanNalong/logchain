@@ -84,6 +84,7 @@ rotate deployment key จริงก่อนส่งมอบ — contract �
 | 2026-08-18 | Keycloak `logchain-admin-svc` client secret | Chanakan | Regenerate → sync Vault + `.env` → restart backend; verified `GET /admin/users` = 200 |
 | 2026-09-06 | Blockchain deployment key | Chanakan | คีย์เดิมเคยแสดงเป็น plaintext ระหว่างพัฒนา → wallet ใหม่ + redeploy contract `0xE2502FC1…` + re-seal batch |
 | 2026-09-17 | Blockchain deployment key (+ secret อื่นทั้งชุด) | Chanakan | wallet ใหม่ `0x8cBCfC04…4C55` + redeploy contract `0xE2502FC1…` → `0x5dC86975…` (contract ไม่มี `transferOwnership`) · batch เดิม re-anchor root เดิมลง contract ใหม่ → `CONFIRMED` ที่ block 47802992 · รายละเอียด `docs/worklog/2026-09-17.md` หัวข้อ 4.3 |
+| 2026-09-25 | Keycloak master admin `kc-admin` password | Chanakan | เปลี่ยนผ่าน account console หลังตั้ง TOTP (MFA เพิ่งบังคับวันเดียวกัน) → sync `KEYCLOAK_ADMIN_PASSWORD` ใน `.env` · Keycloak เก็บรหัสเดิมเป็น `password-history` (policy ห้ามซ้ำ 4 รหัสล่าสุด) |
 
 ---
 

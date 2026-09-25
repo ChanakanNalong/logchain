@@ -601,8 +601,8 @@ master realm ควบคุมทุก realm จึงเป็น identity �
 - ✅ automation SA ได้ token โดยไม่โดน MFA; least-privilege confirmed (ไม่มี realm role `admin`)
 - ✅ logchain realm + app log data preserved (logs rows ไม่ถูกลบ)
 
-> ⚠️ ผลข้างบนคือ fresh state · deployment ที่มีอยู่แล้วอาจเบี่ยงไป — 2026-09-25 เจอเครื่องหลัก `kc-admin` ไม่มี OTP และไม่มี required action
-> (login ด้วยรหัสอย่างเดียวผ่าน) · ตรวจ: login kcadm แล้ว `get users/<id>/credentials -r master` ต้องมี type `otp` ·
+> ผลข้างบนคือ fresh state · deployment ที่มีอยู่แล้วอาจเบี่ยงไป (2026-09-25 เจอเครื่องหลัก `kc-admin` ไม่มี OTP — แก้แล้ววันเดียวกัน) ·
+> ตรวจ: login kcadm ด้วย `master-automation` แล้ว `get users/<id>/credentials -r master` ต้องมี type `otp` ·
 > แก้: `./scripts/harden-master-admin.sh` แล้ว login `https://localhost:8443/admin` สแกน QR
 
 ### การ automate Keycloak หลังเปิด MFA (CI/CD)
