@@ -7,13 +7,11 @@ import json
 import logging
 import os
 import requests
-import re
 from collections import defaultdict, deque
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
-from drain3 import TemplateMiner
-from drain3.template_miner_config import TemplateMinerConfig
 from app.dedup import SeenIds
+from app.log_keys import LogKeyMatcher, mask
 from app.enrichment import enrich_ip
 from app.rules import RuleEngine
 from app.vault import get_vault
@@ -97,22 +95,10 @@ BUFFER_SIZE = 30 # เก็บ log key ล่าสุดกี่ตัวต�
 
 rule_engine = RuleEngine()
 
-# ---- Drain (parse log message -> log key) ----
-# masking เหมือน parse_logs.py
-MASK_PATTERNS = [
-    (re.compile(r"blk_-?\d+"), "<BLK>"),
-    (re.compile(r"/?\d+\.\d+\.\d+\.\d+(:\d+)?"), "<IP>"),
-    (re.compile(r"\b\d+\b"), "<NUM>"),
-]
-def mask(text: str) -> str:
-    for pattern, repl in MASK_PATTERNS:
-        text = pattern.sub(repl, text)
-    return text
-
-config = TemplateMinerConfig()
-config.profiling_enabled = False
-config.drain_sim_th = 0.4
-miner = TemplateMiner(config=config)
+# ---- log message -> log key ด้วย template ชุดที่ train DeepLog (data/drain_state.json) ----
+# ไม่สร้าง Drain ใหม่ตอนรัน — id จะไม่ตรงกับตอน train (ดู app/log_keys.py)
+log_keys = LogKeyMatcher.from_file()
+log.info(f"Loaded {log_keys.num_keys} log key templates from drain_state.json")
 
 # ---- buffer per source - เก็บ log key sequence ล่าสุด ----
 buffers: dict[str, deque] = defaultdict(lambda: deque(maxlen=BUFFER_SIZE))
@@ -249,8 +235,7 @@ for msg in consumer:
             # ถ้า rule ไม่ match ก็ให้ ML ตรวจ unknown pattern
         
             # 1. parse -> log key
-            result = miner.add_log_message(mask(message))
-            log_key = result["cluster_id"]
+            log_key = log_keys.match(mask(message))
 
             # 2. add to source buffer
             buffers[source].append(log_key)

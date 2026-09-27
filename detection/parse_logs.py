@@ -10,6 +10,8 @@ from collections import OrderedDict
 from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 from tqdm import tqdm
+# mask ตัวเดียวกับที่ consumer ใช้ตอนรันจริง (app/log_keys.py) — ต่างกันแม้ตัวเดียว template ก็ไม่ตรง
+from app.log_keys import mask as mask_content
 
 # ---- path ----
 LOG_FILE    = "data/HDFS.log"
@@ -20,16 +22,6 @@ OUT_STATE   = "data/drain_state.json"
 # regex ดึง block_id จากข้อความ log (เช่น blk_1608999687919862906)
 BLOCK_RE = re.compile(r"(blk_-?\d+)")
 
-MASK_PATTERNS = [
-    (re.compile(r"blk_-?\d+"), "<BLK>"),                # block id
-    (re.compile(r"/?\d+\.\d+\.\d+\.\d+(:\d+)?"), "<IP>"),    # IP:port (IPv4 ครบ 4 ส่วน — เดิม 3 ส่วน เหลือ "<IP>.<NUM>")
-    (re.compile(r"\b\d+\b"), "<NUM>"),                  # ตัวเลขทั่วไป
-]
-
-def mask_content(text: str) -> str:
-    for pattern, reql in MASK_PATTERNS:
-        text = pattern.sub(reql, text)
-    return text
 
 # ---- 1. setup Drain ----
 config = TemplateMinerConfig()
