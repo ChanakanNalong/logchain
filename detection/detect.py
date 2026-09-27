@@ -17,7 +17,7 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 
 # ---- hyperparmeters (ต้องตรงกับ deeplog.py) ----
-NUM_CLASSES = 48
+NUM_CLASSES = 46
 WINDOW_SIZE = 10
 HIDDEN_SIZE = 64
 NUM_LAYERS = 2

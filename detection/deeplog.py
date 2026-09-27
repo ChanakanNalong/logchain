@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 # ---- hyperparameters ----
-NUM_CLASSES = 48    # 47 log key + 1 (index 0 เมื่อ padding/unknown)
+NUM_CLASSES = 46    # 45 log key + 1 (index 0 เมื่อ padding/unknown)
 WINDOW_SIZE = 10    # คู 10 ตัวก่อนหน้า ทำหายตัวที่ 11
 HIDDEN_SIZE = 64    # ขนาด LSTM hidden state
 NUM_LAYERS  = 2     # LSTM 2 ชิ้น (ตามต้นฉบับ)

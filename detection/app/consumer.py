@@ -101,7 +101,7 @@ rule_engine = RuleEngine()
 # masking เหมือน parse_logs.py
 MASK_PATTERNS = [
     (re.compile(r"blk_-?\d+"), "<BLK>"),
-    (re.compile(r"/?\d+\.\d+\.\d+(:\d+)?"), "<IP>"),
+    (re.compile(r"/?\d+\.\d+\.\d+\.\d+(:\d+)?"), "<IP>"),
     (re.compile(r"\b\d+\b"), "<NUM>"),
 ]
 def mask(text: str) -> str:

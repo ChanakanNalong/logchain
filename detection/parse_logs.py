@@ -22,7 +22,7 @@ BLOCK_RE = re.compile(r"(blk_-?\d+)")
 
 MASK_PATTERNS = [
     (re.compile(r"blk_-?\d+"), "<BLK>"),                # block id
-    (re.compile(r"/?\d+\.\d+\.\d+(:\d+)?"), "<IP>"),    # IP:port
+    (re.compile(r"/?\d+\.\d+\.\d+\.\d+(:\d+)?"), "<IP>"),    # IP:port (IPv4 ครบ 4 ส่วน — เดิม 3 ส่วน เหลือ "<IP>.<NUM>")
     (re.compile(r"\b\d+\b"), "<NUM>"),                  # ตัวเลขทั่วไป
 ]
 
@@ -35,7 +35,8 @@ def mask_content(text: str) -> str:
 config = TemplateMinerConfig()
 config.profiling_enabled = False
 # similarty threshold - สูง = แยก template ละเอียด, ต่ำ = รวมกันมาก
-# 0.5 เป็นค่ามาครฐานที่ได้ ~47 log key สำหรับ HDFS
+# 0.4 กับ HDFS_v1 ได้ 45 log key (Loghub จัดมือได้ 29 — Drain แยก exception คนละชนิดเป็นคนละ key)
+# จำนวน key เปลี่ยน = แก้ NUM_CLASSES (key + 1) ใน deeplog.py · detect.py · app/model.py แล้ว train ใหม่
 config.drain_sim_th = 0.4
 template_miner = TemplateMiner(config=config)
 
@@ -77,7 +78,9 @@ with open(LOG_FILE, errors="ignore") as f:
 
 
         # หา block_id ในข้อความ (1 บรรทัดอาจมีหลาย block - เก็บทุกตัว)
-        for blk in blocks_in_line:
+        # block เดียวกันโผล่ซ้ำในบรรทัดเดียวได้ เช่น "Deleting block blk_X file .../blk_X" — นับครั้งเดียว
+        # (ไม่งั้น event เกิน Loghub 1,402,056 ครั้ง) · dict.fromkeys = ตัดตัวซ้ำโดยคงลำดับ
+        for blk in dict.fromkeys(blocks_in_line):
             block_sequences.setdefault(blk, []).append(log_key)
 
 print(f"    found {len(block_sequences):,} unique blocks")

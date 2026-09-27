@@ -20,7 +20,7 @@ DETECT_DURATION = Histogram(
 )
 
 # ---- ค่าคงที่ - ต้องตรงกับ Deeplog.py ตอน train
-NUM_CLASSES = 48
+NUM_CLASSES = 46
 WINDOW_SIZE = 10
 HIDDEN_SIZE = 64
 NUM_LAYERS  = 2
