@@ -15,6 +15,14 @@ class MaskTest(unittest.TestCase):
         )
         self.assertEqual(mask("size 67108864"), "size <NUM>")
 
+    def test_backend_pii_masked_forms_mask_the_same(self):
+        # backend (pii-masking.service.ts) ส่งมาเป็น .xxx / [PAN] — ต้องได้ token เดียวกับ log ดิบที่ใช้ train
+        self.assertEqual(
+            mask("Receiving block blk_-1234567890123456 src: /10.250.19.xxx:54106 dest: /10.250.19.xxx:50010"),
+            mask("Receiving block blk_-1234567890123456 src: /10.250.19.102:54106 dest: /10.250.19.102:50010"),
+        )
+        self.assertEqual(mask("Deleting block blk_-[PAN] file x"), "Deleting block <BLK> file x")
+
     def test_version_string_is_not_an_ip(self):
         # regex เดิม (3 ส่วน) จับ 1.2.3 เป็น IP
         self.assertEqual(mask("version 1.2.3"), "version <NUM>.<NUM>.<NUM>")

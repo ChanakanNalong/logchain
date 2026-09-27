@@ -20,10 +20,13 @@ DRAIN_STATE_PATH = Path(__file__).parent.parent / "data" / "drain_state.json"
 UNKNOWN_KEY = 0
 WILDCARD = "<*>"
 
+# ตอนรันจริง message ผ่าน PII masking ของ backend (src/logs/services/pii-masking.service.ts) มาก่อน
+# ซึ่งไม่มีตอน train (HDFS.log ดิบ) — ต้องรับทั้งสองแบบให้ออกมาเป็น token เดียวกัน ไม่งั้น ~66% ของบรรทัด HDFS เป็น UNKNOWN_KEY
+#   IP: 10.250.19.102 → 10.250.19.xxx · block id ติดลบ 13/16 หลัก → blk_-[THAI_ID] / blk_-[PAN]
 MASK_PATTERNS = [
-    (re.compile(r"blk_-?\d+"), "<BLK>"),                     # block id
-    (re.compile(r"/?\d+\.\d+\.\d+\.\d+(:\d+)?"), "<IP>"),    # IPv4 (+ port)
-    (re.compile(r"\b\d+\b"), "<NUM>"),                       # ตัวเลขทั่วไป
+    (re.compile(r"blk_-?(?:\d+|\[[A-Z_]+\])"), "<BLK>"),                  # block id
+    (re.compile(r"/?\d+\.\d+\.\d+\.(?:\d+|xxx)(:\d+)?"), "<IP>"),         # IPv4 (+ port)
+    (re.compile(r"\b\d+\b"), "<NUM>"),                                    # ตัวเลขทั่วไป
 ]
 
 

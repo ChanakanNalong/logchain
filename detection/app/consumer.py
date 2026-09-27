@@ -11,7 +11,7 @@ from collections import defaultdict, deque
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaError
 from app.dedup import SeenIds
-from app.log_keys import LogKeyMatcher, mask
+from app.log_keys import UNKNOWN_KEY, LogKeyMatcher, mask
 from app.enrichment import enrich_ip
 from app.rules import RuleEngine
 from app.vault import get_vault
@@ -33,7 +33,7 @@ _vault = get_vault()
 MESSAGE_COUNT = Counter(
     "consumer_messages_total",
     "Messages processed by consumer",
-    ["status"], # success / failed / rule_match / ml_anomaly / normal / duplicate
+    ["status"], # success / failed / rule_match / ml_anomaly / normal / duplicate / ml_skipped_unknown
 )
 
 ALERT_COUNT = Counter(
@@ -236,6 +236,13 @@ for msg in consumer:
         
             # 1. parse -> log key
             log_key = log_keys.match(mask(message))
+
+            # DeepLog train ด้วย log ของ HDFS อย่างเดียว — log ที่ไม่ตรง template ไหน (UNKNOWN_KEY)
+            # ส่งเข้าโมเดลแล้วเด้ง anomaly ทุกครั้ง · ไม่ใส่ buffer เลย window จึงไม่มี key 0
+            # (ใส่แล้วค่อยข้ามทั้ง window = log แปลกตัวเดียวปิด ML ของ source นั้นไป BUFFER_SIZE ข้อความ)
+            if log_key == UNKNOWN_KEY:
+                MESSAGE_COUNT.labels(status="ml_skipped_unknown").inc()
+                continue
 
             # 2. add to source buffer
             buffers[source].append(log_key)
