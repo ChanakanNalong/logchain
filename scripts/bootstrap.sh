@@ -47,6 +47,45 @@ command -v docker >/dev/null || die "ไม่มี docker — ติดตั�
 docker compose version >/dev/null 2>&1 || die "ไม่มี docker compose v2 (plugin)"
 command -v openssl >/dev/null || die "ไม่มี openssl — ใช้สุ่ม secret และสร้าง kafka cert"
 
+# ── กัน checkout อื่นชน project ชื่อเดียวกัน ────────────────────────────────
+# docker-compose.yml ตั้ง `name: logchain` — clone ที่สองในเครื่องเดียวกันจึงได้ project เดียวกัน
+# แล้วไปเกาะ volume ของอีกชุด (logchain_postgres_data / logchain_vault_data): Keycloak ต่อ DB ไม่ได้
+# (รหัสใน .env ไม่ตรง) · Vault initialized แต่ไม่มี unseal key · container ของอีกชุดถูกแทนที่
+# ทดสอบ clone แยก: ปิดอีกชุดก่อน (ไม่ -v) แล้ว COMPOSE_PROJECT_NAME=logchain-smoke ./scripts/bootstrap.sh
+PROJECT="$("${COMPOSE[@]}" config --format json 2>/dev/null \
+    | sed -n 's/^  "name": "\(.*\)",$/\1/p' | head -n1 || true)"   # config ล้มได้ (ยังไม่มี .env) → ใช้ทางสำรองข้างล่าง
+[ -n "$PROJECT" ] || PROJECT="${COMPOSE_PROJECT_NAME:-$(sed -n 's/^name: *//p' docker-compose.yml | head -n1)}"
+HERE="$(pwd -P)"
+
+while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    other="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"
+    [ "$other" = "$HERE" ] && continue
+    die "project '$PROJECT' เป็นของ $dir อยู่แล้ว (มี container ของ project นี้อยู่)
+  รันต่อจะไปใช้ container/volume ของชุดนั้น — ข้อมูลและ Vault ของชุดนั้นเสี่ยงพัง
+  ทดสอบ clone แยก: ปิดชุดนั้นก่อน (cd $dir && docker compose down  ← ห้าม -v)
+  แล้วรัน: COMPOSE_PROJECT_NAME=${PROJECT}-smoke ./scripts/bootstrap.sh"
+done < <(docker ps -a --filter "label=com.docker.compose.project=$PROJECT" \
+            --format '{{.Label "com.docker.compose.project.working_dir"}}' | sort -u)
+
+# ไม่มี container แล้วก็ยังชนได้ถ้า volume ของอีกชุดค้างอยู่ — Vault ที่ init แล้วแต่ไม่มี key ในโฟลเดอร์นี้คือสัญญาณ
+if docker volume inspect "${PROJECT}_vault_data" >/dev/null 2>&1 \
+   && [ ! -f infra/vault/.secrets/init.env ]; then
+    die "มี volume ${PROJECT}_vault_data อยู่แล้ว แต่โฟลเดอร์นี้ไม่มี infra/vault/.secrets/init.env
+  น่าจะเป็น volume ของ checkout อื่น — รันต่อจะเกาะข้อมูลของชุดนั้นแล้ว Vault unseal ไม่ได้
+  ทดสอบ clone แยก: COMPOSE_PROJECT_NAME=${PROJECT}-smoke ./scripts/bootstrap.sh
+  ⚠️ อย่าลบ volume นี้จนกว่าจะแน่ใจว่าไม่ใช่ของชุดจริง (ลบแล้ว unseal key เดิมใช้ไม่ได้อีก)"
+fi
+
+# key ใน .secrets ผูกกับ vault volume ของ project ที่ init มัน — มี init.env จากรอบ logchain-smoke
+# แล้วมารันด้วย project logchain = key ไม่ตรง volume (เช็คข้างบนจับไม่ได้เพราะไฟล์มีอยู่) · เขียน marker ในขั้นที่ 4
+PROJECT_MARKER="infra/vault/.secrets/compose-project"
+if [ -f "$PROJECT_MARKER" ] && [ "$(cat "$PROJECT_MARKER")" != "$PROJECT" ]; then
+    die "Vault key ในโฟลเดอร์นี้เป็นของ project '$(cat "$PROJECT_MARKER")' แต่กำลังรันด้วย project '$PROJECT'
+  key ชุดนี้ unseal vault ของ '$PROJECT' ไม่ได้ — ถ้าตั้งใจใช้ project เดิม: COMPOSE_PROJECT_NAME=$(cat "$PROJECT_MARKER") ./scripts/bootstrap.sh
+  ถ้าตั้งใจเปลี่ยน project จริง (และ '$PROJECT' ไม่ใช่ของชุดอื่นในเครื่อง): ลบ $PROJECT_MARKER แล้วรันใหม่"
+fi
+
 # ── 1. .env ────────────────────────────────────────────────────────────────
 say "1/6  เตรียม .env"
 
@@ -162,6 +201,7 @@ if [ ! -r "$APPROLE_FILE" ]; then
 fi
 [ -r "$APPROLE_FILE" ] || die "ยังอ่าน $APPROLE_FILE ไม่ได้ — แก้เอง: sudo chown $(id -u):$(id -g) $APPROLE_FILE"
 ok "เจอ $APPROLE_FILE"
+printf '%s\n' "$PROJECT" > "$PROJECT_MARKER"   # ให้รอบหน้ารู้ว่า key ชุดนี้เป็นของ project ไหน (ดูเช็คก่อนขั้นที่ 1)
 
 # merge เข้า .env (upsert ทีละ key)
 while IFS='=' read -r key value; do
