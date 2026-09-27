@@ -165,8 +165,8 @@ else
     ok "สร้าง CA + broker cert 3 ใบ + client cert (nestjs, detection)"
 fi
 
-# HTTPS หน้า Keycloak / backend / dashboard — มีอยู่แล้วข้าม (CA เดิม เบราว์เซอร์ไม่ต้อง trust ใหม่)
-./infra/tls/gen-certs.sh
+# HTTPS หน้า Keycloak / backend / dashboard — มีอยู่แล้วข้าม (CA เดิม เบราว์เซอร์ไม่ต้อง trust ใหม่) · ชื่อ CA ต่อท้ายด้วย project
+COMPOSE_PROJECT_NAME="$PROJECT" ./infra/tls/gen-certs.sh
 ok "HTTPS cert (infra/tls/certs) — ให้เบราว์เซอร์ trust: ./scripts/trust-web-ca.sh"
 
 # โฟลเดอร์รหัส SMTP ของ Alertmanager (gitignored) — ต้องมีก่อน compose up ไม่งั้น docker สร้าง

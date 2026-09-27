@@ -7,8 +7,17 @@
 #
 # TLS_EXTRA_SANS (ใน .env) = ชื่อ/IP เพิ่มเติมที่เครื่องอื่นใช้เรียก เช่น "DNS:logchain.lan,IP:10.5.50.253"
 # (ต้องตรงกับ KEYCLOAK_URL / NEXT_PUBLIC_* ที่ตั้งไว้ ไม่งั้นเบราว์เซอร์เตือนชื่อไม่ตรง)
+#
+# ชื่อ CA ต่อท้ายด้วยชื่อ compose project เช่น "LogChain-Web-CA (logchain-smoke)" — clone สองชุดในเครื่องเดียวกัน
+# ได้ CA คนละใบ ถ้าชื่อซ้ำ trust store ของเบราว์เซอร์เก็บได้ทีละใบ แล้วอีกชุดขึ้น ERR_CERT_AUTHORITY_INVALID
+# project: COMPOSE_PROJECT_NAME (env → .env) → `name:` ใน docker-compose.yml · CA ที่สร้างก่อนมีข้อนี้ชื่อ "LogChain-Web-CA" เฉย ๆ
 set -euo pipefail
-DIR="$(cd "$(dirname "$0")" && pwd)/certs"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+DIR="$ROOT/infra/tls/certs"
+PROJECT="${COMPOSE_PROJECT_NAME:-}"
+[ -n "$PROJECT" ] || [ ! -f "$ROOT/.env" ] || PROJECT="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$ROOT/.env" | tail -n1)"
+[ -n "$PROJECT" ] || PROJECT="$(sed -n 's/^name: *//p' "$ROOT/docker-compose.yml" | head -n1)"
+CA_NAME="LogChain-Web-CA${PROJECT:+ ($PROJECT)}"
 mkdir -p "$DIR"; cd "$DIR"
 umask 077
 
@@ -18,8 +27,8 @@ strip_cr() { local f; for f in "$@"; do ( umask 077; tr -d '\r' < "$f" > "$f.lf"
 
 if [ ! -f ca.key ]; then
   MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:4096 -sha256 -days 1650 -nodes \
-    -keyout ca.key -out ca.crt -subj "/C=TH/O=LogChain/CN=LogChain-Web-CA" 2>/dev/null
-  echo "✅ CA (LogChain-Web-CA)"
+    -keyout ca.key -out ca.crt -subj "/C=TH/O=LogChain/CN=$CA_NAME" 2>/dev/null
+  echo "✅ CA ($CA_NAME)"
 fi
 
 if [ -f server.crt ] && [ "${1:-}" != "--renew" ]; then

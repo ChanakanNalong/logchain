@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# ให้เบราว์เซอร์บนเครื่องนี้ trust CA ของ HTTPS (infra/tls/certs/ca.crt · LogChain-Web-CA) — รันครั้งเดียวต่อเครื่อง
+# ให้เบราว์เซอร์บนเครื่องนี้ trust CA ของ HTTPS (infra/tls/certs/ca.crt · "LogChain-Web-CA (<project>)") — รันครั้งเดียวต่อเครื่อง
+#   clone คนละ compose project ได้ CA คนละชื่อ จึง trust พร้อมกันได้ ไม่ทับกัน
 #   Linux   → NSS DB: Chrome / Chromium / Edge (~/.pki/nssdb) + Firefox ทุก profile (รวมแบบ snap)
 #             ต้องมี certutil: sudo apt install libnss3-tools
 #   macOS   → login keychain (Chrome / Safari / Edge) — macOS ถามรหัสผ่านหรือ Touch ID
@@ -12,12 +13,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CA=infra/tls/certs/ca.crt
-NAME="LogChain-Web-CA"
 REMOVE=false; [ "${1:-}" = "--remove" ] && REMOVE=true
 
 [ -f "$CA" ] || { echo "ไม่มี $CA — รัน ./infra/tls/gen-certs.sh ก่อน" >&2; exit 1; }
-# OpenSSL พิมพ์ "CN = x" · LibreSSL (macOS) พิมพ์ "CN=x"
-openssl x509 -in "$CA" -noout -subject | grep -qE "CN ?= ?$NAME" || { echo "$CA ไม่ใช่ $NAME" >&2; exit 1; }
+# ชื่อใน trust store = CN ของ ca.crt: "LogChain-Web-CA (<project>)" (gen-certs.sh) หรือ "LogChain-Web-CA" (CA ที่สร้างก่อนนั้น)
+# CN อยู่ท้าย subject · OpenSSL พิมพ์ "C = TH, O = LogChain, CN = x" · LibreSSL (macOS) พิมพ์ "/C=TH/O=LogChain/CN=x"
+# macOS (-c) กับ Windows (-delstore) หาชื่อแบบ substring — วงเล็บปิดท้ายกันไม่ให้ "(logchain)" ไปโดน "(logchain-smoke)"
+# แต่ชื่อเก่าไม่มีวงเล็บ รันกับ CA เก่าจะลบ CA ของ clone อื่นที่ trust ไว้ด้วย (Linux เทียบชื่อตรงตัว ไม่โดน)
+NAME="$(openssl x509 -in "$CA" -noout -subject | sed -n 's/.*CN *= *//p')"
+case "$NAME" in
+  "LogChain-Web-CA"|"LogChain-Web-CA ("*")") ;;
+  *) echo "$CA ไม่ใช่ CA ของ LogChain (CN=$NAME)" >&2; exit 1 ;;
+esac
 
 case "$(uname -s)" in
   Darwin) os=macos ;;

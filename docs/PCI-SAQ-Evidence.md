@@ -104,7 +104,7 @@
 ### E11 — HTTPS (Caddy) — Req. 4
 - service `https-proxy` (`caddy:2.10-alpine` · รันเป็น nobody) · `infra/caddy/Caddyfile`: `https://:8443` → Keycloak · `:3443` → backend ·
   `:3453` → dashboard · `protocols tls1.2 tls1.3` · HSTS · ไม่มี ACME / admin API
-- cert: `infra/tls/gen-certs.sh` — CA `LogChain-Web-CA` **แยกจาก CA ของ Kafka** · server cert อายุ 397 วัน SAN `localhost`, `127.0.0.1`
+- cert: `infra/tls/gen-certs.sh` — CA `LogChain-Web-CA (<compose project>)` **แยกจาก CA ของ Kafka** · server cert อายุ 397 วัน SAN `localhost`, `127.0.0.1`
   (+ `TLS_EXTRA_SANS`) · key 0640 · CA key 0600 ไม่ mount เข้า container ไหน
 - HTTP ของ Keycloak / backend / dashboard (8080 / 3000 / 3003) bind `127.0.0.1` แบบตายตัว (ไม่ตาม `PUBLISH_ADDR`) → จากเครื่องอื่นมีแต่ HTTPS
 - Keycloak: `KC_HOSTNAME_URL` = `KEYCLOAK_URL` = `https://localhost:8443` → `iss` ของทุก token เป็น https ไม่ว่าจะขอผ่านทางไหน ·
