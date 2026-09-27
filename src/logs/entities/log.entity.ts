@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { SOURCE_MAX_LENGTH } from '../dto/create-log.dto';
 
 @Entity('logs')
 export class Log {
@@ -12,7 +13,7 @@ export class Log {
   id: string;
 
   @Index()
-  @Column({ length: 128 })
+  @Column({ length: SOURCE_MAX_LENGTH })
   source: string;
 
   @Column({ name: 'source_id', type: 'inet', nullable: true })

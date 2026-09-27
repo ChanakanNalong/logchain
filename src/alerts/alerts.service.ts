@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { Alert } from './entities/alert.entity';
+import { ALERT_COLUMN_LENGTH, Alert } from './entities/alert.entity';
 import { NotificationService } from '../notification/notification.service';
 
 /** severity ที่ส่ง email — ทั้งตอนสร้างและตอนเกิดซ้ำ */
@@ -32,8 +32,9 @@ export class AlertsService {
       Number.isInteger(n) && n >= 0 ? n : DEFAULT_RENOTIFY_MINUTES;
   }
 
-  async createOrDedup(dto: Partial<Alert>): Promise<Alert> {
-    const ruleId = ruleIdOf(dto);
+  async createOrDedup(input: Partial<Alert>): Promise<Alert> {
+    // ตัดก่อนสร้าง dedup key — key ต้องเป็นค่าเดียวกับที่ลง DB จริง
+    const { dto, ruleId } = this.fitToColumns(input, ruleIdOf(input));
 
     // key ต้องตรงกับ idx_alerts_open_dedup_rule เป๊ะ (AlertsRuleDedup migration)
     // ไม่งั้น insert ชน 23505 แล้ว findOne ด้านล่างหาตัวที่ชนะไม่เจอ
@@ -97,6 +98,57 @@ export class AlertsService {
     }
 
     return saved;
+  }
+
+  /**
+   * ตัดค่าที่ยาวเกินคอลัมน์ให้พอดี แทนการปล่อยให้ INSERT ชน `value too long` (22001) แล้ว alert หาย
+   *
+   * เคยหายจริง: alerts.source เป็น 32 แต่ log ยอม source 128 (ขยายแล้วใน AlertsSourceLength migration)
+   * ฟิลด์เหล่านี้มาจาก detection / POST /alerts ซึ่งไม่ผ่าน DTO ของ alert — ถ้าวันหน้ามีฝั่งไหนยาวขึ้นอีก
+   * alert ยังต้องเข้า DB ได้ · log WARN ทุกครั้งที่ตัด และเก็บค่าเต็มไว้ที่ detail.truncated_fields
+   * นับความยาวเป็นตัวอักษร (code point) แบบเดียวกับ varchar(n) ของ Postgres
+   */
+  private fitToColumns(
+    dto: Partial<Alert>,
+    ruleId: string | null,
+  ): { dto: Partial<Alert>; ruleId: string | null } {
+    const cut: Record<string, string> = {};
+    const fit = <T>(field: keyof typeof ALERT_COLUMN_LENGTH, value: T): T => {
+      if (typeof value !== 'string') return value;
+      const chars = Array.from(value);
+      const max = ALERT_COLUMN_LENGTH[field];
+      if (chars.length <= max) return value;
+      cut[field] = value;
+      return chars.slice(0, max).join('') as T;
+    };
+
+    const out: Partial<Alert> = { ...dto };
+    for (const f of ['alertType', 'severity', 'source'] as const) {
+      if (f in out) out[f] = fit(f, out[f]);
+    }
+    const fittedRuleId = fit('ruleId', ruleId);
+
+    const fields = Object.keys(cut);
+    if (fields.length > 0) {
+      this.logger.warn(
+        `Alert ${String(out.alertType)} (log_id=${out.logId ?? '-'}) ` +
+          fields
+            .map(
+              (f) =>
+                `${f} ยาว ${Array.from(cut[f]).length} ตัว เกินคอลัมน์ ${ALERT_COLUMN_LENGTH[f as keyof typeof ALERT_COLUMN_LENGTH]}`,
+            )
+            .join(', ') +
+          ` — ตัดให้พอดีแล้วบันทึกต่อ (ค่าเต็มอยู่ที่ detail.truncated_fields)`,
+      );
+      const detail =
+        out.detail &&
+        typeof out.detail === 'object' &&
+        !Array.isArray(out.detail)
+          ? out.detail
+          : {};
+      out.detail = { ...detail, truncated_fields: cut };
+    }
+    return { dto: out, ruleId: fittedRuleId };
   }
 
   /**

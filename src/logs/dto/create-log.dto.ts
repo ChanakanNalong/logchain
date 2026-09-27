@@ -13,6 +13,12 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/**
+ * ความยาวสูงสุดของ source — คอลัมน์ logs.source และ alerts.source ต้องไม่สั้นกว่านี้
+ * (alert ของ log ใช้ source เดียวกัน · เดิม alerts.source = 32 ทำให้ alert หาย)
+ */
+export const SOURCE_MAX_LENGTH = 128;
+
 // DTO - กำหนดรูปแบบและ validation ของ request body
 // class-validator จะ throw error อัจโนมัติถ้า input ไม่ตรง
 
@@ -20,7 +26,7 @@ export class CreateLogDto {
   @ApiProperty({ example: 'web-server-01' })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(128)
+  @MaxLength(SOURCE_MAX_LENGTH)
   source: string;
 
   @ApiPropertyOptional({ example: '10.0.0.1' })

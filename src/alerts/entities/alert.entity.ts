@@ -5,6 +5,19 @@ import {
   CreateDateColumn,
   Index,
 } from 'typeorm';
+import { SOURCE_MAX_LENGTH } from '../../logs/dto/create-log.dto';
+
+/**
+ * ความยาวของคอลัมน์ varchar ที่รับค่าจากภายนอก (detection ผ่าน Kafka / POST /alerts)
+ * AlertsService ตัดค่าที่ยาวเกินตามนี้ก่อน INSERT — ต้องตรงกับ DB
+ * (infra/postgres/init/02-schema.sql + migrations)
+ */
+export const ALERT_COLUMN_LENGTH = {
+  alertType: 64,
+  severity: 16,
+  source: SOURCE_MAX_LENGTH,
+  ruleId: 32,
+} as const;
 
 @Entity('alerts')
 export class Alert {
@@ -15,10 +28,11 @@ export class Alert {
   @Column({ name: 'batch_id', type: 'uuid', nullable: true }) batchId:
     | string
     | null;
-  @Column({ name: 'alert_type', length: 64 }) alertType: string;
-  @Index() @Column({ length: 16 }) severity: string;
+  @Column({ name: 'alert_type', length: ALERT_COLUMN_LENGTH.alertType })
+  alertType: string;
+  @Index() @Column({ length: ALERT_COLUMN_LENGTH.severity }) severity: string;
 
-  @Column({ length: 32 }) source: string;
+  @Column({ length: ALERT_COLUMN_LENGTH.source }) source: string;
   @Column({ type: 'text' }) title: string;
   @Column({ type: 'jsonb', nullable: true }) detail: object | null;
   @Index() @Column({ default: 'OPEN' }) status: string;
@@ -30,7 +44,12 @@ export class Alert {
    * ของ host หนึ่งจะกลืนทุก rule อื่นบน host เดียวกัน (ดู AlertsRuleDedup migration)
    * null = alert ที่ไม่มี rule (ML_ANOMALY, INTEGRITY_TAMPERED)
    */
-  @Column({ name: 'rule_id', type: 'varchar', length: 32, nullable: true })
+  @Column({
+    name: 'rule_id',
+    type: 'varchar',
+    length: ALERT_COLUMN_LENGTH.ruleId,
+    nullable: true,
+  })
   ruleId: string | null;
 
   /** เกิดซ้ำกี่ครั้งระหว่างที่ alert นี้ยัง OPEN (รวมครั้งแรก) */

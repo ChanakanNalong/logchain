@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS alerts (
   batch_id          UUID,
   alert_type        VARCHAR(64)     NOT NULL,
   severity          VARCHAR(16)     NOT NULL,
-  source            VARCHAR(32)     NOT NULL,
+  -- 128 = logs.source / CreateLogDto.source (เดิม 32 ทำให้ alert ของ source ยาวหาย)
+  -- DB เดิมได้รับผ่าน migration 1790553600000-AlertsSourceLength
+  source            VARCHAR(128)    NOT NULL,
   title             TEXT            NOT NULL,
   detail            JSONB,
   status            VARCHAR(16)     NOT NULL DEFAULT 'OPEN',
