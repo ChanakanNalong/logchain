@@ -4,8 +4,9 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-25 (ท้ายวัน) · **HEAD:** `03a9e4d` · งานวันนี้: `docs/worklog/2026-09-25.md` (encryption at rest ปิดครบ · smoke test · MFA kc-admin · คู่มือหลาย OS · sign-off เตรียมแล้ว)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · ของเมื่อวาน `docs/worklog/2026-09-22.md`
+> **เขียนเมื่อ:** 2026-09-28 (เช้ามืด) · **HEAD:** `cef8e76` · งานล่าสุด: `docs/worklog/2026-09-28.md`
+> (smoke test clone แยก · CA ต่อชื่อ project · log key ของ DeepLog 45 ตัว + train ใหม่ · consumer ใช้ template ชุดที่ train)
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
 
 ---
 
@@ -20,6 +21,11 @@
 - งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 (ช่องว่าง compliance) ปิดครบ 6.1–6.8**
 - **ข้อมูลทั้งหมดอยู่บนดิสก์เข้ารหัส** (2026-09-25): repo จริงอยู่ `/srv/lcsecure/home/logchain` (`~/Documents/logchain` = symlink) ·
   Docker data-root `/srv/lcsecure/docker` · boot แล้วต้องใส่ PIN ของ `lcsecure` ไม่งั้น Docker ไม่ขึ้น
+- **DeepLog = 45 log key** (`NUM_CLASSES = 46` ใน `deeplog.py` · `detect.py` · `app/model.py`) · F1 0.7339 ที่ g=8 (เดิม 47 key 0.7138)
+  · consumer แปลง log → key ด้วย template ใน `detection/data/drain_state.json` ชุดเดียวกับตอน train (`app/log_keys.py` — ไม่สร้าง Drain ตอนรัน)
+  · log ที่ไม่ตรง template (ไม่ใช่ HDFS) ข้าม ML ไป rule engine อย่างเดียว (`consumer_messages_total{status="ml_skipped_unknown"}`)
+- **CA ของ HTTPS ต่อชื่อ compose project** (`LogChain-Web-CA (<project>)` · 2026-09-28) — clone คนละ project trust พร้อมกันได้
+  · CA ของชุดจริงสร้างก่อนนั้นจึงยังชื่อ `LogChain-Web-CA` เฉย ๆ (ไม่ต้องทำอะไร)
 - มี migration แล้ว 5 ตัว รันเองตอน backend boot:
   `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog` · `ErasurePseudonymize`
 
@@ -162,6 +168,31 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | 6.7 ✅ | encryption at rest — LUKS2 + TPM2/PIN ที่ `/srv/lcsecure` (Docker data-root + repo) · reboot ผ่าน · `./scripts/check-encryption-at-rest.sh` ผ่าน · PCI 3.1 → PASS (E12) · ลบ `docker.old` + ปิด swap แล้ว (worklog 2026-09-25) | B1 | เสร็จ 2026-09-25 |
 | 6.8 ✅ | erasure **pseudonymize** แทนลบ (เจ้าของเลือกทาง B) — HMAC key ใน Vault `secret/logchain/erasure` · + retention บังคับเก็บ audit ≥ 365 วัน (เดิมลบที่ 90) (worklog 2026-09-24 หัวข้อ 1) | B10 | เสร็จ 2026-09-24 |
 
+## 7. งานค้างจาก 2026-09-28 (worklog `2026-09-28.md`)
+
+### 7.1 ✅ commit detection ที่ระบบรันอยู่แล้ว — `979aa3d`
+
+`detection/app/consumer.py` · `detection/app/log_keys.py` · `detection/tests/test_log_keys.py` — ข้าม ML เมื่อ key 0 (หัวข้อ 7)
++ `mask()` รับรูปที่ backend PII-mask แล้ว (`.xxx` · `blk_-[PAN]` — หัวข้อ 8) · image บนเครื่อง rebuild แล้ว · ทดสอบบนระบบจริงผ่าน (หัวข้อ 9)
+· image บนเครื่องตรงกับ git แล้ว
+
+### 7.2 ⬜ ตัวเลขสำหรับรายงาน
+
+- log key: **45** (โค้ดปัจจุบัน `parse_logs.py`) เทียบ Loghub **29** (`HDFS_v1.zip` preprocessed · สำเนาที่ `~/Documents/logchain-data/HDFS.log_templates.csv`)
+  — ไฟล์บน GitHub ของ Loghub มี 30 (E30 ไม่มีใน trace) · 45 = 29 + 17 (Drain แยก exception) − 1 (E8 + E11 รวม)
+- F1 0.7339 มาจาก seed 42 รอบเดียว — ถ้าจะเขียนว่าดีกว่า 47 key ควร train หลาย seed
+
+### 7.3 ⬜ clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
+
+- CA ของ clone ยังชื่อเก่า (สร้างก่อน `2afc52e`) — จะ trust ทั้งสองชุดพร้อมกัน: ใน clone `rm -rf infra/tls/certs` →
+  `COMPOSE_PROJECT_NAME=logchain-smoke ./infra/tls/gen-certs.sh` → `docker restart logchain-https-proxy` → `./scripts/trust-web-ca.sh`
+- volume `logchain-smoke_*` 9 ตัวยังอยู่ — เลิกใช้แล้ว `docker compose -p logchain-smoke down -v` (เช็ค label แล้ว ไม่โดน `logchain_*`)
+- clone ไม่ต่อ blockchain (ตั้งใจ — key ไม่อยู่ใน git) · รอถามอาจารย์ว่าชุดที่ติดตั้งใหม่ต้องต่อ chain ทันทีไหม
+
+### 7.4 ⬜ `trust-web-ca.sh` บน macOS / Windows ยังไม่ได้ทดสอบหลังเปลี่ยนชื่อ CA
+
+ค้นชื่อแบบ substring — ถ้ารันกับ CA **ชื่อเก่า** จะลบ CA ของ clone อื่นที่ trust ไว้ด้วย (Linux เทียบชื่อตรงตัว ไม่เป็น)
+
 ---
 
 # ⛔ ห้ามทำ (ตัดสินใจไปแล้ว อย่าถกใหม่)
@@ -188,6 +219,11 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
   ของเดิม (ลืมพร้อมกันหมด) นับถูก ผลเสียเหลือแค่ alert ซ้ำ 1 ครั้ง ซึ่ง backend รวมเป็น `occurrence_count` อยู่แล้ว
   · ถ้าจะทำต้องเก็บ **ครบชุด** (id + `_event_history` + `_prior_matches` + DeepLog buffers) และ detection ต้องได้
   สิทธิ์ DB (ตอนนี้ไม่มี — ขยาย PCI scope) · ตัดสินใจ 2026-09-23
+- **ห้ามให้ consumer สร้าง/เรียน Drain เองตอนรัน** — cluster id แจกตามลำดับที่เจอ ไม่ตรงกับ id ตอน train (โมเดลทำนายบน key ผิดชุด)
+  และเรียนต่อได้ key เกิน `NUM_CLASSES - 1` → API 422 · ใช้ `LogKeyMatcher` กับ `drain_state.json` ชุดที่ train เท่านั้น
+- **ห้ามแยก `mask()` ของ `parse_logs.py` กับ consumer ออกจากกันอีก** — ทั้งคู่ import จาก `detection/app/log_keys.py`
+  · และ `mask()` ต้องรับทั้ง IP ดิบ (ตอน train) และ `a.b.c.xxx` / `blk_-[PAN]` ที่ backend PII-mask แล้ว (ตอนรัน)
+  ไม่งั้น ~66% ของบรรทัด HDFS เป็น key 0 แล้วถูกข้าม ML เงียบ ๆ · ตัดสินใจ 2026-09-28
 
 ---
 
@@ -211,6 +247,10 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | container `logchain-*` มาจากสองโฟลเดอร์ปนกัน / Vault sealed ทั้งที่มี `init.env` / `vault-unseal` บอก "unseal key หาย" | เคยยก stack จากโฟลเดอร์ clone (เช่น `~/Documents/clone_logchain/logchain`) — ชื่อ project + volume เดียวกัน compose จึงทับ container กันไปมา · ดู `docker ps --format '{{.Names}} {{.Label "com.docker.compose.project.working_dir"}}'` · แก้: `docker compose up -d` จากโฟลเดอร์หลัก (volume เดิม ข้อมูลไม่หาย) · ทดสอบ clone ให้ `COMPOSE_PROJECT_NAME` อื่น + ปิด stack หลักก่อน (พอร์ต/`container_name` ชน) |
 | `curl localhost:3000/metrics` ได้ 404 | ตั้งใจ (review B5) — metrics ของ backend อยู่ `:9464` ใน docker network · `docker exec logchain-backend wget -qO- 127.0.0.1:9464/metrics` |
 | Kafka / backend / detection-consumer ต่อ SSL ไม่ได้ `Permission denied` ที่ไฟล์ `.key` | key เป็น 0640 อ่านผ่านกลุ่ม (`group_add: HOST_GID`) — ลืม `HOST_GID=$(id -g)` ตอน `docker compose up` แล้ว gid เครื่องไม่ใช่ 1000 · หรือ key เป็นของ user อื่น (`stat infra/kafka/certs/clients/*.key`) |
+| `bootstrap.sh` ของ clone ที่สองหยุดตั้งแต่ต้น (`project 'logchain' เป็นของ …` / `มี volume logchain_vault_data อยู่แล้ว`) | ตัวกันของ `b5a98d6` ทำงานถูก — clone บนเครื่องที่มีชุดจริงใช้ `COMPOSE_PROJECT_NAME=logchain-smoke ./scripts/bootstrap.sh` · ถ้า container ของ smoke รอบก่อนค้าง (โฟลเดอร์ถูกลบแล้ว key ของ Vault หาย) → `docker compose -p logchain-smoke down -v` ก่อน (worklog 2026-09-28 หัวข้อ 1) |
+| `NET::ERR_CERT_AUTHORITY_INVALID` ทั้งที่ `curl --cacert infra/tls/certs/ca.crt` ได้ 200 · มีสองชุดในเครื่อง | CA ชื่อซ้ำใน NSS (CA ที่สร้างก่อน 2026-09-28 ชื่อ `LogChain-Web-CA` ทุกชุด) — เทียบ `certutil -L -d sql:$HOME/.pki/nssdb -n 'LogChain-Web-CA' -a \| openssl x509 -noout -fingerprint -sha256` กับ `ca.crt` · แล้ว **ปิด Chrome จริง** (`pkill -f /opt/google/chrome/chrome` — ปิดหน้าต่างแล้วยังรันเบื้องหลัง) |
+| ML alert ไม่เด้งเลยทั้งที่ยิง log HDFS · `ml_skipped_unknown` ขึ้น | ข้อความไม่ตรง template ใน `drain_state.json` — ลอง `python -c "from app.log_keys import *; m=LogKeyMatcher.from_file(); print(m.match(mask('<ข้อความใน DB>')))"` ใน `detection/` · ได้ 0 = mask ไม่รองรับรูปที่ backend ส่งมา (ดูหัวข้อ "ห้ามทำ") |
+| รัน `parse_logs.py` ใหม่แล้ว `detect.py` / API โหลดโมเดลไม่ขึ้น (size mismatch `fc`) | จำนวน log key เปลี่ยน — `NUM_CLASSES` = key + 1 ต้องแก้ครบ 3 ไฟล์แล้ว train ใหม่ · `tests/test_log_keys.py` เช็คให้ |
 | เบราว์เซอร์เตือน cert ที่ `:3453` / `:8443` · login ขึ้น `Invalid parameter: redirect_uri` | ยังไม่ trust CA → `./scripts/trust-web-ca.sh` (ต้องมี `libnss3-tools`) · realm เดิมไม่มี URL https → `./scripts/sync-keycloak-urls.sh` |
 | backend บน host (`start:dev`) ตอบ 401 ทุก request หลังเปลี่ยนเป็น HTTPS | `KEYCLOAK_INTERNAL_URL` ว่าง → ดึง JWKS จาก `https://localhost:8443` ที่ Node ไม่ trust — ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
@@ -228,7 +268,10 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 
 | ไฟล์ | เกี่ยวตรงไหน |
 |---|---|
-| `docs/worklog/2026-09-23.md` | งานล่าสุด (หัวข้อ 1–20): alert dedup · Kafka outbox · kafka-python · blockchain retry/timeout · ethers guard · detection dedup · Prometheus alert · README contract |
+| `docs/worklog/2026-09-28.md` | งานล่าสุด: clone แยก · CA ต่อชื่อ project · log key 45 vs Loghub 29 · train ใหม่ · consumer ใช้ template ที่ train · ทดสอบบนระบบจริง |
+| `detection/app/log_keys.py` | `mask()` (ใช้ทั้ง train และ runtime) + `LogKeyMatcher` แปลง log → key ด้วย `data/drain_state.json` |
+| `detection/parse_logs.py` → `prepare_data.py` → `deeplog.py` → `detect.py` | ขั้นตอนสร้างโมเดล (HDFS.log อยู่ `~/Documents/logchain-data/` · รันใน image detection ได้ ไม่ต้องลง drain3/torch ในเครื่อง) |
+| `docs/worklog/2026-09-23.md` | (หัวข้อ 1–20): alert dedup · Kafka outbox · kafka-python · blockchain retry/timeout · ethers guard · detection dedup · Prometheus alert · README contract |
 | `docs/worklog/2026-09-22.md` | onboarding · seal/anchor · NonceManager crash · P3 |
 | `src/kafka/kafka-producer.service.ts` | producer + outbox/replay (`enqueue` · `drainPending`) |
 | `src/kafka/entities/pending-log.entity.ts` | ตาราง `kafka_pending_logs` |

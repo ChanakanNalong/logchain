@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-09-25 (HEAD `03a9e4d` — ข้อ 1–5 ปิดครบ ดู worklog 2026-09-25) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
+> อัปเดต 2026-09-28 (HEAD `cef8e76` — ข้อ 8–11 ใหม่จาก worklog 2026-09-28 · ข้อ 1–5 ปิดครบ ดู worklog 2026-09-25) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -12,11 +12,15 @@
 |---|---|---|---|
 | 1 ✅ | 6.8 erasure → pseudonymize (หัวข้อ 1) | เสร็จ 2026-09-24 | — |
 | 2 ✅ | เก็บ password ของ backup ให้ปลอดภัย (หัวข้อ 2) | เสร็จ 2026-09-24 | — |
-| 3 | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | Claude | เล็ก |
+| 3 ✅ | งานเล็กที่เหลือจากการทบทวน (หัวข้อ 3) | เสร็จ 2026-09-24 | — |
 | 4 ✅ | 6.6 HTTPS (หัวข้อ 4) | เสร็จ 2026-09-24 | — |
-| 5 ✅ | 6.7 encryption at rest (หัวข้อ 5) | เสร็จ 2026-09-25 · เหลือเก็บตก 2 ข้อของเจ้าของ | — |
+| 5 ✅ | 6.7 encryption at rest (หัวข้อ 5) | เสร็จ 2026-09-25 · เก็บตกครบแล้ว | — |
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 | 7 | เอกสาร sign-off — Claude เตรียมแล้ว 2026-09-25 เหลือลงนาม (หัวข้อ 7) | เจ้าของ + ทีม | เล็ก |
+| 8 ✅ | commit detection ที่ระบบรันอยู่แล้ว (หัวข้อ 8) | เสร็จ 2026-09-28 (`979aa3d`) | — |
+| 9 | ตัวเลข log key / F1 สำหรับรายงาน (หัวข้อ 9) | เจ้าของ · Claude ช่วยรันหลาย seed ได้ | เล็ก |
+| 10 | clone ทดสอบ: CA ชื่อใหม่ · ลบ volume smoke · ถามอาจารย์เรื่อง blockchain (หัวข้อ 10) | เจ้าของ | เล็ก |
+| 11 | ทดสอบ `trust-web-ca.sh` บน macOS / Windows (หัวข้อ 11) | คนที่มีเครื่อง | เล็ก |
 
 ---
 
@@ -117,9 +121,44 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 
 ---
 
+## 8. ✅ commit detection ที่ระบบรันอยู่แล้ว (2026-09-28)
+
+image detection บนเครื่อง rebuild แล้ว + ทดสอบบนระบบจริงผ่าน (worklog 2026-09-28 หัวข้อ 9) · ตรงกับ git แล้ว:
+- [x] `979aa3d` — `detection/app/consumer.py` · `detection/app/log_keys.py` · `detection/tests/test_log_keys.py` — ข้าม ML เมื่อ key 0 +
+  `mask()` รับรูปที่ backend PII-mask แล้ว (ไม่งั้น ~66% ของ log HDFS ถูกข้าม ML) · คำสั่ง commit ท้าย worklog
+- [x] worklog `cef8e76` · [ ] `docs/plan/next-steps.md` + ไฟล์นี้
+
+---
+
+## 9. ตัวเลขสำหรับรายงาน (DeepLog)
+
+- log key **45** (โค้ดปัจจุบัน) เทียบ Loghub **29** (`HDFS_v1.zip` preprocessed — สำเนา `~/Documents/logchain-data/HDFS.log_templates.csv`)
+  · ไฟล์บน GitHub ของ Loghub มี 30 (E30 ไม่มีใน trace) · 45 = 29 + 17 (Drain แยก exception) − 1 (E8 + E11 รวม)
+- F1 ที่ g=8: 45 key **0.7339** (P 0.9748 · R 0.5885) · 47 key เดิม 0.7138 — seed 42 รอบเดียว
+- [ ] ถ้าจะเขียนว่าดีกว่าเดิม: train หลาย seed แล้วรายงานค่าเฉลี่ย ± ส่วนเบี่ยงเบน (Claude รันใน image detection ให้ได้ · CPU ~รอบละหลายนาที)
+- [ ] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
+
+---
+
+## 10. clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
+
+- [ ] ถามอาจารย์: ชุดที่ติดตั้งใหม่ต้องต่อ blockchain ทันทีไหม หรือมีคู่มือให้ตั้ง wallet/contract เองพอ (ตอนนี้ค้าง `SEALED` — ตั้งใจ)
+- [ ] ถ้าจะ trust ทั้งสองชุดพร้อมกัน: สร้าง CA ของ clone ใหม่ให้ได้ชื่อ `LogChain-Web-CA (logchain-smoke)` (คำสั่งใน next-steps 7.3)
+- [ ] เลิกใช้แล้ว: `docker compose -p logchain-smoke down -v` (volume `logchain-smoke_*` 9 ตัว — ไม่โดน `logchain_*`)
+
+---
+
+## 11. `trust-web-ca.sh` บน macOS / Windows
+
+- [ ] ทดสอบหลังเปลี่ยนชื่อ CA (`2afc52e`) · ระวัง: รันกับ CA **ชื่อเก่า** จะลบ CA ของ clone อื่นด้วย (ค้นชื่อแบบ substring)
+
+---
+
 ## ที่ตัดสินใจไม่ทำแล้ว (อย่าหยิบกลับมาโดยไม่อ่านเหตุผล)
 
 - detection จำ id ข้าม restart — ทำให้ rule นับขาด (next-steps "ห้ามทำ")
 - เปลี่ยน `INTEGRITY_AUTO_REANCHOR` เป็น true เป็นค่าเริ่มต้น — เจ้าของเลือกคง false (`.env.example` มีเหตุผล)
 - `vault-unseal` / `vault-init` เป็น non-root — ต้อง chown ไฟล์ secret ตอน clone ใหม่ (worklog หัวข้อ 36)
 - ลบ batch `FAILED` 2 ใบของ 2026-09-22 — เป็นประวัติ ไม่กระทบตัวเลข integrity
+- ให้ detection-consumer สร้าง/เรียน Drain เองตอนรัน — id ไม่ตรงกับตอน train (next-steps "ห้ามทำ")
+- ถอด `container_name` ให้ชุดจริงกับ clone รันพร้อมกัน — ชั่งแล้วไม่คุ้ม (next-steps "ห้ามทำ")
