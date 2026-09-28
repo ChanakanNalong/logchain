@@ -35,6 +35,16 @@ const BATCH_SIZE = 100; // กำหนดขนาด batch
 export class IntegrityService {
   private readonly logger = new Logger(IntegrityService.name);
 
+  /**
+   * คิวของ sealBatch — ให้ปิดทีละครั้งภายใน process
+   * ถ้าปล่อยขนาน (cron ทุกนาทีชนกับ POST /integrity/seal-now) ทุกตัวจะเห็น log ค้างชุดเดียวกัน
+   * สร้าง batch หลายใบ ใบแรกเขียน mapping ได้ ใบอื่นชน PK ของ log_batch_mapping แล้วเหลือเป็น
+   * batch ที่ไม่มี log ผูก — ใบที่ anchor สำเร็จก่อนชนจะค้าง CONFIRMED ทั้งที่ไม่มี log (เสีย gas ฟรี)
+   * (เทสต์ IM-12 ใน test/report-cases.integration.spec.ts) · ระบบรัน backend ตัวเดียว คิวใน process จึงพอ
+   * ถ้าวันหน้ารันหลาย replica ต้องเปลี่ยนเป็น Postgres advisory lock
+   */
+  private sealQueue: Promise<unknown> = Promise.resolve();
+
   constructor(
     @InjectRepository(Log) private readonly logsRepo: Repository<Log>,
     @InjectRepository(Batch) private readonly batchesRepo: Repository<Batch>,
@@ -51,7 +61,14 @@ export class IntegrityService {
    * ทำงานได้โดยไม่ต้องมี blockchain: ถ้า chain ไม่พร้อมจะปิด batch เป็น SEALED
    * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
-  async sealBatch(): Promise<Batch | null> {
+  sealBatch(): Promise<Batch | null> {
+    const run = this.sealQueue.then(() => this.sealBatchNow());
+    // ตัวถัดไปในคิวต้องรอตัวนี้จบ ไม่ว่าจะสำเร็จหรือ throw
+    this.sealQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async sealBatchNow(): Promise<Batch | null> {
     // 1. หา log_id ที่ถูก map แล้ว (เพื่อ exclude)
     const mapped = await this.mappingRepo.find({ select: { logId: true } });
     const mappedIds = mapped.map((m) => m.logId);

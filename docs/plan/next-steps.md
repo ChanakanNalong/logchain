@@ -209,6 +209,13 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 
 ---
 
+### 7.5 ✅ กรณีทดสอบ "รอผล" ในเล่ม — worklog 2026-09-29
+
+ผ่าน 18 · FT-14 บางส่วน · DR-09/10 เอาออก · กรอกลงเล่มแล้ว · `test/report-cases.integration.spec.ts` (**หยุด `logchain-backend` ก่อนรัน**)
+· แก้บั๊ก seal พร้อมกัน (`sealQueue`) · เจอ rate limit ไม่ทำงาน + คอขวด seal 100 log/นาที · gas Amoy 155 gwei
+
+---
+
 # ⛔ ห้ามทำ (ตัดสินใจไปแล้ว อย่าถกใหม่)
 
 - **ห้ามรวม `logchain-contracts` เข้ามา** — backend ใช้ inline ABI ผูกกันผ่าน `CONTRACT_ADDRESS` สตริงเดียว
@@ -267,6 +274,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | รัน `parse_logs.py` ใหม่แล้ว `detect.py` / API โหลดโมเดลไม่ขึ้น (size mismatch `fc`) | จำนวน log key เปลี่ยน — `NUM_CLASSES` = key + 1 ต้องแก้ครบ 3 ไฟล์แล้ว train ใหม่ · `tests/test_log_keys.py` เช็คให้ |
 | เบราว์เซอร์เตือน cert ที่ `:3453` / `:8443` · login ขึ้น `Invalid parameter: redirect_uri` | ยังไม่ trust CA → `./scripts/trust-web-ca.sh` (ต้องมี `libnss3-tools`) · realm เดิมไม่มี URL https → `./scripts/sync-keycloak-urls.sh` |
 | backend บน host (`start:dev`) ตอบ 401 ทุก request หลังเปลี่ยนเป็น HTTPS | `KEYCLOAK_INTERNAL_URL` ว่าง → ดึง JWKS จาก `https://localhost:8443` ที่ Node ไม่ trust — ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` |
+| รัน `report-cases.integration.spec.ts` แล้ว batch ที่มี log `e2e-report-cases` ขึ้น chain จริง | ลืมหยุด `logchain-backend` — cron ของตัวจริงหยิบ log ของเทสต์ไปก่อน · `docker stop logchain-backend` → รันเทสต์ → `docker start` |
+| ยิง POST /logs เกิน 500/นาทีแล้วไม่โดน 429 | rate limit ไม่ได้เปิด — ไม่มี `ThrottlerGuard` (worklog 2026-09-29 หัวข้อ 3) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
