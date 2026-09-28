@@ -21,7 +21,7 @@
 - งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 (ช่องว่าง compliance) ปิดครบ 6.1–6.8**
 - **ข้อมูลทั้งหมดอยู่บนดิสก์เข้ารหัส** (2026-09-25): repo จริงอยู่ `/srv/lcsecure/home/logchain` (`~/Documents/logchain` = symlink) ·
   Docker data-root `/srv/lcsecure/docker` · boot แล้วต้องใส่ PIN ของ `lcsecure` ไม่งั้น Docker ไม่ขึ้น
-- **DeepLog = 45 log key** (`NUM_CLASSES = 46` ใน `deeplog.py` · `detect.py` · `app/model.py`) · F1 0.7339 ที่ g=8 (เดิม 47 key 0.7138)
+- **DeepLog = 45 log key** (`NUM_CLASSES = 46` ใน `deeplog.py` · `detect.py` · `app/model.py`) · F1 ที่ g=8 **0.7252 ± 0.0181** (5 seed · 47 key เดิม 0.7185 ± 0.0201 — ไม่ต่างอย่างมีนัยสำคัญ)
   · consumer แปลง log → key ด้วย template ใน `detection/data/drain_state.json` ชุดเดียวกับตอน train (`app/log_keys.py` — ไม่สร้าง Drain ตอนรัน)
   · log ที่ไม่ตรง template (ไม่ใช่ HDFS) ข้าม ML ไป rule engine อย่างเดียว (`consumer_messages_total{status="ml_skipped_unknown"}`)
 - **CA ของ HTTPS ต่อชื่อ compose project** (`LogChain-Web-CA (<project>)` · 2026-09-28) — clone คนละ project trust พร้อมกันได้
@@ -180,7 +180,9 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 
 - log key: **45** (โค้ดปัจจุบัน `parse_logs.py`) เทียบ Loghub **29** (`HDFS_v1.zip` preprocessed · สำเนาที่ `~/Documents/logchain-data/HDFS.log_templates.csv`)
   — ไฟล์บน GitHub ของ Loghub มี 30 (E30 ไม่มีใน trace) · 45 = 29 + 17 (Drain แยก exception) − 1 (E8 + E11 รวม)
-- F1 0.7339 มาจาก seed 42 รอบเดียว — ถ้าจะเขียนว่าดีกว่า 47 key ควร train หลาย seed
+- ✅ train 5 seed แล้ว (worklog หัวข้อ 10): g=8 F1 45 key **0.7252 ± 0.0181** · 47 key 0.7185 ± 0.0201 · Welch p ≈ 0.6
+  → **ไม่ต่างกันอย่างมีนัยสำคัญ** · 0.7339 เดิมเป็น seed 42 รอบเดียวที่ฟลุค · รายงานเขียนว่า "ประสิทธิภาพไม่ลดลง" ห้ามเขียนว่าแม่นขึ้น
+  · ผล + `multiseed.py`: `~/Documents/logchain-data/multiseed/` (ไม่อยู่ใน git)
 
 ### 7.3 ⬜ clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
 
