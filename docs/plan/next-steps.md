@@ -189,7 +189,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
   · embedding **ไม่ช่วย** (worklog หัวข้อ 13) — recall ต่ำเพราะ **g=8 ใหญ่เกิน** (`detect.py` ลองแค่ 8–10)
 - ✅ เลือก g จาก validation 20% · รายงานบน 80% (worklog หัวข้อ 13 · `select_g.py`): g=4 เกือบทุก seed ·
   model-only F1 **0.7746 ± 0.0575** · with-short **0.8587 ± 0.0328** · FP 0.50% ของ block ปกติ (g=8 = 0.07%)
-  · **ระบบจริงยัง `TOP_K_G = 8`** — ยังไม่ตัดสินใจเปลี่ยน
+  · **ระบบจริงคง `TOP_K_G = 8`** (เจ้าของตัดสินใจ 2026-09-28 — FP ต่ำสำคัญกว่า recall) · รายงานต้องบอกว่าระบบใช้ g=8 ไม่ใช่ g ที่เลือกจาก validation
   · ผล + `multiseed.py`: `~/Documents/logchain-data/multiseed/` (ไม่อยู่ใน git)
 
 ### 7.3 ⬜ clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)

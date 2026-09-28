@@ -24,7 +24,7 @@ NUM_CLASSES = 46
 WINDOW_SIZE = 10
 HIDDEN_SIZE = 64
 NUM_LAYERS  = 2
-TOP_K_G     = 8     # ค่าที่ได้ F1 ดีสุดจาก detect.py
+TOP_K_G     = 8     # ตั้งใจเลือกให้ FP ต่ำ (~0.07% ของ block ปกติ) · g=4 ได้ F1 สูงกว่าแต่ FP ~7 เท่า (worklog 2026-09-28 หัวข้อ 13)
 MODEL_PATH  = Path(__file__).parent.parent / "data" / "deeplog_model.pt"
 
 class Deeplog(nn.Module):
