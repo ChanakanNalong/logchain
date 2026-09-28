@@ -140,7 +140,10 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 - [x] ตรวจ block สั้น (worklog หัวข้อ 11) — test abnormal 6,191 block (36.8%) สั้นกว่า 11 key · normal ไม่มีเลย ·
   `detect.py` นับเป็น anomaly โดยไม่ผ่านโมเดล → **F1 0.7252 รวมกฎความยาวไว้** · เฉพาะโมเดล (ตัด block สั้นออก)
   **0.4900 ± 0.0397** (P 0.9230 · R 0.3344) · ตอนรันจริง consumer ไม่มีกฎนี้ = ใกล้ 0.49
-- [ ] (ไม่บังคับ) ลอง embedding แทน `float` input: `~/Documents/logchain-data/multiseed/ws45/multiseed_emb.py` — รัน 1 seed ก่อน
+- [x] ลอง embedding (worklog หัวข้อ 13) — **ไม่ช่วย** · แต่เจอว่า **g=8 ไม่ใช่ค่าที่ดีสุด** (`detect.py` ลองแค่ 8–10)
+  · เลือก g จาก validation 20% (ได้ g=4 เกือบทุก seed) รายงานบน 80%: model-only F1 **0.7746 ± 0.0575** · with-short **0.8587 ± 0.0328**
+  · แลกกับ FP 0.50% ของ block ปกติ (g=8 = 0.07%) · 45 vs 47 key ยังไม่ต่าง
+- [ ] ตัดสินใจ `TOP_K_G` ของระบบจริง (`app/model.py` ยังเป็น 8) — 4 = ML alert (INFO) ~7 เท่า
 - [ ] เขียนในรายงานว่าแก้ parse แล้ว **ประสิทธิภาพไม่ลดลง** — ห้ามเขียนว่าแม่นขึ้น · **ต้องรายงานทั้ง 0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
 - [ ] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
 

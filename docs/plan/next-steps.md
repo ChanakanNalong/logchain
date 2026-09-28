@@ -186,7 +186,10 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 - ✅ block สั้น (worklog หัวข้อ 11): `detect.py` นับ sequence < 11 key เป็น anomaly โดยไม่ผ่านโมเดล · test abnormal 6,191 / 16,838 สั้น · normal 0
   → 0.725 **รวมกฎความยาว** · ตัด block สั้นออก (เฉพาะโมเดล) F1 **0.4900 ± 0.0397** (P 0.9230 · R 0.3344) · consumer ตอนรันจริงไม่มีกฎนี้
   · **รายงานต้องใส่ทั้งสองตัวเลข** · recall ต่ำกว่า DeepLog ต้นฉบับ (~0.96) มาก — สงสัย input เป็น `float` แทน embedding (ยังไม่ทดสอบ)
-  · script ทดลอง: `~/Documents/logchain-data/multiseed/ws45/multiseed_emb.py` (worklog หัวข้อ 12 · ยังไม่มีผล)
+  · embedding **ไม่ช่วย** (worklog หัวข้อ 13) — recall ต่ำเพราะ **g=8 ใหญ่เกิน** (`detect.py` ลองแค่ 8–10)
+- ✅ เลือก g จาก validation 20% · รายงานบน 80% (worklog หัวข้อ 13 · `select_g.py`): g=4 เกือบทุก seed ·
+  model-only F1 **0.7746 ± 0.0575** · with-short **0.8587 ± 0.0328** · FP 0.50% ของ block ปกติ (g=8 = 0.07%)
+  · **ระบบจริงยัง `TOP_K_G = 8`** — ยังไม่ตัดสินใจเปลี่ยน
   · ผล + `multiseed.py`: `~/Documents/logchain-data/multiseed/` (ไม่อยู่ใน git)
 
 ### 7.3 ⬜ clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
