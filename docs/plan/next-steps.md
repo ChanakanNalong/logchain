@@ -195,7 +195,10 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
   `COMPOSE_PROJECT_NAME=logchain-smoke ./infra/tls/gen-certs.sh` → `docker restart logchain-https-proxy` → `./scripts/trust-web-ca.sh`
 - volume `logchain-smoke_*` 9 ตัวยังอยู่ — เลิกใช้แล้ว `docker compose -p logchain-smoke down -v` (เช็ค label แล้ว ไม่โดน `logchain_*`)
 - clone ไม่ต่อ blockchain (ตั้งใจ — key ไม่อยู่ใน git) · ✅ อาจารย์ตอบ "ใส่แค่ขั้นตอน" → README หัวข้อ "ตั้ง blockchain เอง"
-  (ยังไม่ได้ทดสอบทั้งสายบน clone · **ห้ามรัน `npm run deploy:contract` ในโฟลเดอร์ชุดจริง** — deploy contract ใหม่ด้วย key จริงแล้วทับ `CONTRACT_ADDRESS`)
+  (ยังไม่ได้ทดสอบทั้งสายบน clone · **ห้ามรัน `npm run deploy:contract` ในโฟลเดอร์ชุดจริง** — deploy contract ใหม่ด้วย key จริงแล้วทับ `CONTRACT_ADDRESS`
+  · เกิดแล้ว 2026-09-28 16:44 ได้ `0xC149…` — คืน `.env` เป็น `0x5dC86975…` แล้ว worklog หัวข้อ 12)
+- wallet ที่ anchor = `0x8cBCfC04…4C55` · เติมแล้ว 2026-09-28 ยอด 0.1192 POL (~30–50 batch · ครั้งละ ~0.0023–0.0039 POL)
+  · หมดแล้ว batch ค้าง UNVERIFIED + email `BatchStuckUnverified` · ห้ามเติม wallet เดิม `0xfb10EfD7…0695` (key หลุด)
 
 ### 7.4 ⬜ `trust-web-ca.sh` บน macOS / Windows ยังไม่ได้ทดสอบหลังเปลี่ยนชื่อ CA
 

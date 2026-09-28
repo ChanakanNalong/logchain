@@ -149,7 +149,10 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 ## 10. clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
 
 - [x] ถามอาจารย์เรื่อง blockchain ของชุดที่ติดตั้งใหม่ — ตอบ **ใส่แค่ขั้นตอน** → README หัวข้อ "ตั้ง blockchain เอง" (worklog 09-28 หัวข้อ 12)
-  · [ ] (ถ้าสะดวก) ลองทำตามขั้นตอนบน clone ด้วย wallet ทดสอบใหม่ — ยังไม่ได้ทดสอบทั้งสาย
+  · ✅ ขั้น 3–4 (deploy) ใช้ได้จริง — ทดสอบในโฟลเดอร์ชุดจริงโดยบังเอิญ ได้ `0xC149…` · คืน `CONTRACT_ADDRESS` เป็น `0x5dC86975…` แล้ว
+  · [ ] (ถ้าสะดวก) ขั้น 5–6 บน clone ด้วย wallet ทดสอบใหม่ — ยังไม่ได้ทดสอบ
+- [x] เติม POL ให้ wallet `0x8cBCfC045Aa4058816D24Af7C0BEf88515B34C55` (2026-09-28 · faucet +0.1) — ยอด **0.1192 POL** ≈ 30–50 batch
+  · ครั้งหน้าเติมที่ https://faucet.polygon.technology (Amoy) · **ห้ามเติม `0xfb10EfD7…0695`** (wallet เดิม key หลุด 09-17)
 - [ ] ถ้าจะ trust ทั้งสองชุดพร้อมกัน: สร้าง CA ของ clone ใหม่ให้ได้ชื่อ `LogChain-Web-CA (logchain-smoke)` (คำสั่งใน next-steps 7.3)
 - [ ] เลิกใช้แล้ว: `docker compose -p logchain-smoke down -v` (volume `logchain-smoke_*` 9 ตัว — ไม่โดน `logchain_*`)
 
