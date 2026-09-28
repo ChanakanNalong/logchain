@@ -186,6 +186,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 - ✅ block สั้น (worklog หัวข้อ 11): `detect.py` นับ sequence < 11 key เป็น anomaly โดยไม่ผ่านโมเดล · test abnormal 6,191 / 16,838 สั้น · normal 0
   → 0.725 **รวมกฎความยาว** · ตัด block สั้นออก (เฉพาะโมเดล) F1 **0.4900 ± 0.0397** (P 0.9230 · R 0.3344) · consumer ตอนรันจริงไม่มีกฎนี้
   · **รายงานต้องใส่ทั้งสองตัวเลข** · recall ต่ำกว่า DeepLog ต้นฉบับ (~0.96) มาก — สงสัย input เป็น `float` แทน embedding (ยังไม่ทดสอบ)
+  · script ทดลอง: `~/Documents/logchain-data/multiseed/ws45/multiseed_emb.py` (worklog หัวข้อ 12 · ยังไม่มีผล)
   · ผล + `multiseed.py`: `~/Documents/logchain-data/multiseed/` (ไม่อยู่ใน git)
 
 ### 7.3 ⬜ clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
@@ -193,7 +194,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 - CA ของ clone ยังชื่อเก่า (สร้างก่อน `2afc52e`) — จะ trust ทั้งสองชุดพร้อมกัน: ใน clone `rm -rf infra/tls/certs` →
   `COMPOSE_PROJECT_NAME=logchain-smoke ./infra/tls/gen-certs.sh` → `docker restart logchain-https-proxy` → `./scripts/trust-web-ca.sh`
 - volume `logchain-smoke_*` 9 ตัวยังอยู่ — เลิกใช้แล้ว `docker compose -p logchain-smoke down -v` (เช็ค label แล้ว ไม่โดน `logchain_*`)
-- clone ไม่ต่อ blockchain (ตั้งใจ — key ไม่อยู่ใน git) · รอถามอาจารย์ว่าชุดที่ติดตั้งใหม่ต้องต่อ chain ทันทีไหม
+- clone ไม่ต่อ blockchain (ตั้งใจ — key ไม่อยู่ใน git) · ✅ อาจารย์ตอบ "ใส่แค่ขั้นตอน" → README หัวข้อ "ตั้ง blockchain เอง"
+  (ยังไม่ได้ทดสอบทั้งสายบน clone · **ห้ามรัน `npm run deploy:contract` ในโฟลเดอร์ชุดจริง** — deploy contract ใหม่ด้วย key จริงแล้วทับ `CONTRACT_ADDRESS`)
 
 ### 7.4 ⬜ `trust-web-ca.sh` บน macOS / Windows ยังไม่ได้ทดสอบหลังเปลี่ยนชื่อ CA
 

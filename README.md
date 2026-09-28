@@ -38,11 +38,12 @@ authentication/RBAC ผ่าน Keycloak (OIDC/JWT) และ Prometheus metric
 - (optional) Polygon Amoy testnet — contract `0x5dC86975615d3bc713cdf9f25ad1cA25CE7949f5`
   (ตรวจสอบได้ที่ amoy.polygonscan.com) · **เขียนได้เฉพาะ wallet ที่เป็น owner** — clone ไปใช้เองให้
   deploy `LogIntegrity.sol` ด้วย wallet ของตัวเองแล้วใส่ address นั้นแทน ไม่ตั้งเลยก็ได้ (batch เป็น `SEALED`
-  proof + tamper detection ยังทำงานครบ)
+  proof + tamper detection ยังทำงานครบ) · ขั้นตอน: หัวข้อ [ตั้ง blockchain เอง](#ตั้ง-blockchain-เอง-polygon-amoy--ไม่บังคับ)
 
 > **ไม่ต้อง clone `logchain-contracts`** ถ้าใช้ contract ที่ deploy ไว้แล้วข้างบน —
 > backend ฝัง minimal ABI 3 function ไว้เองที่ `src/blockchain/blockchain.service.ts`
 > ไม่ได้ import artifact จาก repo นั้น เชื่อมกันผ่าน `CONTRACT_ADDRESS` ใน `.env` อย่างเดียว
+> (deploy contract ของตัวเองค่อย clone — ใช้แค่ไฟล์ artifact ตอน deploy)
 
 ---
 
@@ -289,6 +290,51 @@ npm install && npm run start:dev
 > ตั้ง `CONTRACT_ADDRESS` (0x + 40 hex) + private key ใน Vault เมื่อไหร่
 > `anchorSealedBatches()` จะไล่ anchor batch ที่ค้าง `SEALED` ย้อนหลังให้เองภายใน 1 นาที
 > โดย **ไม่ recompute root** (ใช้ root เดิมที่ปิดไว้ตอน seal)
+> — ขั้นตอนเต็มอยู่หัวข้อถัดไป
+
+---
+
+## ตั้ง blockchain เอง (Polygon Amoy · ไม่บังคับ)
+
+clone ใหม่ไม่ต่อ chain โดยตั้งใจ — private key ไม่อยู่ใน git และ contract `0x5dC86975…` เขียนได้เฉพาะ wallet ที่เป็น owner
+(`LogIntegrity.sol` ตั้ง `owner = msg.sender` และไม่มี `transferOwnership`) ชุดที่ติดตั้งใหม่จึงต้อง **deploy contract ของตัวเอง**
+ด้วย wallet ของตัวเอง · ทำหลัง `./scripts/bootstrap.sh` ผ่านแล้วเมื่อไหร่ก็ได้ batch ที่ค้าง `SEALED` จะถูก anchor ย้อนหลังให้เอง
+
+ต้องมี: **Node.js 22** บน host (script deploy ใช้ `ethers` ใน `node_modules` ของ repo นี้)
+
+```bash
+# 1. wallet สำหรับ testnet อย่างเดียว (เช่นสร้าง account ใหม่ใน MetaMask) → export private key (0x + 64 hex)
+#    อย่าใช้ wallet ที่มีเงินจริง · key นี้จะอยู่ใน .env (gitignored) และใน Vault
+
+# 2. ขอ POL ทดสอบของ Amoy ให้ address นั้น: https://faucet.polygon.technology (เลือก Polygon Amoy)
+#    deploy + anchor ใช้ไม่ถึง 0.1 POL · ตรวจยอดที่ https://amoy.polygonscan.com/address/<address>
+
+# 3. ใส่ key ใน .env (แทน CHANGE_ME) · BLOCKCHAIN_RPC_URL ค่าเริ่มต้นใช้ได้เลย
+cd logchain
+read -rs PK && sed -i "s|^BLOCKCHAIN_PRIVATE_KEY=.*|BLOCKCHAIN_PRIVATE_KEY=$PK|" .env && unset PK
+
+# 4. deploy — ใช้ artifact ที่ compile แล้วใน repo logchain-contracts (ไม่ต้องลง Hardhat / compile เอง)
+#    script เขียน CONTRACT_ADDRESS ใหม่ลง .env ให้เอง
+git clone https://github.com/ChanakanNalong/logchain-contracts ../logchain-contracts
+npm ci
+CONTRACT_ARTIFACT="$PWD/../logchain-contracts/ignition/deployments/chain-80002/artifacts/LogIntegrityModule#LogIntegrity.json" \
+  npm run deploy:contract
+grep ^CONTRACT_ADDRESS .env          # ต้องไม่ใช่ 0x000…0
+
+# 5. vault-init อัด key ใหม่เข้า Vault · backend อ่าน CONTRACT_ADDRESS ใหม่
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --force-recreate vault-init backend
+
+# 6. ตรวจ
+docker logs logchain-backend 2>&1 | grep -E "Blockchain (connected|not configured|init failed)"
+#    ต้องเห็น "Blockchain connected: … contract=0x…" · ไม่ใช่ "not configured"
+docker exec logchain-postgres psql -U logchain -d logchain \
+  -c "select status, count(*) from batches group by 1"
+#    ภายใน ~1 นาที SEALED ต้องลดลงและ CONFIRMED เพิ่มขึ้น · tx ดูได้ที่ amoy.polygonscan.com/address/<CONTRACT_ADDRESS>
+```
+
+- **ทำ key หาย / เปลี่ยน key = deploy contract ใหม่** แล้วทำขั้น 3–6 ซ้ำ root เดิมถูก anchor ซ้ำลง contract ใหม่ให้เอง
+  (รายละเอียด `docs/Key-Rotation-Policy.md`)
+- `Blockchain init failed (attempt N)` = RPC ต่อไม่ได้ · backend ลองใหม่เองทุก ≤5 นาที · RPC สาธารณะช้าได้ ลองเปลี่ยน `BLOCKCHAIN_RPC_URL`
 
 ---
 
@@ -648,4 +694,5 @@ docker-compose.yml      20 service — infra + backend + dashboard + detection
 
 **repo ที่เกี่ยวข้อง:** [`logchain-contracts`](https://github.com/ChanakanNalong/logchain-contracts)
 (Solidity/Hardhat) แยกไว้ต่างหากโดยตั้งใจ — deploy ครั้งเดียวจบ และ backend ไม่ได้ import
-อะไรจากมัน ผูกกันผ่าน `CONTRACT_ADDRESS` อย่างเดียว **ไม่ต้อง clone**
+อะไรจากมัน ผูกกันผ่าน `CONTRACT_ADDRESS` อย่างเดียว **ไม่ต้อง clone** — ยกเว้นตอน deploy contract เอง
+(หัวข้อ [ตั้ง blockchain เอง](#ตั้ง-blockchain-เอง-polygon-amoy--ไม่บังคับ) ใช้ไฟล์ artifact จาก repo นั้น)

@@ -19,7 +19,7 @@
 | 7 | เอกสาร sign-off — Claude เตรียมแล้ว 2026-09-25 เหลือลงนาม (หัวข้อ 7) | เจ้าของ + ทีม | เล็ก |
 | 8 ✅ | commit detection ที่ระบบรันอยู่แล้ว (หัวข้อ 8) | เสร็จ 2026-09-28 (`979aa3d`) | — |
 | 9 | ตัวเลข log key / F1 สำหรับรายงาน (หัวข้อ 9) — 5 seed เสร็จแล้ว เหลือเขียนรายงาน | เจ้าของ | เล็ก |
-| 10 | clone ทดสอบ: CA ชื่อใหม่ · ลบ volume smoke · ถามอาจารย์เรื่อง blockchain (หัวข้อ 10) | เจ้าของ | เล็ก |
+| 10 | clone ทดสอบ: CA ชื่อใหม่ · ลบ volume smoke · (อาจารย์ตอบแล้ว: blockchain ใส่แค่ขั้นตอน ✅) (หัวข้อ 10) | เจ้าของ | เล็ก |
 | 11 | ทดสอบ `trust-web-ca.sh` บน macOS / Windows (หัวข้อ 11) | คนที่มีเครื่อง | เล็ก |
 
 ---
@@ -140,6 +140,7 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 - [x] ตรวจ block สั้น (worklog หัวข้อ 11) — test abnormal 6,191 block (36.8%) สั้นกว่า 11 key · normal ไม่มีเลย ·
   `detect.py` นับเป็น anomaly โดยไม่ผ่านโมเดล → **F1 0.7252 รวมกฎความยาวไว้** · เฉพาะโมเดล (ตัด block สั้นออก)
   **0.4900 ± 0.0397** (P 0.9230 · R 0.3344) · ตอนรันจริง consumer ไม่มีกฎนี้ = ใกล้ 0.49
+- [ ] (ไม่บังคับ) ลอง embedding แทน `float` input: `~/Documents/logchain-data/multiseed/ws45/multiseed_emb.py` — รัน 1 seed ก่อน
 - [ ] เขียนในรายงานว่าแก้ parse แล้ว **ประสิทธิภาพไม่ลดลง** — ห้ามเขียนว่าแม่นขึ้น · **ต้องรายงานทั้ง 0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
 - [ ] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
 
@@ -147,7 +148,8 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 
 ## 10. clone ทดสอบ `~/clone_logchain/logchain` (project `logchain-smoke`)
 
-- [ ] ถามอาจารย์: ชุดที่ติดตั้งใหม่ต้องต่อ blockchain ทันทีไหม หรือมีคู่มือให้ตั้ง wallet/contract เองพอ (ตอนนี้ค้าง `SEALED` — ตั้งใจ)
+- [x] ถามอาจารย์เรื่อง blockchain ของชุดที่ติดตั้งใหม่ — ตอบ **ใส่แค่ขั้นตอน** → README หัวข้อ "ตั้ง blockchain เอง" (worklog 09-28 หัวข้อ 12)
+  · [ ] (ถ้าสะดวก) ลองทำตามขั้นตอนบน clone ด้วย wallet ทดสอบใหม่ — ยังไม่ได้ทดสอบทั้งสาย
 - [ ] ถ้าจะ trust ทั้งสองชุดพร้อมกัน: สร้าง CA ของ clone ใหม่ให้ได้ชื่อ `LogChain-Web-CA (logchain-smoke)` (คำสั่งใน next-steps 7.3)
 - [ ] เลิกใช้แล้ว: `docker compose -p logchain-smoke down -v` (volume `logchain-smoke_*` 9 ตัว — ไม่โดน `logchain_*`)
 
