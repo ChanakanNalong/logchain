@@ -6,47 +6,45 @@ import { api } from "@/lib/api";
 import { DEEPLOG_TOP_G, DEEPLOG_WINDOW_SIZE } from "@/data/referenceData";
 
 /**
- * Offline benchmark result — DeepLog trained on HDFS_v1 (seed=42).
- * These numbers are baked into the build on purpose: they describe the model's
- * evaluation run, NOT anything the running system has measured. Section 3 below
- * is the only part of this page that reflects live runtime state.
+ * Offline benchmark result — DeepLog on HDFS_v1 with the 45 Drain log keys the
+ * running detector uses. These numbers are baked into the build on purpose: they
+ * describe offline evaluation runs, NOT anything the running system has measured.
+ * Section 3 below is the only part of this page that reflects live runtime state.
  *
- * Reproduced on 2026-09-14 by running `python detect.py` in the sibling
- * `logchain-detection` checkout (CUDA, SEED=42, g=TOP_K_G=8):
+ * Metric cards = mean ± SD of 5 training seeds (1–5) on the same seed-42 split,
+ * g = TOP_K_G = 8 (docs/worklog/2026-09-28.md sections 10–11):
+ *   precision 0.9705 ± 0.0058 · recall 0.5791 ± 0.0236 · F1 0.7252 ± 0.0181
  *
- *      g |     TP     FP     FN       TN | precision  Recall      F1
- *      8 |   9488    258   7350   446321 |    0.9735  0.5635  0.7138
+ * Confusion matrix = the model file actually deployed (detection/data/deeplog_model.pt,
+ * worklog 2026-09-28 section 5), g = 8:
+ *      TP 9909  FP 256  FN 6929  TN 446323 | precision 0.9748  recall 0.5885  F1 0.7339
+ *   TP+FN = 16,838 abnormal blocks · FP+TN = 446,579 normal blocks
  *
- * The counts reconcile exactly with the labelled test set:
- *   TP+FN = 9488+7350 = 16,838 abnormal blocks  (data/test_abnormal.txt)
- *   FP+TN =  258+446321 = 446,579 normal blocks (data/test_normal.txt)
- *
- * g=8 is genuinely the best of the CANDIDATES_G detect.py sweeps:
- *      9 |   9271    189   7567   446390 |    0.9800  0.5506  0.7051
- *     10 |   9058    139   7780   446440 |    0.9849  0.5379  0.6958
- *
- * The "Key insight" box below is from an ablation over the same model/seed,
- * flipping only the short-sequence branch (detect.py:60):
- *   short-seq => anomaly : TP=9488 FP=258 FN=7350  F1=0.7138
- *   short-seq => normal  : TP=3297 FP=258 FN=13541 F1=0.3233
- * It works because 6,191/16,838 abnormal blocks are shorter than WINDOW_SIZE+1
- * while 0/446,579 normal blocks are — free true positives, zero extra false
- * positives. (The page used to claim 0.35; the measured value is 0.3233.)
+ * Short sequences (< WINDOW_SIZE+1) are flagged without the model: 6,191/16,838
+ * abnormal blocks are that short and 0/446,579 normal ones, so the rule adds free
+ * true positives. Mean F1 with short = normal is 0.3436; excluding short blocks
+ * (model-only, closest to the runtime consumer, which has no such rule) it is
+ * 0.4900 ± 0.0397. g=8 is chosen for a low false-positive rate — g=4 scores higher
+ * F1 at ~7x the false positives (worklog section 13).
  */
 const TRAINING = {
   dataset: "HDFS_v1",
-  f1: "0.7138",
-  precision: "0.9735",
-  recall: "0.5635",
-  confusion: { tp: 9488, fp: 258, fn: 7350, tn: 446321 },
+  seeds: 5,
+  f1: "0.7252",
+  f1Sd: "0.0181",
+  precision: "0.9705",
+  precisionSd: "0.0058",
+  recall: "0.5791",
+  recallSd: "0.0236",
+  confusion: { tp: 9909, fp: 256, fn: 6929, tn: 446323 },
   topG: DEEPLOG_TOP_G,
   windowSize: DEEPLOG_WINDOW_SIZE,
 };
 
 const metricCards = [
-  { l: "F1 Score", v: TRAINING.f1, sub: `seed=42, ${TRAINING.dataset}`, icon: TrendingUp, tone: "good" },
-  { l: "Precision", v: TRAINING.precision, sub: "TP/(TP+FP)", icon: Target, tone: "blue" },
-  { l: "Recall", v: TRAINING.recall, sub: "TP/(TP+FN)", icon: Activity, tone: "warn" },
+  { l: "F1 Score", v: TRAINING.f1, sub: `± ${TRAINING.f1Sd} · mean of ${TRAINING.seeds} seeds`, icon: TrendingUp, tone: "good" },
+  { l: "Precision", v: TRAINING.precision, sub: `± ${TRAINING.precisionSd} · TP/(TP+FP)`, icon: Target, tone: "blue" },
+  { l: "Recall", v: TRAINING.recall, sub: `± ${TRAINING.recallSd} · TP/(TP+FN)`, icon: Activity, tone: "warn" },
   { l: "Model", v: "DeepLog", sub: `LSTM · window=${DEEPLOG_WINDOW_SIZE} · top-${DEEPLOG_TOP_G}`, icon: Brain, tone: "cyan" },
 ];
 
@@ -184,7 +182,7 @@ export default function MLDetection() {
           <Badge tone="neutral">{TRAINING.dataset} training result (static)</Badge>
         </div>
         <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 14 }}>
-          ตัวเลขชุดนี้มาจากการเทรน/ประเมินผล offline บน dataset {TRAINING.dataset} (seed=42) —{" "}
+          ตัวเลขชุดนี้มาจากการเทรน/ประเมินผล offline บน dataset {TRAINING.dataset} (45 log key · เฉลี่ย {TRAINING.seeds} seed) —{" "}
           <span style={{ color: t.warn, fontWeight: 600 }}>ไม่ใช่ค่า runtime ของระบบ</span> ดูของจริงที่ Runtime detections ด้านล่าง
         </div>
 
@@ -205,7 +203,7 @@ export default function MLDetection() {
         </div>
 
         <div style={{ marginTop: 18 }}>
-          <SectionLabel dot={t.cyan}>Confusion matrix</SectionLabel>
+          <SectionLabel dot={t.cyan}>Confusion matrix — deployed model</SectionLabel>
           <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
             {confusionCells.map((c) => (
               <div key={c.label} style={{ background: c.bg, border: `1px solid ${c.bd}`, borderRadius: 10, padding: "14px 16px" }}>
@@ -223,11 +221,16 @@ export default function MLDetection() {
             <div style={{ fontSize: 11, color: t.muted, ...sansFont }}>
               Key insight — นับ sequence ที่สั้นกว่า window (
               <span style={{ color: t.cyan, ...monoFont }}>len &lt; {TRAINING.windowSize + 1}</span>) เป็น anomaly
-              ทำให้ F1 จาก <span style={{ color: t.danger }}>0.3233</span> →{" "}
-              <span style={{ color: t.good }}>0.7138</span>
+              ทำให้ F1 เฉลี่ยจาก <span style={{ color: t.danger }}>0.3436</span> →{" "}
+              <span style={{ color: t.good }}>{TRAINING.f1}</span>
               <div style={{ marginTop: 4 }}>
                 เพราะ block ที่สั้นเป็น anomaly <b>6,191 จาก 16,838</b> ตัว แต่ฝั่ง normal{" "}
-                <b>0 จาก 446,579</b> ตัว — กฎนี้เลยได้ TP ฟรีโดยไม่เพิ่ม FP เลย (FP คงที่ 258 ทั้งสองแบบ)
+                <b>0 จาก 446,579</b> ตัว — กฎนี้เลยได้ TP ฟรีโดยไม่เพิ่ม FP เลย
+              </div>
+              <div style={{ marginTop: 4 }}>
+                วัดเฉพาะ sequence ที่โมเดลตัดสิน (ตัด block สั้นออก) ได้ F1{" "}
+                <span style={{ color: t.warn, ...monoFont }}>0.4900 ± 0.0397</span> — ใกล้กับตอนรันจริงกว่า
+                เพราะ consumer ไม่มีกฎนี้
               </div>
             </div>
           </div>
