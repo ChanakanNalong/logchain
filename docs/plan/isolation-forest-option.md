@@ -1,9 +1,25 @@
-# ตัวเลือก: จำแนก Batch ด้วย Isolation Forest (ยังไม่ทำ)
+# ตัวเลือก: จำแนก Batch ด้วย Isolation Forest
 
-> สถานะ 2026-09-29: **ไม่มีในโค้ด และเอาออกจากเล่มแล้ว** (worklog 2026-09-29 หัวข้อ 5) · เอกสารนี้เก็บไว้เผื่อจะทำภายหลัง
-> เล่มเดิมเคยบรรยายไว้ที่หัวข้อ 3.9.6 · 4.6.6 · ตารางเทคโนโลยี · กรณีทดสอบ DR-09 / DR-10 — สำเนาก่อนลบอยู่ในไฟล์เล่ม `…ก่อนแก้DeepLog.docx`
+> **▶ เจ้าของตัดสินใจจะทำ (2026-09-29):** เพิ่ม Isolation Forest กลับเข้าโค้ด แล้วดันกลไกตรวจจับกลับเป็น **3 ระดับ** (Rule + DeepLog + Isolation Forest) เหมือนที่เล่มเดิมเคยเขียน
+> - เมื่อทำเสร็จ ต้อง**ย้อนการแก้ 09-29 ในเล่ม**: ใส่ 3.9.6 / 4.6.6 กลับ · แถวตารางเทคโนโลยี · DR-09 / DR-10 · เปลี่ยน "สองระดับ" → "สามระดับ" ทุกจุด · กรณีทดสอบ 58 → 60 · ตรวจจับ 8 → 10 (ต้นฉบับก่อนลบอยู่ใน `…ก่อนแก้DeepLog.docx`)
+> - ทำตามขอบเขต/ตารางเวลาด้านล่าง (~4–6 วันทำงาน) · อ่านหัวข้อ "ทำไมยังไม่ทำ" เป็นความเสี่ยงที่ต้องจัดการ ไม่ใช่เหตุผลไม่ทำอีกต่อไป
+>
+> สถานะเดิม 2026-09-29 (ก่อนตัดสินใจ): ไม่มีในโค้ด · เอาออกจากเล่มแล้ว (worklog 2026-09-29 หัวข้อ 5) · เล่มเดิมบรรยายที่ 3.9.6 · 4.6.6 · ตารางเทคโนโลยี · DR-09 / DR-10
 
-## ทำไมยังไม่ทำ (ตัดสินใจ 2026-09-29)
+## ความคืบหน้า
+
+- **✅ สเตจ 1 — แกน detection (Python) เสร็จ 2026-09-29** · เทสต์ครบในอิมเมจ (32 ผ่าน · pure feature 12 รันบน host ได้)
+  - `detection/app/batch_features.py` — feature 10 ตัวระดับ batch (pure stdlib): `log_count · distinct_source_ips · distinct_sources · distinct_event_types · event_type_entropy · max_event_type_share · frac_auth_failure · frac_high_severity · frac_cde · logs_per_second`
+  - `detection/app/batch_model.py` — Isolation Forest wrapper · **graceful: ไม่มีโมเดล → unavailable, is_anomaly=False ไม่ throw** (backend ปิด batch ได้แม้ยังไม่ train) · import sklearn แบบ lazy
+  - endpoint `POST /api/v1/detect-batch` (`app/main.py`) + schemas · `train_isoforest.py` (unsupervised, input JSONL ของ batch ปกติ)
+  - `requirements.txt` +scikit-learn 1.7.2 +joblib 1.5.2 → `requirements.lock` regenerate (52 pkg) · pip-audit ผ่าน · image build ผ่าน
+  - tests: `tests/test_batch_features.py` (12) · `tests/test_batch_model.py` (unavailable path + sklearn path · skip ถ้า host ไม่มี dep)
+- **⬜ สเตจ 2 — backend wiring:** migration เพิ่มคอลัมน์ผล/คะแนนใน `batches` · เรียก `/api/v1/detect-batch` ตอนปิด batch ใน `sealBatch()` **โดย detection ล่ม/timeout แล้ว batch ต้องยังปิดได้** (ผลเป็นค่าว่าง) · เทสต์
+- **⬜ สเตจ 3 — dashboard:** แสดงผลจำแนกในหน้า Verify / Reports
+- **⬜ สเตจ 4 — ข้อมูล + ประเมิน:** ⚠️ **ตัวติดหลัก** — export batch ปกติเป็น JSONL → train · สร้างสถานการณ์ผิดปกติ (port scan · brute force ปริมาณมาก · DoS) วัดผล
+- **⬜ สเตจ 5 — เล่ม:** ย้อนการแก้ 09-29 (ดูหัวบนสุด)
+
+## ทำไมยังไม่ทำ (บริบทเดิม ก่อนตัดสินใจ 2026-09-29 — ตอนนี้เป็นความเสี่ยงที่ต้องจัดการ)
 
 - **ไม่มีข้อมูลให้ train / วัดผล** — batch จริง 37 ใบ ส่วนใหญ่มาจากการทดสอบ ไม่มี label ว่าใบไหนผิดปกติ → วัด precision / recall ไม่ได้
 - **ซ้ำกับของที่มี** — กฎ 5710 (threshold ตามเวลา) · DeepLog · alert ของ Prometheus จับปริมาณที่พุ่งได้บางส่วนแล้ว

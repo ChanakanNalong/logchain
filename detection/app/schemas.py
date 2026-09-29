@@ -3,7 +3,7 @@ Pydantic schemas - โครงสร้าง request/response ของ API
 FastAPI จะ validate อัตโนมัติและ generate Swagger
 """
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional, Union
 
 class DetectRequest(BaseModel):
     """
@@ -33,3 +33,33 @@ class HealthResponse(BaseModel):
     device: str
     num_log_keys: int
     window_size: int
+
+
+# ---- Isolation Forest: จำแนก batch (ตรวจจับระดับที่ 3) ----
+
+class BatchLog(BaseModel):
+    """log หนึ่งรายการในชุด — backend ส่งเฉพาะ field ที่ใช้ทำ feature (ไม่ต้องส่ง message/hash)"""
+    eventType: str = Field("", description="ประเภทเหตุการณ์ เช่น AUTH_FAILURE")
+    severity: str = Field("INFO")
+    sourceIp: Optional[str] = Field(None, description="IP ต้นทาง (หลัง PII-mask)")
+    source: Optional[str] = Field(None, description="ชื่อ host/แหล่งที่มา")
+    cdeScope: bool = Field(False)
+    createdAt: Optional[Union[str, float]] = Field(
+        None, description="ISO-8601 หรือ epoch seconds"
+    )
+
+
+class BatchDetectRequest(BaseModel):
+    batch_id: Optional[str] = Field(None, description="id ของ batch (ใส่ได้เพื่อ trace)")
+    logs: List[BatchLog] = Field(
+        ..., min_length=1, description="log ทั้งหมดในชุดที่เพิ่งปิด"
+    )
+
+
+class BatchDetectResponse(BaseModel):
+    is_anomaly: bool = Field(description="True = batch ผิดปกติ")
+    score: float = Field(description="decision_function ของ Isolation Forest (ยิ่งต่ำยิ่งผิดปกติ)")
+    model_available: bool = Field(description="False = ยังไม่ได้ train โมเดล (batch ปิดได้ตามปกติ)")
+    reason: str
+    features: List[float] = Field(description="feature vector ที่คำนวณได้")
+    feature_names: List[str]

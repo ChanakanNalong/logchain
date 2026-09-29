@@ -6,13 +6,22 @@ from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.model import get_detector, WINDOW_SIZE, NUM_CLASSES, TOP_K_G
-from app.schemas import DetectRequest, DetectResponse, HealthResponse
+from app.batch_model import get_batch_detector
+from app.schemas import (
+    DetectRequest,
+    DetectResponse,
+    HealthResponse,
+    BatchDetectRequest,
+    BatchDetectResponse,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """ โหลด model ตอน service start (warm up) - request แรกจะไม่ช้า """
     print("Loading Deeplog model...")
     get_detector()
+    bd = get_batch_detector()
+    print(f"Isolation Forest: {'loaded' if bd.available else 'unavailable — ' + str(bd.unavailable_reason)}")
     print("Service ready.")
     yield
     print("Shutting down.")
@@ -61,5 +70,21 @@ def detect(req: DetectRequest):
     
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/detect-batch", response_model=BatchDetectResponse, tags=["detection"])
+def detect_batch(req: BatchDetectRequest):
+    """
+    จำแนก batch ว่าผิดปกติไหมด้วย Isolation Forest (ตรวจจับระดับที่ 3)
+
+    backend เรียกตอนปิด batch · ถ้ายังไม่ได้ train โมเดล จะคืน model_available=False
+    และ is_anomaly=False เพื่อให้ปิด batch ได้ตามปกติ (ระดับที่ 3 เป็นส่วนเสริม)
+    """
+    try:
+        detector = get_batch_detector()
+        logs = [log.model_dump() for log in req.logs]
+        return BatchDetectResponse(**detector.score_batch(logs))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
