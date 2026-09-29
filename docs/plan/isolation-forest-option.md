@@ -14,7 +14,12 @@
   - endpoint `POST /api/v1/detect-batch` (`app/main.py`) + schemas · `train_isoforest.py` (unsupervised, input JSONL ของ batch ปกติ)
   - `requirements.txt` +scikit-learn 1.7.2 +joblib 1.5.2 → `requirements.lock` regenerate (52 pkg) · pip-audit ผ่าน · image build ผ่าน
   - tests: `tests/test_batch_features.py` (12) · `tests/test_batch_model.py` (unavailable path + sklearn path · skip ถ้า host ไม่มี dep)
-- **⬜ สเตจ 2 — backend wiring:** migration เพิ่มคอลัมน์ผล/คะแนนใน `batches` · เรียก `/api/v1/detect-batch` ตอนปิด batch ใน `sealBatch()` **โดย detection ล่ม/timeout แล้ว batch ต้องยังปิดได้** (ผลเป็นค่าว่าง) · เทสต์
+- **✅ สเตจ 2 — backend wiring เสร็จ 2026-09-29** · unit 245 ผ่าน · lint:ci ผ่าน (665/667) · migration รันจริง + live smoke ผ่าน
+  - migration `BatchIsoForest1790640000000` → คอลัมน์ `if_anomaly · if_score · if_reason · if_scored_at` ใน `batches` (nullable = ยังไม่จำแนก)
+  - `src/integrity/detection.service.ts` — เรียก `POST /api/v1/detect-batch` ผ่าน `fetch` + AbortController timeout · **ไม่มีวัน throw** (ล่ม/timeout/ยังไม่ train → คืน null)
+  - `sealBatchNow()` เรียก `scoreBatchAnomaly()` หลังสร้าง batch (ก่อน anchor) — set if_* บน batch object แล้วทุก return path บันทึกติดไป · **detection พัง = batch ยังปิดได้**
+  - DI: `@Optional()` — เทสต์เดิมที่ไม่ wire ไม่พัง · env `DETECTION_URL` (compose: `http://detection-api:8000`, ไม่ depends_on) + `.env.example`
+  - tests: `detection.service.spec.ts` (8 · mock fetch ทุก path) + integrity spec 2 เคส (บันทึกผลเมื่อ anomaly · seal ยังสำเร็จเมื่อ detection throw)
 - **⬜ สเตจ 3 — dashboard:** แสดงผลจำแนกในหน้า Verify / Reports
 - **⬜ สเตจ 4 — ข้อมูล + ประเมิน:** ⚠️ **ตัวติดหลัก** — export batch ปกติเป็น JSONL → train · สร้างสถานการณ์ผิดปกติ (port scan · brute force ปริมาณมาก · DoS) วัดผล
 - **⬜ สเตจ 5 — เล่ม:** ย้อนการแก้ 09-29 (ดูหัวบนสุด)

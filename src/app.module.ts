@@ -33,6 +33,7 @@ import { KafkaPendingLogs1790294400000 } from './database/migrations/17902944000
 import { ErasureLog1790380800000 } from './database/migrations/1790380800000-ErasureLog';
 import { ErasurePseudonymize1790467200000 } from './database/migrations/1790467200000-ErasurePseudonymize';
 import { AlertsSourceLength1790553600000 } from './database/migrations/1790553600000-AlertsSourceLength';
+import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000-BatchIsoForest';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { AlertsSourceLength1790553600000 } from './database/migrations/179055360
             ErasureLog1790380800000,
             ErasurePseudonymize1790467200000,
             AlertsSourceLength1790553600000,
+            BatchIsoForest1790640000000,
           ],
           migrationsRun: true,
         };

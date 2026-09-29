@@ -6,6 +6,7 @@ import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
 import { MerkleService } from './service/merkle.service';
 import { IntegrityService } from './integrity.service';
+import { DetectionService } from './detection.service';
 import { IntegritySchedule } from './integrity.scheduler';
 import { IntegrityController } from './integrity.controller';
 import { BatchesController } from './batches.controller';
@@ -18,7 +19,12 @@ import { AuthModule } from '../auth/auth.module';
     BlockchainModule,
     AuthModule,
   ],
-  providers: [MerkleService, IntegrityService, IntegritySchedule],
+  providers: [
+    MerkleService,
+    IntegrityService,
+    DetectionService,
+    IntegritySchedule,
+  ],
   controllers: [IntegrityController, BatchesController],
   exports: [IntegrityService],
 })

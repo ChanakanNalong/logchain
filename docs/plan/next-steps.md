@@ -36,8 +36,8 @@
   · log ที่ไม่ตรง template (ไม่ใช่ HDFS) ข้าม ML ไป rule engine อย่างเดียว (`consumer_messages_total{status="ml_skipped_unknown"}`)
 - **CA ของ HTTPS ต่อชื่อ compose project** (`LogChain-Web-CA (<project>)` · 2026-09-28) — clone คนละ project trust พร้อมกันได้
   · CA ของชุดจริงสร้างก่อนนั้นจึงยังชื่อ `LogChain-Web-CA` เฉย ๆ (ไม่ต้องทำอะไร)
-- มี migration แล้ว 6 ตัว รันเองตอน backend boot:
-  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog` · `ErasurePseudonymize` · `AlertsSourceLength`
+- มี migration แล้ว 7 ตัว รันเองตอน backend boot:
+  `AlertsRuleDedup` · `AlertsLastNotified` · `KafkaPendingLogs` · `ErasureLog` · `ErasurePseudonymize` · `AlertsSourceLength` · `BatchIsoForest`
 
 ### คำสั่งที่ใช้บ่อย
 
@@ -308,7 +308,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | `src/kafka/kafka-producer.service.ts` | producer + outbox/replay (`enqueue` · `drainPending`) |
 | `src/kafka/entities/pending-log.entity.ts` | ตาราง `kafka_pending_logs` |
 | `src/alerts/alerts.service.ts` | dedup ตาม rule · นับซ้ำ · ขยับ severity · เตือนซ้ำ |
-| `src/database/migrations/` | migration ของ schema ทั้งหมด (6 ตัว) |
+| `src/database/migrations/` | migration ของ schema ทั้งหมด (7 ตัว) |
 | `src/erasure/erasure.service.ts` | PDPA erasure = pseudonymize (`pseudonymize()` · `resourcePattern()`) · key จาก `VaultService.get().erasure` |
 | `docs/compliance-review-2026-09-23.md` | ผลทบทวนเอกสาร compliance + หลักฐาน (ข้อ 6) |
 | `src/blockchain/blockchain.service.ts` | `sendStoreRoot()` จัดการ nonce เอง (ห้ามกลับไปใช้ NonceManager) |

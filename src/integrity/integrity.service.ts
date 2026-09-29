@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not } from 'typeorm';
 import { Log } from '../logs/entities/log.entity';
@@ -10,6 +10,7 @@ import {
   BlockchainService,
   classifyChainError,
 } from '../blockchain/blockchain.service';
+import { DetectionService } from './detection.service';
 import { isRawHashIntact } from '../logs/services/log-hash';
 
 const BATCH_SIZE = 100; // กำหนดขนาด batch
@@ -53,6 +54,9 @@ export class IntegrityService {
     private readonly mappingRepo: Repository<LogBatchMapping>,
     private readonly merkle: MerkleService,
     private readonly blockchain: BlockchainService,
+    // Isolation Forest ระดับที่ 3 เป็นส่วนเสริม — @Optional เพื่อให้เทสต์/บริบทที่ไม่ wire
+    // ยังสร้าง service ได้ และการปิด batch ไม่พึ่งพา detection
+    @Optional() private readonly detection?: DetectionService,
   ) {}
 
   /**
@@ -98,6 +102,10 @@ export class IntegrityService {
       }),
     );
 
+    // 4b. จำแนกทั้งชุดด้วย Isolation Forest (ระดับที่ 3) — ต้องไม่ทำให้ seal ล้ม
+    //     ตั้งค่า if_* บน batch object ก่อน anchor ทุก return path จึงบันทึกติดไปด้วย
+    await this.scoreBatchAnomaly(batch, pendingLogs);
+
     // 5. ไม่มี chain ก็ปิด batch ได้ — root กับ mapping คือของที่ proof และ
     //    tamper detection ต้องใช้ ส่วน anchor เป็นชั้นที่เติมทีหลังได้
     if (!this.blockchain.ready) {
@@ -139,6 +147,51 @@ export class IntegrityService {
       await this.batchesRepo.save(batch);
       this.logger.error(`Batch ${batch.id} failed to commit`, err);
       return batch;
+    }
+  }
+
+  /**
+   * จำแนก batch ด้วย Isolation Forest แล้วเก็บผลลง batch (ระดับที่ 3)
+   *
+   * ไม่มีวัน throw — detection เป็นส่วนเสริม ห้ามทำให้ปิด batch ล้ม
+   * ถ้าไม่ได้ wire detection / detection ล่ม / ยังไม่ train → คืน null → if_* เป็น NULL
+   * (สถานะ "ยังไม่ได้จำแนก") ต่างจาก if_anomaly=false ที่ = "จำแนกแล้วว่าปกติ"
+   */
+  private async scoreBatchAnomaly(batch: Batch, logs: Log[]): Promise<void> {
+    if (!this.detection) return;
+    try {
+      const result = await this.detection.scoreBatch(
+        batch.id,
+        logs.map((l) => ({
+          eventType: l.eventType,
+          severity: l.severity,
+          sourceIp: l.sourceIp,
+          source: l.source,
+          cdeScope: l.cdeScope,
+          createdAt: new Date(l.createdAt).toISOString(),
+        })),
+      );
+      if (!result) return;
+
+      batch.ifAnomaly = result.isAnomaly;
+      batch.ifScore = result.score;
+      batch.ifReason = result.reason;
+      batch.ifScoredAt = new Date();
+      await this.batchesRepo.save(batch);
+
+      if (result.isAnomaly) {
+        this.logger.warn(
+          `Isolation Forest จับ batch ${batch.id} เป็น anomaly (score ${result.score.toFixed(
+            4,
+          )}): ${result.reason}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `จำแนก batch ${batch.id} ด้วย Isolation Forest ไม่สำเร็จ: ${
+          (err as Error).message
+        } — ปิด batch ต่อโดยไม่มีผลจำแนก`,
+      );
     }
   }
 

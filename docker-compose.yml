@@ -661,6 +661,9 @@ services:
       KAFKA_SSL_CERT: /app/infra/kafka/certs/clients/nestjs.crt
       KAFKA_SSL_KEY: /app/infra/kafka/certs/clients/nestjs.key
       VAULT_ADDR: "http://vault:8200"
+      # Isolation Forest ระดับที่ 3 — backend เรียกตอนปิด batch · ไม่ depends_on detection
+      # (detection ล่ม/ยังไม่ขึ้น = batch ยังปิดได้ ผลจำแนกเป็น NULL)
+      DETECTION_URL: "http://detection-api:8000"
       # KEYCLOAK_URL (issuer) ห้าม override — ต้องเป็น localhost:8080 ตาม .env
       # ตัวที่ backend ใช้ยิงจริงคือตัวนี้
       KEYCLOAK_INTERNAL_URL: "http://keycloak:8080"

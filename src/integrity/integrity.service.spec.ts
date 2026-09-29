@@ -7,6 +7,11 @@ import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
+import {
+  DetectionService,
+  BatchLogInput,
+  BatchAnomalyResult,
+} from './detection.service';
 import { computeRawHash } from '../logs/services/log-hash';
 
 /** log row ที่ rawHash ตรงกับเนื้อของตัวเอง — verify recompute hash จาก row ด้วย */
@@ -52,6 +57,12 @@ describe('IntegrityService — Merkle determinism', () => {
   let onChain: Map<string, string>;
   let checkRootSpy: jest.Mock;
   let alertSaves: any[];
+  let detectionMock: {
+    scoreBatch: jest.Mock<
+      Promise<BatchAnomalyResult | null>,
+      [string, BatchLogInput[]]
+    >;
+  };
 
   beforeEach(async () => {
     // Same createdAt on every log, so the tie-break decides ordering.
@@ -178,11 +189,15 @@ describe('IntegrityService — Merkle determinism', () => {
       checkRoot: checkRootSpy,
     };
 
+    // ค่าเริ่มต้นคืน null (ยังไม่ได้จำแนก) — เทสต์เดิมจึงไม่ได้รับผลกระทบ
+    detectionMock = { scoreBatch: jest.fn(async () => null) };
+
     const module = await Test.createTestingModule({
       providers: [
         IntegrityService,
         MerkleService, // real — hashing must not be mocked
         { provide: BlockchainService, useValue: blockchain },
+        { provide: DetectionService, useValue: detectionMock },
         { provide: getRepositoryToken(Log), useValue: logsRepo },
         { provide: getRepositoryToken(Batch), useValue: batchesRepo },
         { provide: getRepositoryToken(Alert), useValue: alertsRepo },
@@ -285,5 +300,39 @@ describe('IntegrityService — Merkle determinism', () => {
 
     expect('0x' + batch!.merkleRoot).toBe(expectedRoot);
     expect(expectedRoot).not.toBe(insertionRoot); // ordering genuinely matters
+  });
+
+  it('stores the Isolation Forest result on the batch when detection flags an anomaly', async () => {
+    detectionMock.scoreBatch.mockResolvedValueOnce({
+      isAnomaly: true,
+      score: -0.31,
+      reason: 'batch ผิดปกติ (Isolation Forest): AUTH_FAILURE สูง',
+    });
+
+    const batch = await service.sealBatch();
+
+    // detection ถูกเรียกด้วย log ทั้งชุด (map เป็น field ที่ detection ต้องใช้)
+    expect(detectionMock.scoreBatch).toHaveBeenCalledTimes(1);
+    const [, sentLogs] = detectionMock.scoreBatch.mock.calls[0];
+    expect(sentLogs).toHaveLength(logsStore.length);
+    expect(sentLogs[0]).toHaveProperty('eventType');
+    expect(sentLogs[0]).toHaveProperty('createdAt');
+
+    expect(batch!.status).toBe('CONFIRMED'); // การจำแนกไม่ขวางการปิด/anchor
+    expect(batch!.ifAnomaly).toBe(true);
+    expect(batch!.ifScore).toBe(-0.31);
+    expect(batch!.ifReason).toContain('Isolation Forest');
+    expect(batch!.ifScoredAt).toBeInstanceOf(Date);
+  });
+
+  it('seals normally when detection throws — scoring must never block sealing', async () => {
+    detectionMock.scoreBatch.mockRejectedValueOnce(
+      new Error('detection exploded'),
+    );
+
+    const batch = await service.sealBatch();
+
+    expect(batch!.status).toBe('CONFIRMED');
+    expect(batch!.ifAnomaly).toBeUndefined(); // ไม่มีผลจำแนก แต่ batch ปิดสำเร็จ
   });
 });

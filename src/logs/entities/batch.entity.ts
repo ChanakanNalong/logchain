@@ -29,6 +29,20 @@ export class Batch {
 
   @Column({ name: 'confirmed_at', type: 'timestamptz', nullable: true })
   confirmedAt: Date | null;
+
+  // ---- ผลจำแนกของ Isolation Forest (ตรวจจับระดับที่ 3) ----
+  // NULL = ยังไม่ได้จำแนก (detection ล่ม/timeout/ยังไม่ train) · false = จำแนกแล้วว่าปกติ
+  @Column({ name: 'if_anomaly', type: 'boolean', nullable: true })
+  ifAnomaly: boolean | null;
+
+  @Column({ name: 'if_score', type: 'double precision', nullable: true })
+  ifScore: number | null;
+
+  @Column({ name: 'if_reason', type: 'text', nullable: true })
+  ifReason: string | null;
+
+  @Column({ name: 'if_scored_at', type: 'timestamptz', nullable: true })
+  ifScoredAt: Date | null;
 }
 
 /**
