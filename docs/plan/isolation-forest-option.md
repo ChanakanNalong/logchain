@@ -35,7 +35,12 @@
   - tests: `tests/test_export_batches.py` (10 · sort/chunk/label) · detection suite รวม 42 ผ่าน
   - **ขั้นถัดไป (เจ้าของ):** ทำตาม `docs/runbooks/isolation-forest-stage4.md` — สลับ clone → ยิง → export → train → eval → copy `isoforest_model.joblib` ลงชุดจริง → rebuild detection
   - หมายเหตุ: `sourceIp` ไม่ถูก mask (mask เฉพาะ `message`) → feature `distinct_source_ips` เชื่อถือได้ · createdAt ตั้งโดย server
-- **⬜ สเตจ 5 — เล่ม:** ย้อนการแก้ 09-29 (ดูหัวบนสุด)
+- **✅ สเตจ 5 — แก้ docx เสร็จบนสำเนา 2026-09-30** · รอเจ้าของเปิด Word ยืนยัน + update field + export PDF + สลับแทนไฟล์เดิม
+  - ไฟล์: `~/Documents/final_volume/…-ฉบับสะอาด-รอบ3-IsolationForest.docx` + `…-ไฮไลต์จุดแก้-รอบ3-IF.docx` (ไม่ทับของเดิม)
+  - สคริปต์: `~/Documents/logchain-data/tools/edit_book3.py` (text reversal 18 จุด) + `insert_book3.py` (แทรก node จาก ก่อนแก้DeepLog.docx)
+  - ทำ: "สองระดับ"→"สามระดับ" (9 จุด) · 58→60 · ตรวจจับ 8→10 · แทรก 3.9.6 + 4.6.6 (+2 ย่อหน้าผลจริง P 0.8400/R 1.0/F1 0.9130/FP 2.22%) · DR-09/DR-10 (design+results เติมเลขจริง) · tech row IF
+  - verify: zip+XML valid · ตำแหน่ง section ถูก · highlight เขียวติดในไฟล์ hl · **ยังไม่ได้เช็คภาพใน Word** (caption/เลขตาราง — เจ้าของ update field)
+  - หมายเหตุ: ย่อหน้า design ของ 4.6.6 ใช้ข้อความเดิม (ยกตัวอย่าง feature 3 ตัว) ไม่ใช่ "10 ตัว" — ถ้าอยากระบุครบ 10 แก้เพิ่มได้
 
 ## ทำไมยังไม่ทำ (บริบทเดิม ก่อนตัดสินใจ 2026-09-29 — ตอนนี้เป็นความเสี่ยงที่ต้องจัดการ)
 
