@@ -33,6 +33,17 @@ function statusTone(status: string) {
 
 const fmtTime = (v: string | null) => (v ? new Date(v).toLocaleString("sv-SE") : "—");
 
+/**
+ * ผลจำแนก batch ของ Isolation Forest (ตรวจจับระดับที่ 3)
+ *   true  = ผิดปกติ (แดง)  ·  false = ปกติ (เขียว)
+ *   null/undefined = ยังไม่ได้จำแนก (detection ล่ม / ยังไม่ train) → "—"
+ */
+function anomalyTone(v: boolean | null | undefined) {
+  if (v === true) return "danger";
+  if (v === false) return "good";
+  return null;
+}
+
 export default function Verify() {
   const t = useTheme();
   const [logId, setLogId] = useState("");
@@ -198,6 +209,12 @@ export default function Verify() {
                 <div style={{ fontSize: 11, color: t.muted, marginTop: 6 }}>
                   tx: {result.batch?.txHash?.slice(0, 20) ?? "—"}… · status: {result.batch?.status}
                 </div>
+                {result.batch?.ifAnomaly != null && (
+                  <div style={{ fontSize: 11, marginTop: 6, color: result.batch.ifAnomaly ? t.danger : t.muted }}>
+                    Isolation Forest: {result.batch.ifAnomaly ? "batch flagged anomalous" : "batch normal"}
+                    {result.batch.ifReason ? ` — ${result.batch.ifReason}` : ""}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -250,22 +267,33 @@ export default function Verify() {
               <div style={{ overflowX: "auto", marginTop: 6 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr>{["Status", "Merkle root", "Logs", "Sealed at", "Tx"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                    <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx"].map((h) => <Th key={h}>{h}</Th>)}</tr>
                   </thead>
                   <tbody>
-                    {batches.map((b) => (
+                    {batches.map((b) => {
+                      const tone = anomalyTone(b.ifAnomaly);
+                      return (
                       <tr key={b.id}>
                         <Td><Badge tone={statusTone(b.status)}>{b.status}</Badge></Td>
                         <Td style={{ color: t.blue2, ...monoFont }} title={b.merkleRoot}>
                           {b.merkleRoot?.slice(0, 12)}…
                         </Td>
                         <Td style={{ ...monoFont }}>{b.logCount}</Td>
+                        {/* Isolation Forest (ระดับที่ 3) — tooltip บอกเหตุผล */}
+                        <Td title={b.ifReason ?? (tone ? "" : "ยังไม่ได้จำแนก")}>
+                          {tone ? (
+                            <Badge tone={tone}>{b.ifAnomaly ? "Anomaly" : "Normal"}</Badge>
+                          ) : (
+                            <span style={{ color: t.muted }}>—</span>
+                          )}
+                        </Td>
                         <Td style={{ color: t.muted, ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
                         <Td style={{ color: t.muted, ...monoFont }} title={b.txHash ?? ""}>
                           {b.txHash ? `${b.txHash.slice(0, 10)}…` : "—"}
                         </Td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

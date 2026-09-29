@@ -20,7 +20,10 @@
   - `sealBatchNow()` เรียก `scoreBatchAnomaly()` หลังสร้าง batch (ก่อน anchor) — set if_* บน batch object แล้วทุก return path บันทึกติดไป · **detection พัง = batch ยังปิดได้**
   - DI: `@Optional()` — เทสต์เดิมที่ไม่ wire ไม่พัง · env `DETECTION_URL` (compose: `http://detection-api:8000`, ไม่ depends_on) + `.env.example`
   - tests: `detection.service.spec.ts` (8 · mock fetch ทุก path) + integrity spec 2 เคส (บันทึกผลเมื่อ anomaly · seal ยังสำเร็จเมื่อ detection throw)
-- **⬜ สเตจ 3 — dashboard:** แสดงผลจำแนกในหน้า Verify / Reports
+- **✅ สเตจ 3 — dashboard เสร็จ 2026-09-29** · `next build` + backend `tsc` ผ่าน · rebuild/restart แล้ว
+  - `integrity.service.ts` `listBatches()` ส่ง `ifAnomaly · ifScore · ifReason · ifScoredAt` ออก API
+  - `cylis-dashboard/src/views/Verify.tsx` — เพิ่มคอลัมน์ **Anomaly** ในตาราง Recent batches (Anomaly=แดง · Normal=เขียว · ยังไม่จำแนก="—" · tooltip=เหตุผล) + บรรทัดผล IF ในการ์ดผล verify ทีละ log
+  - ⚠️ ตรวจด้วยตายังไม่ได้ (dashboard ต้อง login OTP ของเจ้าของ) · ตอนนี้ทุก batch โชว์ "—" จนกว่าจะ train (สเตจ 4)
 - **⬜ สเตจ 4 — ข้อมูล + ประเมิน:** ⚠️ **ตัวติดหลัก** — export batch ปกติเป็น JSONL → train · สร้างสถานการณ์ผิดปกติ (port scan · brute force ปริมาณมาก · DoS) วัดผล
 - **⬜ สเตจ 5 — เล่ม:** ย้อนการแก้ 09-29 (ดูหัวบนสุด)
 

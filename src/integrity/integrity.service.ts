@@ -625,6 +625,11 @@ export class IntegrityService {
       logCount: batch.logCount,
       sealedAt: batch.sealedAt,
       confirmedAt: batch.confirmedAt,
+      // ผลจำแนก Isolation Forest (ระดับที่ 3) — null = ยังไม่ได้จำแนก
+      ifAnomaly: batch.ifAnomaly,
+      ifScore: batch.ifScore,
+      ifReason: batch.ifReason,
+      ifScoredAt: batch.ifScoredAt,
     }));
   }
 
