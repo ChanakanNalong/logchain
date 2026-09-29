@@ -7,5 +7,6 @@ __pycache__/
 data/*
 !data/deeplog_model.pt
 !data/drain_state.json
+!data/isoforest_model.joblib
 README.md
 FIXES-*.md

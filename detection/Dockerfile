@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt -c requirements.lock && pip c
 # data/ เอาเฉพาะ 2 ไฟล์ที่ runtime ต้องใช้ — dataset ก้อนใหญ่ไม่ต้องเข้า image
 COPY app/   ./app/
 COPY rules/ ./rules/
-COPY data/deeplog_model.pt data/drain_state.json ./data/
+COPY data/deeplog_model.pt data/drain_state.json data/isoforest_model.joblib ./data/
 
 # GeoLite2-City.mmdb ไม่ได้อยู่ใน image (license ของ MaxMind + 66 MB)
 # app/enrichment.py เช็ค .exists() อยู่แล้ว ไม่เจอก็แค่ปิด geo enrichment

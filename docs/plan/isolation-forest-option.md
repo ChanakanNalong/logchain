@@ -24,7 +24,12 @@
   - `integrity.service.ts` `listBatches()` ส่ง `ifAnomaly · ifScore · ifReason · ifScoredAt` ออก API
   - `cylis-dashboard/src/views/Verify.tsx` — เพิ่มคอลัมน์ **Anomaly** ในตาราง Recent batches (Anomaly=แดง · Normal=เขียว · ยังไม่จำแนก="—" · tooltip=เหตุผล) + บรรทัดผล IF ในการ์ดผล verify ทีละ log
   - ⚠️ ตรวจด้วยตายังไม่ได้ (dashboard ต้อง login OTP ของเจ้าของ) · ตอนนี้ทุก batch โชว์ "—" จนกว่าจะ train (สเตจ 4)
-- **🟡 สเตจ 4 — เครื่องมือพร้อม (2026-09-29) · รอเจ้าของรันบน clone** · เลือกกลยุทธ์ **B (pipeline จริงบน clone)**
+- **✅ สเตจ 4 — รันบน clone จริงเสร็จ 2026-09-30** · ข้อมูล 20,433 log (18,033 normal + 800×3 attacks) → 204 batch
+  - **ผลจริง: Precision 0.8400 · Recall 1.0000 · F1 0.9130 · FP-rate 2.22% (4/180)** · recall ทุกชนิด (brute force/port scan/DoS) = 1.0 · train 180 batch · contamination 0.02
+  - โมเดล `detection/data/isoforest_model.joblib` (staged ในชุดจริง · รอ rebuild detection-api หลังสลับกลับ) · ผล + ข้อมูลที่ `~/Documents/logchain-data/isoforest/`
+  - เจอ + แก้ 2 บั๊กใน `gen_traffic.py` ระหว่างรัน: `opener.open(context=)` (ต้องตั้งที่ HTTPSHandler) · token หมดอายุกลางคัน (เพิ่ม `--secret` refresh เอง)
+  - ตัวเลขจริงเติมลงร่างเล่มแล้ว (`fill_book_draft.py`) → พร้อมใส่ docx (สเตจ 5)
+- <s>สเตจ 4 — เครื่องมือพร้อม (2026-09-29) · เลือกกลยุทธ์ B (pipeline จริงบน clone)</s>
   - เครื่องมือใน `detection/`: `gen_traffic.py` (ยิงปกติ+โจมตี 3 ชนิด) · `export_batches.py` (log→labeled batch) · `train_isoforest.py` · `eval_isoforest.py` (P/R/F1/FP + recall แยกชนิด)
   - toolchain พิสูจน์ offline แล้ว (synthetic 174 batch): **P 0.857 · R 1.000 · F1 0.923 · FP-rate 0.02 · recall ทุกชนิด 1.0** — ตัวเลขจริงมาจากรันบน clone
   - tests: `tests/test_export_batches.py` (10 · sort/chunk/label) · detection suite รวม 42 ผ่าน
