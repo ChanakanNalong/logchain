@@ -152,6 +152,7 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 - [ ] rate limit ไม่ทำงาน (ไม่มี `ThrottlerGuard`) — ตัดสินใจเปิดหรือไม่
 - [ ] ปิด batch ได้ 100 log/นาที (รับได้ ~280/วิ) — เขียนเป็นข้อจำกัดในเล่มแล้ว · แก้ถ้าจะใช้งานจริง
 - [ ] เติม POL — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
+- [ ] (ไม่บังคับ) Isolation Forest จำแนก batch — วิเคราะห์ + ขอบเขตงาน ~4–6 วัน: [`isolation-forest-option.md`](isolation-forest-option.md)
 - [ ] เขียนในรายงานว่าแก้ parse แล้ว **ประสิทธิภาพไม่ลดลง** — ห้ามเขียนว่าแม่นขึ้น · **ต้องรายงานทั้ง 0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
 - [ ] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
 

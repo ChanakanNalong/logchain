@@ -4,9 +4,18 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-28 (เช้ามืด) · **HEAD:** `cef8e76` · งานล่าสุด: `docs/worklog/2026-09-28.md`
-> (smoke test clone แยก · CA ต่อชื่อ project · log key ของ DeepLog 45 ตัว + train ใหม่ · consumer ใช้ template ชุดที่ train)
-> **บันทึกงานเต็ม:** `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
+> **เขียนเมื่อ:** 2026-09-29 (หลังเที่ยงคืน) · **HEAD:** `9d96376` · งานล่าสุด: `docs/worklog/2026-09-29.md`
+> (กรณีทดสอบ "รอผล" ในเล่มครบ · แก้บั๊ก seal พร้อมกัน · เอา Isolation Forest ออกจากเล่ม · DeepLog หลาย seed + เลือก g)
+>
+> **▶ งานถัดไป (เรียงตามนี้):**
+> 1. ข้อ 3–5 ของแผนส่งเล่ม: **(3) ✅ ทดสอบเจาะจาก LAN เสร็จ** (worklog 09-29 หัวข้อ 7 · เหลือกรอกผลลงเล่ม/ตาราง 5-10 · เจอ host เปิด MySQL :3306 ให้ LAN) · **(4)** ตรวจเล่มทั้งเล่มเทียบกับระบบจริง · **(5)** อัปเดตภาคผนวก `~/Documents/thesis-appendix/` (ล่าสุด 09-13)
+>    — แก้เล่มที่ `~/Documents/final_volume/…-ฉบับสะอาด.docx` และทำ `…-ไฮไลต์จุดแก้.docx` คู่กัน (ไฮไลต์เขียว) · แก้ XML ตรง (สคริปต์ตัวอย่าง `~/Documents/logchain-data/tools/edit_book2.py`)
+>    · **ห้าม save / export เล่มจาก LibreOffice** (caption ทั้งเล่มพัง)
+> 2. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
+> 3. ตัดสินใจเปิด rate limit (`ThrottlerGuard` ไม่ได้ลงทะเบียน — worklog 09-29 หัวข้อ 3)
+> 4. (ไม่บังคับ) Isolation Forest → [`isolation-forest-option.md`](isolation-forest-option.md)
+>
+> **บันทึกงานเต็ม:** `docs/worklog/2026-09-29.md` (กรณีทดสอบ · IM-12 · PT-07 · เล่ม) · `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
 
 ---
 
