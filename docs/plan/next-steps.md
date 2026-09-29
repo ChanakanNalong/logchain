@@ -13,7 +13,10 @@
 >    · **ห้าม save / export เล่มจาก LibreOffice** (caption ทั้งเล่มพัง)
 > 2. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
 > 3. ตัดสินใจเปิด rate limit (`ThrottlerGuard` ไม่ได้ลงทะเบียน — worklog 09-29 หัวข้อ 3)
-> 4. **จะทำ Isolation Forest** (เจ้าของตัดสินใจ 2026-09-29) → กลับเป็นตรวจจับ 3 ระดับ · ขอบเขต + ผลกระทบต่อเล่ม → [`isolation-forest-option.md`](isolation-forest-option.md)
+> 4. **Isolation Forest (ตรวจจับระดับที่ 3) — โค้ด/เครื่องมือ/ร่างเล่มเสร็จครบ 2026-09-29** เหลือ 2 งานที่ต้องเจ้าของทำ (ต้องใช้ clone + secret + login dashboard):
+>    - **(4ก) รันสเตจ 4 บน clone** → ได้ `isoforest_model.joblib` + ตัวเลข P/R/F1/FP จริง · ทำตาม [`docs/runbooks/isolation-forest-stage4.md`](../runbooks/isolation-forest-stage4.md) → copy โมเดลลงชุดจริง + `git add detection/data/isoforest_model.joblib`
+>    - **(4ข) เขียนเล่มสเตจ 5** → เติมเลขลง [`isoforest-book-draft.md`](isoforest-book-draft.md) แล้วใส่ 4.6.6 + DR-09/10 เข้า `.docx` · "สองระดับ"→"สามระดับ" · 58→60 · 8→10 (checklist D ในร่าง)
+>    - สเตจ 1–3 (detection core `5cb1303` · backend `8112e8f` · dashboard) + สเตจ 4 tooling (`794dc8d`) commit แล้ว · สถานะ 5 สเตจ + ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate" → [`isolation-forest-option.md`](isolation-forest-option.md)
 >
 > **บันทึกงานเต็ม:** `docs/worklog/2026-09-29.md` (กรณีทดสอบ · IM-12 · PT-07 · เล่ม) · `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
 
