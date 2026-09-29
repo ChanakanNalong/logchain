@@ -4,19 +4,21 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-29 (หลังเที่ยงคืน) · **HEAD:** `9d96376` · งานล่าสุด: `docs/worklog/2026-09-29.md`
-> (กรณีทดสอบ "รอผล" ในเล่มครบ · แก้บั๊ก seal พร้อมกัน · เอา Isolation Forest ออกจากเล่ม · DeepLog หลาย seed + เลือก g)
+> **เขียนเมื่อ:** 2026-09-30 · **HEAD:** `975e6b2` · งานล่าสุด: `docs/worklog/2026-09-30.md`
+> (Isolation Forest ครบ 5 สเตจ — โมเดล live บนระบบจริง · ยืนยัน Amoy live · แก้ docx กลับ 3 ระดับ)
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. ข้อ 3–5 ของแผนส่งเล่ม: **(3) ✅ ทดสอบเจาะจาก LAN เสร็จ** (worklog 09-29 หัวข้อ 7 · เหลือกรอกผลลงเล่ม/ตาราง 5-10 · เจอ host เปิด MySQL :3306 ให้ LAN) · **(4)** ตรวจเล่มทั้งเล่มเทียบกับระบบจริง · **(5)** อัปเดตภาคผนวก `~/Documents/thesis-appendix/` (ล่าสุด 09-13)
->    — แก้เล่มที่ `~/Documents/final_volume/…-ฉบับสะอาด.docx` และทำ `…-ไฮไลต์จุดแก้.docx` คู่กัน (ไฮไลต์เขียว) · แก้ XML ตรง (สคริปต์ตัวอย่าง `~/Documents/logchain-data/tools/edit_book2.py`)
->    · **ห้าม save / export เล่มจาก LibreOffice** (caption ทั้งเล่มพัง)
-> 2. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
-> 3. ตัดสินใจเปิด rate limit (`ThrottlerGuard` ไม่ได้ลงทะเบียน — worklog 09-29 หัวข้อ 3)
-> 4. **Isolation Forest (ตรวจจับระดับที่ 3) — โค้ด/เครื่องมือ/ร่างเล่มเสร็จครบ 2026-09-29** เหลือ 2 งานที่ต้องเจ้าของทำ (ต้องใช้ clone + secret + login dashboard):
->    - **(4ก) รันสเตจ 4 บน clone** → ได้ `isoforest_model.joblib` + ตัวเลข P/R/F1/FP จริง · ทำตาม [`docs/runbooks/isolation-forest-stage4.md`](../runbooks/isolation-forest-stage4.md) → copy โมเดลลงชุดจริง + `git add detection/data/isoforest_model.joblib`
->    - **(4ข) เขียนเล่มสเตจ 5** → เติมเลขลง [`isoforest-book-draft.md`](isoforest-book-draft.md) แล้วใส่ 4.6.6 + DR-09/10 เข้า `.docx` · "สองระดับ"→"สามระดับ" · 58→60 · 8→10 (checklist D ในร่าง)
->    - สเตจ 1–3 (detection core `5cb1303` · backend `8112e8f` · dashboard) + สเตจ 4 tooling (`794dc8d`) commit แล้ว · สถานะ 5 สเตจ + ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate" → [`isolation-forest-option.md`](isolation-forest-option.md)
+> 1. **ยืนยันเล่มสเตจ 5 Isolation Forest ใน Word** (เจ้าของ) — เปิด `~/Documents/final_volume/…-ฉบับสะอาด-รอบ3-IsolationForest.docx` + `…-ไฮไลต์จุดแก้-รอบ3-IF.docx` (**MS Word ไม่ใช่ LibreOffice**) เช็คภาพ 3.9.6/4.6.6 + ตาราง DR-09/10 + tech row + ไฮไลต์เขียว → update field → ภาพที่ 4-4 (แก้รูปเป็น 3 กล่องถ้ายังเป็น 2) → export PDF → แทนไฟล์เดิม
+> 2. ข้อ 4–5 ของแผนส่งเล่ม:
+>    - **(4a)** dedup index (เล่ม ~บรรทัด 1029) — เล่มเขียน `(alert_type, source, batch_id)` แต่จริง `(…, rule_id)` ยังไม่แก้
+>    - **(4b)** กรอกผล LAN pentest (7.1–7.2) ลงตาราง 5-10 (worklog 09-29 หัวข้อ 7)
+>    - **(5)** อัปเดตภาคผนวก `~/Documents/thesis-appendix/` (ล่าสุด 09-13)
+>    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
+> 3. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
+> 4. ตัดสินใจเปิด rate limit (`ThrottlerGuard` ไม่ได้ลงทะเบียน — worklog 09-29 หัวข้อ 3)
+> 5. (host · sudo) พิจารณา bind MySQL `:3306` เป็น 127.0.0.1 (เจอตอน LAN pentest)
+>
+> **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
 >
 > **บันทึกงานเต็ม:** `docs/worklog/2026-09-29.md` (กรณีทดสอบ · IM-12 · PT-07 · เล่ม) · `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
 
