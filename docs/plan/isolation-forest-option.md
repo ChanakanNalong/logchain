@@ -24,7 +24,12 @@
   - `integrity.service.ts` `listBatches()` ส่ง `ifAnomaly · ifScore · ifReason · ifScoredAt` ออก API
   - `cylis-dashboard/src/views/Verify.tsx` — เพิ่มคอลัมน์ **Anomaly** ในตาราง Recent batches (Anomaly=แดง · Normal=เขียว · ยังไม่จำแนก="—" · tooltip=เหตุผล) + บรรทัดผล IF ในการ์ดผล verify ทีละ log
   - ⚠️ ตรวจด้วยตายังไม่ได้ (dashboard ต้อง login OTP ของเจ้าของ) · ตอนนี้ทุก batch โชว์ "—" จนกว่าจะ train (สเตจ 4)
-- **⬜ สเตจ 4 — ข้อมูล + ประเมิน:** ⚠️ **ตัวติดหลัก** — export batch ปกติเป็น JSONL → train · สร้างสถานการณ์ผิดปกติ (port scan · brute force ปริมาณมาก · DoS) วัดผล
+- **🟡 สเตจ 4 — เครื่องมือพร้อม (2026-09-29) · รอเจ้าของรันบน clone** · เลือกกลยุทธ์ **B (pipeline จริงบน clone)**
+  - เครื่องมือใน `detection/`: `gen_traffic.py` (ยิงปกติ+โจมตี 3 ชนิด) · `export_batches.py` (log→labeled batch) · `train_isoforest.py` · `eval_isoforest.py` (P/R/F1/FP + recall แยกชนิด)
+  - toolchain พิสูจน์ offline แล้ว (synthetic 174 batch): **P 0.857 · R 1.000 · F1 0.923 · FP-rate 0.02 · recall ทุกชนิด 1.0** — ตัวเลขจริงมาจากรันบน clone
+  - tests: `tests/test_export_batches.py` (10 · sort/chunk/label) · detection suite รวม 42 ผ่าน
+  - **ขั้นถัดไป (เจ้าของ):** ทำตาม `docs/runbooks/isolation-forest-stage4.md` — สลับ clone → ยิง → export → train → eval → copy `isoforest_model.joblib` ลงชุดจริง → rebuild detection
+  - หมายเหตุ: `sourceIp` ไม่ถูก mask (mask เฉพาะ `message`) → feature `distinct_source_ips` เชื่อถือได้ · createdAt ตั้งโดย server
 - **⬜ สเตจ 5 — เล่ม:** ย้อนการแก้ 09-29 (ดูหัวบนสุด)
 
 ## ทำไมยังไม่ทำ (บริบทเดิม ก่อนตัดสินใจ 2026-09-29 — ตอนนี้เป็นความเสี่ยงที่ต้องจัดการ)
