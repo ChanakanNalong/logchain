@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -16,7 +17,10 @@ async function bootstrap() {
     ref.metrics?.incrementUnhandledEthersRejection(code),
   );
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // ข้างหน้ามี proxy 1 ชั้น (Caddy https-proxy) — ไม่ตั้ง = rate limit นับทุกเครื่องเป็น IP ของ Caddy
+  // Caddy เขียน X-Forwarded-For ใหม่เอง (ไม่เชื่อค่าที่ client ส่งมา) · :3000 ตรง bind 127.0.0.1 เสมอ
+  app.set('trust proxy', 1);
   const metrics = app.get(MetricsService);
   ref.metrics = metrics;
   // /metrics ไม่อยู่บน :3000 แล้ว — port แยกที่ไม่ publish ออก host (review B5)

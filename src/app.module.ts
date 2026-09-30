@@ -2,9 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VaultService } from './vault/vault.service';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TerminusModule } from '@nestjs/terminus';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { AuthModule } from './auth/auth.module';
 import { LogsModule } from './logs/logs.module';
@@ -42,7 +42,9 @@ import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000
 
     VaultModule, // ต้องมาก่อน TypeOrmModule
 
-    // Rate limiting global - 200 req/นาที ต่อ IP
+    // Rate limiting global - 200 req/นาที ต่อ IP (POST /logs override เป็น 500 ใน LogsController)
+    // มีผลจริงเพราะ APP_GUARD ด้านล่าง — ตั้ง module อย่างเดียว decorator ไม่ทำอะไร
+    // IP จริงของ client ที่ผ่าน https-proxy มาจาก X-Forwarded-For (trust proxy ใน main.ts)
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
 
     // TypeORM - เชื่อ PostgreSQL, synchronize: false ใช้ migration แทน
@@ -100,6 +102,8 @@ import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000
     // APP_INTERCEPTOR -> register AuditInterceptor แบบ global
     // ทุก request จะถูก intercept โดยอัตโนมัติ ไม่ต้อง @UseInterceptors ทุก controller
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    // global guard รันก่อน AuthGuard ของ controller → request ที่ไม่มี token ก็โดนนับด้วย
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

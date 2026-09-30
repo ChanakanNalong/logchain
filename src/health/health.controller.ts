@@ -1,6 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { KafkaConsumerService } from '../kafka/kafka-consumer.service';
 
+// healthcheck ของ docker / demo-preflight ต้องไม่โดน 429
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(private readonly kafkaConsumer: KafkaConsumerService) {}

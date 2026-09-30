@@ -16,7 +16,7 @@
 >    - **(5)** อัปเดตภาคผนวก `~/Documents/thesis-appendix/` (ล่าสุด 09-13)
 >    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
 > 3. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
-> 4. ตัดสินใจเปิด rate limit (`ThrottlerGuard` ไม่ได้ลงทะเบียน — worklog 09-29 หัวข้อ 3)
+> 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
 > 5. (host · sudo) พิจารณา bind MySQL `:3306` เป็น 127.0.0.1 (เจอตอน LAN pentest)
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
@@ -290,7 +290,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | เบราว์เซอร์เตือน cert ที่ `:3453` / `:8443` · login ขึ้น `Invalid parameter: redirect_uri` | ยังไม่ trust CA → `./scripts/trust-web-ca.sh` (ต้องมี `libnss3-tools`) · realm เดิมไม่มี URL https → `./scripts/sync-keycloak-urls.sh` |
 | backend บน host (`start:dev`) ตอบ 401 ทุก request หลังเปลี่ยนเป็น HTTPS | `KEYCLOAK_INTERNAL_URL` ว่าง → ดึง JWKS จาก `https://localhost:8443` ที่ Node ไม่ trust — ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` |
 | รัน `report-cases.integration.spec.ts` แล้ว batch ที่มี log `e2e-report-cases` ขึ้น chain จริง | ลืมหยุด `logchain-backend` — cron ของตัวจริงหยิบ log ของเทสต์ไปก่อน · `docker stop logchain-backend` → รันเทสต์ → `docker start` |
-| ยิง POST /logs เกิน 500/นาทีแล้วไม่โดน 429 | rate limit ไม่ได้เปิด — ไม่มี `ThrottlerGuard` (worklog 2026-09-29 หัวข้อ 3) |
+| โดน 429 (`retry-after: 60`) | rate limit ต่อ IP ของ client: 200 req/นาที ทั่วไป · POST /logs 500/นาที · `/health` ไม่นับ · รอ 60 วิ · ยิง load test (PT-07) จากเครื่องเดียวจะโดนตัดที่ 500/นาที (worklog 2026-09-30 หัวข้อ 5) |
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
