@@ -190,7 +190,12 @@ describe('IntegrityService — Merkle determinism', () => {
     };
 
     // ค่าเริ่มต้นคืน null (ยังไม่ได้จำแนก) — เทสต์เดิมจึงไม่ได้รับผลกระทบ
-    detectionMock = { scoreBatch: jest.fn(async () => null) };
+    detectionMock = {
+      scoreBatch: jest.fn<
+        Promise<BatchAnomalyResult | null>,
+        [string, BatchLogInput[]]
+      >(() => Promise.resolve(null)),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -250,6 +255,25 @@ describe('IntegrityService — Merkle determinism', () => {
     expect(alertSaves).toHaveLength(1);
     expect(alertSaves[0].alertType).toBe('INTEGRITY_TAMPERED');
     expect(alertSaves[0].detail.modifiedLogIds).toEqual(['b']);
+  });
+
+  it('falls back to a local check when the chain lookup fails, instead of aborting the round', async () => {
+    const batch = await service.sealBatch();
+    expect(batch!.status).toBe('CONFIRMED');
+
+    // RPC timeout ของ ethers — เดิม throw ออกจาก verifyAllBatches ทั้งรอบ (batch ที่เหลือไม่ถูกตรวจ)
+    checkRootSpy.mockRejectedValueOnce(
+      Object.assign(new Error('request timeout'), { code: 'TIMEOUT' }),
+    );
+    const rows = logsStore as { id: string; message: string }[];
+    rows.find((l) => l.id === 'b')!.message = 'nothing happened here';
+
+    await expect(service.verifyAllBatches()).resolves.toBeUndefined();
+
+    // การแก้ row ยังถูกจับได้จากการตรวจแบบ local แม้เทียบ chain ไม่ได้
+    expect(batch!.status).toBe('TAMPERED');
+    const saved = alertSaves as { alertType: string }[];
+    expect(saved.map((a) => a.alertType)).toEqual(['INTEGRITY_TAMPERED']);
   });
 
   it('closes the tamper alert once the batch verifies clean again, and re-alerts on a second tamper', async () => {

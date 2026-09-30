@@ -398,10 +398,20 @@ export class IntegrityService {
         continue;
       }
 
-      const { result, onChainRoot } = await this.blockchain.checkRoot(
-        batch.id,
-        root,
-      );
+      // RPC สะดุด (timeout ฯลฯ) ของ batch เดียว เดิม throw ออกจาก loop = batch ที่เหลือในรอบนั้นไม่ถูกตรวจเลย
+      // แม้แต่แบบ local (2026-09-30: 21 ครั้ง/วัน) → ตรวจ batch นี้แบบ local แล้วไปต่อ · รอบหน้าเทียบ chain ใหม่เอง
+      let check: Awaited<ReturnType<BlockchainService['checkRoot']>>;
+      try {
+        check = await this.blockchain.checkRoot(batch.id, root);
+      } catch (err) {
+        const e = err as { code?: string; message?: string };
+        this.logger.warn(
+          `checkRoot ${batch.id} failed (${e.code ?? e.message}) — local check only this round`,
+        );
+        await this.verifyLocally(batch, root, modified);
+        continue;
+      }
+      const { result, onChainRoot } = check;
 
       if (result === 'MISMATCH' || modified.length > 0) {
         // ข้อมูลถูกแก้ไขจริง — root ไม่ตรง chain หรือ row ไม่ตรง hash ของตัวเอง
