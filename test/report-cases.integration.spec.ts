@@ -12,6 +12,7 @@ import { createHash } from 'crypto';
 import { writeFileSync } from 'fs';
 import { AppModule } from '../src/app.module';
 import { AuthGuard } from '@nestjs/passport';
+import { getOptionsToken } from '@nestjs/throttler';
 import { RolesGuard } from '../src/auth/guards/roles.guard';
 import { IntegrityService } from '../src/integrity/integrity.service';
 import {
@@ -143,6 +144,13 @@ describe('Report test cases (chapter 4)', () => {
       .useValue({})
       .overrideProvider(BlockchainService)
       .useValue(fakeBlockchain)
+      // PT-04 / PT-06 ยิง POST /logs 500+ ครั้งในนาทีเดียว (วัดเวลา seal / proof ไม่ใช่ rate limit)
+      // overrideGuard ใช้กับ ThrottlerGuard ที่ลงเป็น APP_GUARD ไม่ได้ — ปิดผ่าน skipIf ของ options แทน
+      .overrideProvider(getOptionsToken())
+      .useValue({
+        throttlers: [{ ttl: 60_000, limit: 200 }],
+        skipIf: () => true,
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
