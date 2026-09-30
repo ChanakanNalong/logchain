@@ -162,6 +162,59 @@ tests:
               description: >-
                 ingest ใหม่พัง (log เข้า DB ไม่ได้) · `docker logs logchain-postgres --tail 50`
 
+  # ---- PostgresReplicaDisconnected ----
+  # standby หลุดหลังนาที 2 → series ยังนับว่ามีอีก 5 นาที (lookback) หายจริงนาที 7 + for 5m = เด้งนาที 12
+  # Postgres ล่มทั้งตัว (pg_up 0 ตั้งแต่นาที 21) → ไม่เด้งซ้ำกับ PostgresDown
+  - interval: 1m
+    input_series:
+      - series: 'pg_up{job="postgres-exporter",instance="postgres-exporter:9187"}'
+        values: '1x20 0x5'
+      - series: 'pg_stat_replication_pg_wal_lsn_diff{job="postgres-exporter",instance="postgres-exporter:9187",application_name="logchain-standby"}'
+        values: '0 0 0 _x22'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: PostgresReplicaDisconnected
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PostgresReplicaDisconnected
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: PostgresReplicaDisconnected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: postgres-exporter
+              instance: postgres-exporter:9187
+            exp_annotations:
+              summary: 'postgres-standby ไม่ได้ replicate จาก primary'
+              description: >-
+                สำเนาสำรองหยุดตาม primary · `docker logs logchain-postgres-standby --tail 50`
+      - eval_time: 23m
+        alertname: PostgresReplicaDisconnected
+        exp_alerts: []
+
+  # ---- PostgresReplicaLagging ----
+  - interval: 1m
+    input_series:
+      - series: 'pg_stat_replication_pg_wal_lsn_diff{job="postgres-exporter",instance="postgres-exporter:9187",application_name="logchain-standby"}'
+        values: '0 0 100000000x15'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PostgresReplicaLagging
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: PostgresReplicaLagging
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: postgres-exporter
+              instance: postgres-exporter:9187
+              application_name: logchain-standby
+            exp_annotations:
+              summary: 'postgres-standby ตาม primary ไม่ทัน (ค้างเกิน 64 MB ของ WAL)'
+              description: >-
+                ค้าง 95.37MiB · ดิสก์หรือเครือข่ายของ standby ช้า · `docker logs logchain-postgres-standby --tail 50`
+
   # ---- KafkaBrokerMissing ----
   # restart broker สั้น ๆ (1 นาที) → ไม่เด้ง · หายไปนาน → เด้ง
   - interval: 1m

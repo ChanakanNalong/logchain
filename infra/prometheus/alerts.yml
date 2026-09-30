@@ -78,6 +78,28 @@ groups:
           description: >-
             ingest ใหม่พัง (log เข้า DB ไม่ได้) · `docker logs logchain-postgres --tail 50`
 
+      # postgres-standby ไม่มีใครอ่าน — หลุดไปก็ไม่มีอาการอื่นให้เห็น (สำเนาสำรองค้างเก่าเงียบ ๆ)
+      # หายจาก pg_stat_replication ของ primary = ไม่ได้ต่อ · `pg_up == 1` = Postgres ล่มทั้งตัวให้ PostgresDown เด้งตัวเดียว
+      - alert: PostgresReplicaDisconnected
+        expr: pg_up == 1 unless on() pg_stat_replication_pg_wal_lsn_diff{application_name="logchain-standby"}
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'postgres-standby ไม่ได้ replicate จาก primary'
+          description: >-
+            สำเนาสำรองหยุดตาม primary · `docker logs logchain-postgres-standby --tail 50`
+
+      - alert: PostgresReplicaLagging
+        expr: pg_stat_replication_pg_wal_lsn_diff{application_name="logchain-standby"} > 64 * 1024 * 1024
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'postgres-standby ตาม primary ไม่ทัน (ค้างเกิน 64 MB ของ WAL)'
+          description: >-
+            ค้าง {{ $value | humanize1024 }}B · ดิสก์หรือเครือข่ายของ standby ช้า · `docker logs logchain-postgres-standby --tail 50`
+
       # cluster มี 3 broker (replication 3) — ขาดตัวเดียวยังทำงานได้แต่ความทนทานลดลง
       - alert: KafkaBrokerMissing
         expr: kafka_brokers < 3

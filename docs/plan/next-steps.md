@@ -21,6 +21,8 @@
 > 6. **deploy ขึ้น cloud** (อาจารย์แนะนำ free host · เลือก 2026-09-30: Oracle Always Free VM + Vercel + DuckDNS · เริ่มข้อมูลใหม่)
 >    → ทำตาม [`../runbooks/deploy-cloud.md`](../runbooks/deploy-cloud.md) · repo พร้อมแล้ว (`docker-compose.cloud.yml` · `Caddyfile.cloud`)
 >    · **รอเจ้าของ:** สมัคร DuckDNS + Oracle + Vercel (ขั้น A–C) แล้วส่ง IP / ชื่อ มา · ยังไม่ได้ทดสอบ ACME / build บน ARM จริง
+>    · ⛔ 2026-09-30 **Oracle สมัครไม่ผ่าน** — บัตร TrueMoney Mastercard = prepaid/virtual (hold ผ่านแต่ Oracle ตีตกตอนสร้าง account)
+>      · **รอเจ้าของปรึกษาอาจารย์** · ทางเลือก: บัตรเดบิตธนาคาร (Oracle) · Azure for Students ($100 · ไม่ใช้บัตร · x86) · Tailscale Funnel บนเครื่องนี้
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
 >
@@ -35,7 +37,7 @@
   + `Security Scan` แยก workflow
 - stack บนเครื่องต่อ **Polygon Amoy จริง** (contract `0x5dC86975…` — ตัวเก่า `0xE2502FC1…` เลิกใช้ตั้งแต่ 09-17)
   batch จึงเป็น `CONFIRMED` ไม่ใช่ `SEALED`
-- Prometheus มี alert rule 13 ตัว (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
+- Prometheus มี alert rule 15 ตัว (+ standby 2 ตัว 09-30) (`infra/prometheus/alerts.yml` · worklog หัวข้อ 19, 25, 26 — รวม batch ค้าง UNVERIFIED/PENDING) → Alertmanager `:9093` → **email (Gmail) ใช้งานได้แล้ว** (ทดสอบเด้งจริงทั้งสาย worklog หัวข้อ 27)
 - งานในแผนเดิมปิดครบ · backup ในเครื่อง + Google Drive (ทดสอบกู้คืนแล้ว) · **ข้อ 6 (ช่องว่าง compliance) ปิดครบ 6.1–6.8**
 - **ข้อมูลทั้งหมดอยู่บนดิสก์เข้ารหัส** (2026-09-25): repo จริงอยู่ `/srv/lcsecure/home/logchain` (`~/Documents/logchain` = symlink) ·
   Docker data-root `/srv/lcsecure/docker` · boot แล้วต้องใส่ PIN ของ `lcsecure` ไม่งั้น Docker ไม่ขึ้น
