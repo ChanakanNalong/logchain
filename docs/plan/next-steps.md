@@ -10,8 +10,9 @@
 > **▶ งานถัดไป (เรียงตามนี้):**
 > 1. **ยืนยันเล่มสเตจ 5 Isolation Forest ใน Word** (เจ้าของ) — เปิด `~/Documents/final_volume/…-ฉบับสะอาด-รอบ3-IsolationForest.docx` + `…-ไฮไลต์จุดแก้-รอบ3-IF.docx` (**MS Word ไม่ใช่ LibreOffice**) เช็คภาพ 3.9.6/4.6.6 + ตาราง DR-09/10 + tech row + ไฮไลต์เขียว → update field → ภาพที่ 4-4 (แก้รูปเป็น 3 กล่องถ้ายังเป็น 2) → export PDF → แทนไฟล์เดิม
 > 2. ข้อ 4–5 ของแผนส่งเล่ม:
->    - **(4a)** dedup index (เล่ม ~บรรทัด 1029) — เล่มเขียน `(alert_type, source, batch_id)` แต่จริง `(…, rule_id)` ยังไม่แก้
->    - **(4b)** กรอกผล LAN pentest (7.1–7.2) ลงตาราง 5-10 (worklog 09-29 หัวข้อ 7)
+>    - ✅ **(4a)** dedup index → `(alert_type, source, batch_id, rule_id)` + occurrence_count · ✅ **(4b)** ผล LAN pentest 7.1–7.2 = แถวใหม่ท้ายตาราง 5-10
+>      "การเปิดให้เข้าถึงจากเครือข่ายภายนอก" — สคริปต์ `edit_book4.py` · ไฟล์ `…-ฉบับสะอาด-รอบ4.docx` + `…-ไฮไลต์จุดแก้-รอบ4.docx`
+>      (สร้างจากรอบ 3 · **รอบ 4 = รอบ 3 + 2 จุดนี้** → เช็ค Word ข้อ 1 ใช้ไฟล์รอบ 4 แทนได้เลย)
 >    - **(5)** อัปเดตภาคผนวก `~/Documents/thesis-appendix/` (ล่าสุด 09-13)
 >    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
 > 3. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
