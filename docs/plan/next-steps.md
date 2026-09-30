@@ -13,7 +13,7 @@
 >    - ✅ **(4a)** dedup index → `(alert_type, source, batch_id, rule_id)` + occurrence_count · ✅ **(4b)** ผล LAN pentest 7.1–7.2 = แถวใหม่ท้ายตาราง 5-10
 >      "การเปิดให้เข้าถึงจากเครือข่ายภายนอก" — สคริปต์ `edit_book4.py` · ไฟล์ `…-ฉบับสะอาด-รอบ4.docx` + `…-ไฮไลต์จุดแก้-รอบ4.docx`
 >      (สร้างจากรอบ 3 · **รอบ 4 = รอบ 3 + 2 จุดนี้** → เช็ค Word ข้อ 1 ใช้ไฟล์รอบ 4 แทนได้เลย)
->    - **(5)** ภาคผนวก → ชุดใหม่ `~/Documents/thesis-appendix-2026-09-30/` (README ในโฟลเดอร์) · **เหลือ C4/C5** (เจ้าของรันด้วย admin token — C5 แก้ DB จริงชั่วคราว)
+>    - **(5)** ภาคผนวก → ชุดใหม่ `~/Documents/thesis-appendix-2026-09-30/` (README ในโฟลเดอร์) · ✅ ครบ (C4/C5 รันด้วย token ingestor + cron verify)
 >    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
 > 3. ✅ POL — ยอด 0.156 POL (เช็ค 2026-09-30 · gas 66 gwei)
 > 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
