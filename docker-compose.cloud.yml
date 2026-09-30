@@ -1,0 +1,23 @@
+# override สำหรับ deploy บน cloud VM — ขั้นตอนเต็ม: docs/runbooks/deploy-cloud.md
+# เปิดใช้ด้วยบรรทัดใน .env ของ VM (ทุกคำสั่ง docker compose + scripts/ ใช้ตามอัตโนมัติ):
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.cloud.yml
+#
+# เปลี่ยนแค่ https-proxy: เปิด 80/443 ให้ internet + cert จาก Let's Encrypt
+# service อื่นทั้งหมดยัง bind ${PUBLISH_ADDR:-127.0.0.1} — ห้ามตั้ง PUBLISH_ADDR บน VM
+# (Prometheus / Alertmanager / Kafka EXTERNAL ไม่มี auth — ผล LAN pentest worklog 2026-09-29 หัวข้อ 7)
+# dashboard container ยังรันบน VM (ไม่ publish ออก) ไว้สำรองผ่าน SSH tunnel · ตัวใช้งานจริงอยู่บน Vercel
+services:
+  https-proxy:
+    environment:
+      # cert + ACME account ต้องอยู่ข้าม restart — ไม่งั้นขอใหม่ทุกครั้งจนติด rate limit ของ Let's Encrypt
+      XDG_DATA_HOME: /data
+      AUTH_HOST: ${AUTH_HOST}
+      API_HOST: ${API_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports: !override
+      - "0.0.0.0:80:8080"
+      - "0.0.0.0:443:8443"
+    volumes: !override
+      - ./infra/caddy/Caddyfile.cloud:/etc/caddy/Caddyfile:ro
+      # สร้างก่อนด้วย `install -d -m 2770 infra/caddy/.data` — container เป็น uid 65534 เขียนผ่านกลุ่ม HOST_GID
+      - ./infra/caddy/.data:/data

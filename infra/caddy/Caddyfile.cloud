@@ -1,0 +1,41 @@
+# HTTPS สำหรับ deploy บน cloud VM (docs/runbooks/deploy-cloud.md) — ใช้ผ่าน docker-compose.cloud.yml เท่านั้น
+# ต่างจาก Caddyfile (เครื่อง local): cert จาก Let's Encrypt ตามชื่อ domain จริง · dashboard อยู่บน Vercel ไม่ผ่านที่นี่
+# ชื่อ host มาจาก .env: AUTH_HOST (Keycloak = issuer) · API_HOST (backend) · ACME_EMAIL
+{
+	email {$ACME_EMAIL}
+	# container รันเป็น non-root → ฟังพอร์ตสูง · docker map host 80→8080 / 443→8443
+	http_port 8080
+	https_port 8443
+	# redirect อัตโนมัติจะพาไป https://host:8443 (พอร์ตใน container) — ทำเองด้านล่างแทน
+	auto_https disable_redirects
+	# ไม่เปิด admin API (:2019) — config เปลี่ยนด้วยการ restart container เท่านั้น
+	admin off
+	log {
+		output stdout
+		format json
+	}
+}
+
+(common) {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+	header Strict-Transport-Security "max-age=31536000"
+}
+
+# Keycloak — KEYCLOAK_URL ใน .env ต้องเป็น https://{AUTH_HOST} (issuer ของ token)
+{$AUTH_HOST} {
+	import common
+	reverse_proxy keycloak:8080
+}
+
+# backend API — NEXT_PUBLIC_API_URL บน Vercel = https://{API_HOST}/api/v1
+{$API_HOST} {
+	import common
+	reverse_proxy backend:3000
+}
+
+# http → https (ACME HTTP-01 challenge Caddy จัดการก่อน redirect เอง)
+http://{$AUTH_HOST}, http://{$API_HOST} {
+	redir https://{host}{uri} permanent
+}

@@ -18,6 +18,9 @@
 > 3. เติม POL ให้ `0x8cBCfC04…4C55` — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
 > 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
 > 5. (host · sudo) พิจารณา bind MySQL `:3306` เป็น 127.0.0.1 (เจอตอน LAN pentest)
+> 6. **deploy ขึ้น cloud** (อาจารย์แนะนำ free host · เลือก 2026-09-30: Oracle Always Free VM + Vercel + DuckDNS · เริ่มข้อมูลใหม่)
+>    → ทำตาม [`../runbooks/deploy-cloud.md`](../runbooks/deploy-cloud.md) · repo พร้อมแล้ว (`docker-compose.cloud.yml` · `Caddyfile.cloud`)
+>    · **รอเจ้าของ:** สมัคร DuckDNS + Oracle + Vercel (ขั้น A–C) แล้วส่ง IP / ชื่อ มา · ยังไม่ได้ทดสอบ ACME / build บน ARM จริง
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
 >
