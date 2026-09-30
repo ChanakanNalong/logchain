@@ -14,6 +14,7 @@
 >      "การเปิดให้เข้าถึงจากเครือข่ายภายนอก" — สคริปต์ `edit_book4.py` · ไฟล์ `…-ฉบับสะอาด-รอบ4.docx` + `…-ไฮไลต์จุดแก้-รอบ4.docx`
 >      (สร้างจากรอบ 3 · **รอบ 4 = รอบ 3 + 2 จุดนี้** → เช็ค Word ข้อ 1 ใช้ไฟล์รอบ 4 แทนได้เลย)
 >    - **(5)** ภาคผนวก → ชุดใหม่ `~/Documents/thesis-appendix-2026-09-30/` (README ในโฟลเดอร์) · ✅ ครบ (C4/C5 รันด้วย token ingestor + cron verify)
+>      · ✅ ใส่ลงเล่มแล้ว = **รอบ 5** (`…-ฉบับสะอาด-รอบ5.docx` + `…-ไฮไลต์จุดแก้-รอบ5.docx`) ภาคผนวก ข (โค้ด ข.1–ข.6) + ค (ผล ค.1–ค.7) · สคริปต์ `insert_appendix5.py` · **เช็คใน Word = ใช้รอบ 5**
 >    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
 > 3. ✅ POL — ยอด 0.156 POL (เช็ค 2026-09-30 · gas 66 gwei)
 > 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
