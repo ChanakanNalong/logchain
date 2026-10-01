@@ -4,7 +4,7 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-09-30 · **HEAD:** `975e6b2` · งานล่าสุด: `docs/worklog/2026-09-30.md`
+> **เขียนเมื่อ:** 2026-10-01 · **HEAD:** `e31e071` · งานล่าสุด: `docs/worklog/2026-10-01.md` (เลือก host deploy · server เพื่อน + WireGuard)
 > (Isolation Forest ครบ 5 สเตจ — โมเดล live บนระบบจริง · ยืนยัน Amoy live · แก้ docx กลับ 3 ระดับ)
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
@@ -19,11 +19,18 @@
 > 3. ✅ POL — ยอด 0.156 POL (เช็ค 2026-09-30 · gas 66 gwei)
 > 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
 > 5. (host · sudo) พิจารณา bind MySQL `:3306` เป็น 127.0.0.1 (เจอตอน LAN pentest)
-> 6. **deploy ขึ้น cloud** (อาจารย์แนะนำ free host · เลือก 2026-09-30: Oracle Always Free VM + Vercel + DuckDNS · เริ่มข้อมูลใหม่)
+> 6. **deploy ขึ้น cloud** (เลือก 2026-09-30: Oracle Always Free VM + Vercel + DuckDNS → 2026-10-01 เปลี่ยน VM เป็น Cloud VPS ไทย · เริ่มข้อมูลใหม่)
 >    → ทำตาม [`../runbooks/deploy-cloud.md`](../runbooks/deploy-cloud.md) · repo พร้อมแล้ว (`docker-compose.cloud.yml` · `Caddyfile.cloud`)
 >    · **รอเจ้าของ:** สมัคร DuckDNS + Oracle + Vercel (ขั้น A–C) แล้วส่ง IP / ชื่อ มา · ยังไม่ได้ทดสอบ ACME / build บน ARM จริง
 >    · ⛔ 2026-09-30 **Oracle สมัครไม่ผ่าน** — บัตร TrueMoney Mastercard = prepaid/virtual (hold ผ่านแต่ Oracle ตีตกตอนสร้าง account)
 >      · **รอเจ้าของปรึกษาอาจารย์** · ทางเลือก: บัตรเดบิตธนาคาร (Oracle) · Azure for Students ($100 · ไม่ใช้บัตร · x86) · Tailscale Funnel บนเครื่องนี้
+    · ✅ 2026-10-01 **เปลี่ยนเป็น Cloud VPS ไทย (เสียเงิน · 4 vCPU / 8 GB)** — runbook ขั้น A/B/D แก้แล้ว (Hostatom SSD3 ฿1,190 หรือ CloudVPS.in.th VPS 4 ฿899)
+      · **รอเจ้าของ:** ถามเซลส์ 5 ข้อในขั้น A2 (PromptPay · KVM · Ubuntu 24.04 x86 · public IPv4 + 80/443 · ใบเสร็จ) → เช่า 1 เดือน → ส่ง IP + ชื่อ DuckDNS มา
+    · ▶ **ล่าสุด 2026-10-02: ใช้ server เพื่อน (NB-Lab · LXC CT141 `172.16.40.141`)** — WireGuard ✅ · SSH ✅ · Docker ✅ ·
+      Cloudflare Tunnel ✅ · **ระบบขึ้นแล้ว https://logchain.nareubad.work** (login `admin-user` + TOTP ได้ · 2026-10-02)
+      → demo brute force → alert ✅ · อีเมล backend + Alertmanager ✅ · blockchain contract `0xF05D…8F0B` (wallet `0xA03e…1C59`) ✅
+      → rate limit ต่อ IP ผ่าน tunnel ✅ · **deploy ครบ (runbook A–G)** · เล่มต้องระบุ 2 contract (local `0x5dC86975…` · cloud `0xF05D…8F0B`)
+      → รายละเอียด **worklog 2026-10-01 หัวข้อ 4.1–4.7** · runbook `deploy-cloud.md` · VPS ไทยเป็นแผนสำรอง
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
 >
