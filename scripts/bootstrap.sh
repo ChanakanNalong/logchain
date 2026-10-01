@@ -255,17 +255,19 @@ for _ in $(seq 1 60); do
     sleep 5
 done
 
-if ./scripts/harden-master-admin.sh; then
-    ok "hardened"
-else
-    warn "harden-master-admin.sh ไม่ผ่าน — รันซ้ำเองได้ (idempotent): ./scripts/harden-master-admin.sh"
-fi
-
 # realm ที่ import ไปก่อนมี HTTPS ไม่มี redirect URI ของ https://localhost:3453 — เติมให้ (มีแล้ว = ไม่ทำอะไร)
+# ต้องมาก่อน harden: หลัง harden `kc-admin` ติด CONFIGURE_TOTP → kcadm login ด้วยรหัสอย่างเดียวไม่ได้
+# (deploy บน cloud ใช้ DASHBOARD_PUBLIC_URL ที่ไม่อยู่ใน template · worklog 2026-10-01 หัวข้อ 4.7)
 if ./scripts/sync-keycloak-urls.sh; then
     ok "Keycloak redirect URI ครบ"
 else
     warn "sync-keycloak-urls.sh ไม่ผ่าน — รันซ้ำเองได้: ./scripts/sync-keycloak-urls.sh"
+fi
+
+if ./scripts/harden-master-admin.sh; then
+    ok "hardened"
+else
+    warn "harden-master-admin.sh ไม่ผ่าน — รันซ้ำเองได้ (idempotent): ./scripts/harden-master-admin.sh"
 fi
 
 # ── สรุป ───────────────────────────────────────────────────────────────────

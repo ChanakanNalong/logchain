@@ -118,6 +118,12 @@ df -h /
 
 bootstrap จะพิมพ์ URL `https://localhost:3453` ตอนจบ — บนเครื่องนี้ไม่ต้องสนใจ (ไม่มี cert ในเครื่อง ไม่ต้อง `trust-web-ca.sh`)
 
+ต้องเห็น `✓ Keycloak redirect URI ครบ` ใน log — ถ้าได้ `! sync-keycloak-urls.sh ไม่ผ่าน` (เช่น harden ไปก่อนแล้ว `kc-admin` ติด TOTP)
+login dashboard จะได้ 400 → เพิ่มเองใน `https://logchain-auth.nareubad.work/admin` (login `kc-admin` + ตั้ง TOTP) → realm **logchain**
+→ Clients → `logchain-frontend`: Valid redirect URIs += `https://logchain.nareubad.work/*` · Web origins += `https://logchain.nareubad.work` → Save
+
+ผู้ใช้ dashboard = `admin-user` (realm `logchain` · ทุก role) รหัส = `KEYCLOAK_ADMIN_USER_PASSWORD` ใน `.env` · login แรกบังคับตั้ง TOTP
+
 ## E. Caddy กับ IP ของผู้ใช้ (อ่านก่อนแก้ `Caddyfile.cloud`)
 
 - Caddy publish แค่ `172.17.0.1:80` (docker0) = ปลายทางที่ cloudflared ตั้งไว้ · เครื่องอื่นในวง `172.16.40.0/24` ยิงตรงไม่ได้
