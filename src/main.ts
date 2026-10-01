@@ -20,6 +20,8 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // ข้างหน้ามี proxy 1 ชั้น (Caddy https-proxy) — ไม่ตั้ง = rate limit นับทุกเครื่องเป็น IP ของ Caddy
   // Caddy เขียน X-Forwarded-For ใหม่เอง (ไม่เชื่อค่าที่ client ส่งมา) · :3000 ตรง bind 127.0.0.1 เสมอ
+  // บน cloud มี Cloudflare Tunnel อยู่หน้า Caddy อีกชั้น แต่ Caddy แทน XFF ด้วย Cf-Connecting-IP แล้ว
+  // (infra/caddy/Caddyfile.cloud) → จากมุม backend ยังเป็น 1 ชั้น ห้ามเพิ่มเป็น 2
   app.set('trust proxy', 1);
   const metrics = app.get(MetricsService);
   ref.metrics = metrics;

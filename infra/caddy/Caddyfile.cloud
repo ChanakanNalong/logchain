@@ -1,41 +1,51 @@
-# HTTPS สำหรับ deploy บน cloud VM (docs/runbooks/deploy-cloud.md) — ใช้ผ่าน docker-compose.cloud.yml เท่านั้น
-# ต่างจาก Caddyfile (เครื่อง local): cert จาก Let's Encrypt ตามชื่อ domain จริง · dashboard อยู่บน Vercel ไม่ผ่านที่นี่
-# ชื่อ host มาจาก .env: AUTH_HOST (Keycloak = issuer) · API_HOST (backend) · ACME_EMAIL
+# deploy บน server เพื่อน (NB-Lab · LXC CT141) — ใช้ผ่าน docker-compose.cloud.yml เท่านั้น · ขั้นตอน: docs/runbooks/deploy-cloud.md
+# HTTPS จบที่ Cloudflare: เบราว์เซอร์ ─https─► Cloudflare ─tunnel─► cloudflared (container ของเพื่อนบน CT141)
+#   ─http─► 172.17.0.1:80 (host) ─► Caddy :8080 → แยกตามชื่อ host ข้างล่าง
+# ไม่มี ACME / cert ในเครื่อง · ชื่อ host มาจาก .env: DASHBOARD_HOST · API_HOST · AUTH_HOST
 {
-	email {$ACME_EMAIL}
-	# container รันเป็น non-root → ฟังพอร์ตสูง · docker map host 80→8080 / 443→8443
+	# container รันเป็น non-root → ฟังพอร์ตสูง · docker map 172.17.0.1:80 → 8080
 	http_port 8080
-	https_port 8443
-	# redirect อัตโนมัติจะพาไป https://host:8443 (พอร์ตใน container) — ทำเองด้านล่างแทน
-	auto_https disable_redirects
+	auto_https off
 	# ไม่เปิด admin API (:2019) — config เปลี่ยนด้วยการ restart container เท่านั้น
 	admin off
+	servers {
+		# cloudflared อยู่ใน bridge ของ docker (172.17.0.0/16) — เชื่อ header จากวงนี้เท่านั้น
+		# IP จริงของผู้ใช้มาใน Cf-Connecting-IP (Cloudflare เขียนเอง ไม่ใช่ค่าที่ client ส่ง)
+		trusted_proxies static {$TUNNEL_TRUSTED_CIDR:172.17.0.0/16}
+		client_ip_headers Cf-Connecting-IP
+	}
 	log {
 		output stdout
 		format json
 	}
 }
 
-(common) {
-	tls {
-		protocols tls1.2 tls1.3
+(upstream) {
+	reverse_proxy {args[0]} {
+		# backend ตั้ง `trust proxy` 1 ชั้น (Caddy) → ตัวท้ายของ X-Forwarded-For ต้องเป็น IP ผู้ใช้
+		# ไม่งั้น rate limit นับทุกคนเป็น IP ของ cloudflared
+		header_up X-Forwarded-For {client_ip}
+		# Caddy รับเป็น http แต่ผู้ใช้เข้ามาทาง https (Keycloak สร้าง redirect / cookie Secure ตามค่านี้)
+		header_up X-Forwarded-Proto https
 	}
-	header Strict-Transport-Security "max-age=31536000"
+}
+
+# dashboard (Next.js) — NEXT_PUBLIC_* ตอน build ชี้ API_HOST / AUTH_HOST
+http://{$DASHBOARD_HOST} {
+	import upstream cylis-dashboard:3000
+}
+
+# backend API — NEXT_PUBLIC_API_URL = https://{API_HOST}/api/v1
+http://{$API_HOST} {
+	import upstream backend:3000
 }
 
 # Keycloak — KEYCLOAK_URL ใน .env ต้องเป็น https://{AUTH_HOST} (issuer ของ token)
-{$AUTH_HOST} {
-	import common
-	reverse_proxy keycloak:8080
+http://{$AUTH_HOST} {
+	import upstream keycloak:8080
 }
 
-# backend API — NEXT_PUBLIC_API_URL บน Vercel = https://{API_HOST}/api/v1
-{$API_HOST} {
-	import common
-	reverse_proxy backend:3000
-}
-
-# http → https (ACME HTTP-01 challenge Caddy จัดการก่อน redirect เอง)
-http://{$AUTH_HOST}, http://{$API_HOST} {
-	redir https://{host}{uri} permanent
+# ชื่ออื่น / เข้าด้วย IP ตรง — ไม่ตอบอะไร
+:8080 {
+	respond 404
 }
