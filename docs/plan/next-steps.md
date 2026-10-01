@@ -4,33 +4,25 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-01 · **HEAD:** `e31e071` · งานล่าสุด: `docs/worklog/2026-10-01.md` (เลือก host deploy · server เพื่อน + WireGuard)
-> (Isolation Forest ครบ 5 สเตจ — โมเดล live บนระบบจริง · ยืนยัน Amoy live · แก้ docx กลับ 3 ระดับ)
+> **เขียนเมื่อ:** 2026-10-02 · **HEAD:** `eeb037a` · งานล่าสุด: `docs/worklog/2026-10-01.md` หัวข้อ 4–5 (deploy NB-Lab ครบ · เล่มรอบ 6)
+> **สถานะ:** ฝั่งระบบเสร็จหมดแล้ว — เหลือเล่ม + เอกสารลงนาม
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. **ยืนยันเล่มสเตจ 5 Isolation Forest ใน Word** (เจ้าของ) — เปิด `~/Documents/final_volume/…-ฉบับสะอาด-รอบ3-IsolationForest.docx` + `…-ไฮไลต์จุดแก้-รอบ3-IF.docx` (**MS Word ไม่ใช่ LibreOffice**) เช็คภาพ 3.9.6/4.6.6 + ตาราง DR-09/10 + tech row + ไฮไลต์เขียว → update field → ภาพที่ 4-4 (แก้รูปเป็น 3 กล่องถ้ายังเป็น 2) → export PDF → แทนไฟล์เดิม
-> 2. ข้อ 4–5 ของแผนส่งเล่ม:
->    - ✅ **(4a)** dedup index → `(alert_type, source, batch_id, rule_id)` + occurrence_count · ✅ **(4b)** ผล LAN pentest 7.1–7.2 = แถวใหม่ท้ายตาราง 5-10
->      "การเปิดให้เข้าถึงจากเครือข่ายภายนอก" — สคริปต์ `edit_book4.py` · ไฟล์ `…-ฉบับสะอาด-รอบ4.docx` + `…-ไฮไลต์จุดแก้-รอบ4.docx`
->      (สร้างจากรอบ 3 · **รอบ 4 = รอบ 3 + 2 จุดนี้** → เช็ค Word ข้อ 1 ใช้ไฟล์รอบ 4 แทนได้เลย)
->    - **(5)** ภาคผนวก → ชุดใหม่ `~/Documents/thesis-appendix-2026-09-30/` (README ในโฟลเดอร์) · ✅ ครบ (C4/C5 รันด้วย token ingestor + cron verify)
->      · ✅ ใส่ลงเล่มแล้ว = **รอบ 5** (`…-ฉบับสะอาด-รอบ5.docx` + `…-ไฮไลต์จุดแก้-รอบ5.docx`) ภาคผนวก ข (โค้ด ข.1–ข.6) + ค (ผล ค.1–ค.7) · สคริปต์ `insert_appendix5.py` · **เช็คใน Word = ใช้รอบ 5**
->    — แก้เล่มผ่าน XML ตรง (สคริปต์รอบ 3: `~/Documents/logchain-data/tools/edit_book3.py` · `insert_book3.py`) · **ห้าม save/export จาก LibreOffice**
-> 3. ✅ POL — ยอด 0.156 POL (เช็ค 2026-09-30 · gas 66 gwei)
-> 4. ✅ rate limit เปิดแล้ว 2026-09-30 (`ThrottlerGuard` global + `trust proxy` 1 ชั้น — worklog 09-30 หัวข้อ 5)
-> 5. (host · sudo) พิจารณา bind MySQL `:3306` เป็น 127.0.0.1 (เจอตอน LAN pentest)
-> 6. **deploy ขึ้น cloud** (เลือก 2026-09-30: Oracle Always Free VM + Vercel + DuckDNS → 2026-10-01 เปลี่ยน VM เป็น Cloud VPS ไทย · เริ่มข้อมูลใหม่)
->    → ทำตาม [`../runbooks/deploy-cloud.md`](../runbooks/deploy-cloud.md) · repo พร้อมแล้ว (`docker-compose.cloud.yml` · `Caddyfile.cloud`)
->    · **รอเจ้าของ:** สมัคร DuckDNS + Oracle + Vercel (ขั้น A–C) แล้วส่ง IP / ชื่อ มา · ยังไม่ได้ทดสอบ ACME / build บน ARM จริง
->    · ⛔ 2026-09-30 **Oracle สมัครไม่ผ่าน** — บัตร TrueMoney Mastercard = prepaid/virtual (hold ผ่านแต่ Oracle ตีตกตอนสร้าง account)
->      · **รอเจ้าของปรึกษาอาจารย์** · ทางเลือก: บัตรเดบิตธนาคาร (Oracle) · Azure for Students ($100 · ไม่ใช้บัตร · x86) · Tailscale Funnel บนเครื่องนี้
-    · ✅ 2026-10-01 **เปลี่ยนเป็น Cloud VPS ไทย (เสียเงิน · 4 vCPU / 8 GB)** — runbook ขั้น A/B/D แก้แล้ว (Hostatom SSD3 ฿1,190 หรือ CloudVPS.in.th VPS 4 ฿899)
-      · **รอเจ้าของ:** ถามเซลส์ 5 ข้อในขั้น A2 (PromptPay · KVM · Ubuntu 24.04 x86 · public IPv4 + 80/443 · ใบเสร็จ) → เช่า 1 เดือน → ส่ง IP + ชื่อ DuckDNS มา
-    · ▶ **ล่าสุด 2026-10-02: ใช้ server เพื่อน (NB-Lab · LXC CT141 `172.16.40.141`)** — WireGuard ✅ · SSH ✅ · Docker ✅ ·
-      Cloudflare Tunnel ✅ · **ระบบขึ้นแล้ว https://logchain.nareubad.work** (login `admin-user` + TOTP ได้ · 2026-10-02)
-      → demo brute force → alert ✅ · อีเมล backend + Alertmanager ✅ · blockchain contract `0xF05D…8F0B` (wallet `0xA03e…1C59`) ✅
-      → rate limit ต่อ IP ผ่าน tunnel ✅ · **deploy ครบ (runbook A–G)** · เล่มต้องระบุ 2 contract (local `0x5dC86975…` · cloud `0xF05D…8F0B`)
-      → รายละเอียด **worklog 2026-10-01 หัวข้อ 4.1–4.7** · runbook `deploy-cloud.md` · VPS ไทยเป็นแผนสำรอง
+> 1. **(Claude ทำได้)** เช็คเล่มรอบ 6 ว่ามีข้อความที่ `todo.md` บรรทัด 156–157 บังคับไว้หรือยัง (อ่าน `word/document.xml` ด้วย python + lxml · ห้ามเปิด/save ด้วย LibreOffice):
+>    - DeepLog แก้ parse แล้ว "ประสิทธิภาพไม่ลดลง" (ห้ามเขียนว่าแม่นขึ้น) · ต้องรายงานทั้ง **0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
+>    - DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
+>    → ขาดตรงไหน = ทำรอบ 7 ด้วยสคริปต์แบบ `~/Documents/logchain-data/tools/edit_book6.py` (anchor ด้วยข้อความ · ฉบับสะอาด hl 0 + ไฮไลต์ hl 1 จากรอบล่าสุด)
+> 2. **(Claude ทำได้)** อัปเดต `todo.md` ให้ตรงสถานะจริง — หลายข้อเสร็จแล้วแต่ยังไม่ติ๊ก (rate limit · POL · Isolation Forest · deploy)
+> 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ6.docx` (หรือรอบ 7 ถ้ามี) — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
+>    ตาราง 4-2 ไม่ล้นหน้า (ช่องที่อยู่สัญญายาวขึ้น) · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) → export PDF จาก**ฉบับสะอาด** → แทนไฟล์เดิม
+> 4. **(เจ้าของ)** เอกสารลงนาม `todo.md` บรรทัด 118–120 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น
+> 5. (ไม่บังคับ · host · sudo) bind MySQL `:3306` เป็น 127.0.0.1 · ลบ clone `logchain-smoke`
+>
+> **ระบบบนอินเทอร์เน็ต (เสร็จ 2026-10-02):** https://logchain.nareubad.work — server เพื่อน NB-Lab (LXC CT141 `172.16.40.141`) ผ่าน Cloudflare Tunnel
+> · เข้าเครื่อง: `sudo wg-quick up wg-friend` แล้ว `ssh -i ~/.ssh/nblab_ct141 -o IdentitiesOnly=yes root@172.16.40.141` (ระบบรันในนาม user `logchain` · `~/logchain`)
+> · contract cloud `0xF05D8e0c743180483AbBADcBA79A3DA2AAdd8F0B` (wallet `0xA03e…1C59`) แยกจากเครื่อง local `0x5dC86975…` · อีเมล backend + Alertmanager เปิดแล้ว
+> · login dashboard `admin-user` + TOTP · user/role ตั้งใน Keycloak admin console (`https://logchain-auth.nareubad.work/admin` · `kc-admin` + TOTP) — บัญชีสาธิตเป็นงานของเพื่อน
+> · คู่มือ: `docs/runbooks/deploy-cloud.md` · รายละเอียด: worklog 2026-10-01 หัวข้อ 4.1–4.7
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
 >
