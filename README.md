@@ -570,8 +570,33 @@ rm -rf infra/vault/.secrets infra/kafka/certs .env detection/.env
 | `scripts/demo-brute-force.sh` | ยิง log รัว ๆ ให้ detection จับได้ → alert โผล่ที่หน้า Alerts (ต้องใช้ token ที่มี role `analyst`/`operator`/`admin` ไม่งั้นขั้นสุดท้ายที่ไปอ่าน `/alerts` ได้ 403 ทั้งที่ alert ถูกบันทึกแล้ว) |
 | `scripts/demo-tamper.sh` | แก้ log ในฐานข้อมูลตรง ๆ → Merkle verify จับได้ |
 | `scripts/demo-mtls.sh` | ต่อ Kafka ผ่าน SSL listener (39092-39094) |
+| `scripts/seed-test-users.sh` | สร้าง/อัปเดต user ทดสอบ 1 คนต่อ role ใน Keycloak (**dev เท่านั้น**) — ดูหัวข้อถัดไป |
 | `infra/kafka/gen-certs.sh` | สร้าง CA + cert ของ broker/client (อายุ 825 วัน) |
 | `npm run deploy:contract` | deploy smart contract สำหรับ anchoring |
+
+### User ทดสอบแต่ละ role (dev เท่านั้น)
+
+> ⚠️ **ห้ามรันบน production** — รหัสอยู่ใน `.env` แบบ plain text · script หยุดเองถ้า host ของ `KEYCLOAK_URL`
+> ไม่ใช่ `localhost` / `127.0.0.1` หรือ `DOCKER_HOST` ชี้ไปเครื่องอื่น (ข้ามได้ด้วย `--force` + พิมพ์ชื่อ host ยืนยัน)
+
+สร้าง `analyst-user` · `operator-user` · `auditor-user` · `ingestor-user` (role ละคน · ไม่แตะ `admin-user`)
+ผ่าน `kcadm` ใน container `logchain-keycloak` ด้วย service account `logchain-admin-svc` — ต้องมี stack รันอยู่
+และ `LOGCHAIN_ADMIN_CLIENT_SECRET` ใน `.env`
+
+```bash
+./scripts/seed-test-users.sh                    # สร้างคนที่ยังไม่มี · คนที่มีแล้วอัปเดต email/ชื่อ/role (ไม่แตะรหัส) · รันซ้ำได้
+./scripts/seed-test-users.sh --reset-passwords  # + ตั้งรหัสทุกคนตามค่าใน .env (หลังแก้รหัสใน .env)
+./scripts/seed-test-users.sh --delete           # ลบทั้ง 4 คน (รหัสใน .env ยังอยู่)
+
+# ดูรหัส
+grep -E '^(ANALYST|OPERATOR|AUDITOR|INGESTOR)_USER_PASSWORD=.' .env
+```
+
+- รหัสมาจาก `ANALYST_` / `OPERATOR_` / `AUDITOR_` / `INGESTOR_USER_PASSWORD` ใน `.env` — ตัวไหนว่างหรือไม่มี script สุ่ม
+  (20 ตัว ผ่าน passwordPolicy) แล้วต่อท้าย `.env` ให้ ไม่แก้บรรทัดเดิม
+- แต่ละคนมี app role แค่ตัวเดียว — role อื่น (`admin`/`analyst`/`operator`/`auditor`/`ingestor`) ที่ติดอยู่จะถูกถอด
+  · `emailVerified=true` · ไม่มี required action ค้าง
+- `--reset-passwords` ใช้รหัสที่ซ้ำ 4 ตัวล่าสุดไม่ได้ (`passwordHistory(4)`) — script แจ้ง error แล้ว exit 1 ให้เปลี่ยนค่าใน `.env` ก่อน
 
 ---
 

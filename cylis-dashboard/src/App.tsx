@@ -14,9 +14,10 @@ import {
   Sun,
   Moon,
   Earth,
+  LogOut,
 } from "lucide-react";
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
-import { keycloak } from "@/lib/keycloak";
+import { keycloak, logout } from "@/lib/keycloak";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
@@ -76,6 +77,7 @@ export default function App() {
 
   const theme = mode === "dark" ? darkTheme : lightTheme;
   const isDark = mode === "dark";
+  const username = keycloak.tokenParsed?.preferred_username as string | undefined;
 
   // Hiding the link is just a UX shortcut to avoid a dead-end click — the
   // admin endpoints behind Settings enforce the admin role themselves on
@@ -254,6 +256,32 @@ export default function App() {
                   style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
                 >
                   <Bell size={16} color={activeId === "alerts" ? theme.blue2 : theme.muted} />
+                </button>
+                {username && (
+                  <span style={{ fontSize: 12, color: theme.text, fontWeight: 600, ...sansFont }}>{username}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={logout}
+                  title="Log out"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)",
+                    border: `1px solid ${theme.border}`,
+                    color: theme.muted,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    ...sansFont,
+                    transition: "all .2s",
+                  }}
+                >
+                  <LogOut size={13} />
+                  <span style={{ color: theme.text }}>Logout</span>
                 </button>
               </div>
             </div>
