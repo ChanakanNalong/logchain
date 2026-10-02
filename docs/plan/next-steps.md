@@ -70,6 +70,7 @@ T=$(curl -sf -X POST "http://localhost:8080/realms/logchain/protocol/openid-conn
 docker exec logchain-postgres psql -U logchain -d logchain -c "select ..."
 
 ./scripts/demo-brute-force.sh "$T"     # ยิง 6 AUTH_FAILURE → rule 5710
+python3 scripts/check-rbac-live.py     # token จริงของ analyst/operator/auditor/ingestor-user × 19 endpoint (ต้อง seed-test-users.sh ก่อน)
 ./scripts/demo-all-rules.sh "$T"      # ยิงครบ 9 rule ทีละข้อ + ตรวจ alert เอง (อัดคลิป: STEP=1 กด Enter ทีละข้อ · cloud: API=https://logchain-api.nareubad.work/api/v1 READ_TOKEN=<analyst+>)
 ./scripts/demo-tamper.sh "$ADMIN_TOK"  # แก้ข้อมูล → TAMPERED (กู้คืนด้วย arg `restore`)
 ./scripts/vault-unlock.sh              # ดู/ปลด Vault user lockout

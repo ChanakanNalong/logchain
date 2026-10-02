@@ -77,7 +77,7 @@
       "webOrigins": ["https://localhost:3453", "http://localhost:3001", "http://localhost:3003"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://localhost:3453##http://localhost:3001##http://localhost:3003"
+        "post.logout.redirect.uris": "+"
       },
       "defaultClientScopes": ["profile", "email", "roles"],
       "protocolMappers": [

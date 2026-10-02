@@ -78,16 +78,11 @@ export async function initKeycloak(): Promise<boolean> {
 
 export function logout(): void {
   clearSessionFlag();
-  // Keycloak shows its own logged-out page for now: the running Keycloak has
-  // no "Valid post logout redirect URIs" for logchain-frontend yet, so any
-  // post_logout_redirect_uri fails with "Invalid redirect uri". Plain
-  // keycloak.logout() can't avoid that — keycloak-js 26 falls back to
-  // location.href when no redirectUri is given — so drop the parameter from
-  // its logout URL (id_token_hint stays, so Keycloak doesn't ask to confirm).
-  // Once the URIs are set in the Admin Console (the realm template already
-  // has them), replace this with:
-  //   void keycloak.logout({ redirectUri: window.location.origin });
-  const url = new URL(keycloak.createLogoutUrl());
-  url.searchParams.delete('post_logout_redirect_uri');
-  window.location.replace(url.toString());
+  // Back to the dashboard root, which then asks for a fresh login (no session
+  // flag). The realm accepts this because logchain-frontend's "Valid post
+  // logout redirect URIs" is "+" (= its Valid redirect URIs) — the default for
+  // realms imported without the attribute, and set explicitly in the template.
+  // An origin missing from the redirect URIs gets "Invalid redirect uri":
+  // run ./scripts/sync-keycloak-urls.sh for that URL.
+  void keycloak.logout({ redirectUri: window.location.origin });
 }

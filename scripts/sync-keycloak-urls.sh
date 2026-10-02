@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # เพิ่ม URL ของ dashboard (HTTPS) ลง redirectUris / webOrigins ของ client `logchain-frontend` ใน realm ที่มีอยู่แล้ว
+# + ให้ปุ่ม Logout เด้งกลับ dashboard ได้: post.logout.redirect.uris = "+" (ใช้ชุดเดียวกับ redirectUris)
 #
 # realm ถูก import ครั้งเดียวตอน DB ว่าง — แก้ infra/keycloak/realm-logchain.json.template แล้ว realm เดิมไม่ได้รับ
 # script นี้เติมเฉพาะที่ยังไม่มี (รันซ้ำได้ · ไม่ลบของเดิม) · bootstrap.sh เรียกให้หลัง Keycloak พร้อม
@@ -22,7 +23,10 @@ auth_code=$(curl -s -o /dev/null -w '%{http_code}' \
 cors=$(curl -s -D - -o /dev/null -X POST "$OIDC/token" -H "Origin: $URL" \
   -d client_id=logchain-frontend -d grant_type=authorization_code -d code=x -d "redirect_uri=$URL/callback" \
   | tr -d '\r' | grep -i '^access-control-allow-origin:' || true)
-if [ "$auth_code" = 200 ] && [ "${cors#*: }" = "$URL" ]; then
+# logout: Keycloak ตอบ 302 กลับ URL ที่อนุญาต · 400 "Invalid redirect uri" ถ้าไม่อนุญาต
+logout_code=$(curl -s -o /dev/null -w '%{http_code}' \
+  "$OIDC/logout?client_id=logchain-frontend&post_logout_redirect_uri=$(jq -rn --arg u "$URL" '$u|@uri')" || true)
+if [ "$auth_code" = 200 ] && [ "${cors#*: }" = "$URL" ] && [ "$logout_code" = 302 ]; then
   echo "✓ logchain-frontend มี $URL อยู่แล้ว"
   exit 0
 fi
@@ -33,7 +37,7 @@ if ! err=$(docker exec -e KC_PW="$KEYCLOAK_ADMIN_PASSWORD" logchain-keycloak sh 
   if grep -q 'not fully set up' <<<"$err"; then
     echo "kcadm login ไม่ได้: '$KEYCLOAK_ADMIN' ต้องตั้ง TOTP ก่อน (harden-master-admin.sh บังคับ MFA)" >&2
     echo "  เพิ่มเองใน admin console https://localhost:8443/admin → realm logchain → Clients → logchain-frontend:" >&2
-    echo "  Valid redirect URIs += $URL/*  ·  Web origins += $URL" >&2
+    echo "  Valid redirect URIs += $URL/*  ·  Web origins += $URL  ·  Valid post logout redirect URIs = +" >&2
   else
     echo "kcadm login ไม่ผ่าน (KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD ใน .env)" >&2
   fi
@@ -41,17 +45,26 @@ if ! err=$(docker exec -e KC_PW="$KEYCLOAK_ADMIN_PASSWORD" logchain-keycloak sh 
 fi
 trap 'docker exec logchain-keycloak rm -f "$CFG"' EXIT
 
-client=$(docker exec logchain-keycloak $KC get clients --config "$CFG" -r logchain -q clientId=logchain-frontend --fields id,redirectUris,webOrigins)
+client=$(docker exec logchain-keycloak $KC get clients --config "$CFG" -r logchain -q clientId=logchain-frontend --fields id,redirectUris,webOrigins,attributes)
 id=$(jq -r '.[0].id' <<<"$client")
 [ "$id" != null ] || { echo "ไม่พบ client logchain-frontend ใน realm logchain" >&2; exit 1; }
 
 redirects=$(jq -c --arg u "$URL/*" '.[0].redirectUris | if index($u) then . else [$u] + . end' <<<"$client")
 origins=$(jq -c --arg u "$URL" '.[0].webOrigins | if index($u) then . else [$u] + . end' <<<"$client")
 
-if [ "$redirects" = "$(jq -c '.[0].redirectUris' <<<"$client")" ] && [ "$origins" = "$(jq -c '.[0].webOrigins' <<<"$client")" ]; then
+# ไม่มี attribute = Keycloak ใช้ redirectUris ให้อยู่แล้ว · ตั้งเป็นรายการตายตัว (template ของ caac4ac) = URL อื่น logout แล้ว
+# ได้ "Invalid redirect uri" → แก้กลับเป็น "+" · มี "+" อยู่ในรายการแล้วไม่แตะ
+post_logout=$(jq -r '.[0].attributes["post.logout.redirect.uris"] // ""' <<<"$client")
+fix_logout=0
+if [ -n "$post_logout" ] && ! grep -qx '+' <<<"${post_logout//##/$'\n'}"; then fix_logout=1; fi
+
+if [ "$redirects" = "$(jq -c '.[0].redirectUris' <<<"$client")" ] && [ "$origins" = "$(jq -c '.[0].webOrigins' <<<"$client")" ] && [ "$fix_logout" = 0 ]; then
   echo "✓ logchain-frontend มี $URL อยู่แล้ว"
 else
+  extra=()
+  [ "$fix_logout" = 0 ] || extra=(-s 'attributes."post.logout.redirect.uris"=+')
   docker exec logchain-keycloak $KC update "clients/$id" --config "$CFG" -r logchain \
-    -s "redirectUris=$redirects" -s "webOrigins=$origins"
+    -s "redirectUris=$redirects" -s "webOrigins=$origins" "${extra[@]}"
   echo "✅ logchain-frontend: เพิ่ม $URL (redirectUris=$redirects)"
+  [ "$fix_logout" = 0 ] || echo "✅ logchain-frontend: post.logout.redirect.uris $post_logout → +"
 fi

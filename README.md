@@ -571,6 +571,8 @@ rm -rf infra/vault/.secrets infra/kafka/certs .env detection/.env
 | `scripts/demo-tamper.sh` | แก้ log ในฐานข้อมูลตรง ๆ → Merkle verify จับได้ |
 | `scripts/demo-mtls.sh` | ต่อ Kafka ผ่าน SSL listener (39092-39094) |
 | `scripts/seed-test-users.sh` | สร้าง/อัปเดต user ทดสอบ 1 คนต่อ role ใน Keycloak (**dev เท่านั้น**) — ดูหัวข้อถัดไป |
+| `scripts/demo-all-rules.sh` | ยิง log ให้โดน detection rule ครบ 9 ข้อทีละข้อ แล้วตรวจว่า alert ขึ้น (`STEP=1` กด Enter ทีละข้อ) |
+| `scripts/check-rbac-live.py` | login user ทดสอบทุก role ด้วย token จริง แล้วยิงทุก endpoint เทียบกับ `@Roles` (หลัง `seed-test-users.sh`) |
 | `infra/kafka/gen-certs.sh` | สร้าง CA + cert ของ broker/client (อายุ 825 วัน) |
 | `npm run deploy:contract` | deploy smart contract สำหรับ anchoring |
 
