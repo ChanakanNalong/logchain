@@ -76,7 +76,8 @@
       "redirectUris": ["https://localhost:3453/*", "http://localhost:3001/*", "http://localhost:3003/*"],
       "webOrigins": ["https://localhost:3453", "http://localhost:3001", "http://localhost:3003"],
       "attributes": {
-        "pkce.code.challenge.method": "S256"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://localhost:3453##http://localhost:3001##http://localhost:3003"
       },
       "defaultClientScopes": ["profile", "email", "roles"],
       "protocolMappers": [

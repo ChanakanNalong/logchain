@@ -29,7 +29,7 @@ export class AlertsController {
    * สามารถยัด alert ปลอมหรือปิด tamper alert ทิ้งได้เงียบๆ
    */
   @Post()
-  @Roles('operator', 'admin')
+  @Roles('admin')
   @ApiOperation({
     summary: 'Raise an alert (deduped while an identical one is OPEN)',
   })

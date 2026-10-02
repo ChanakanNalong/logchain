@@ -26,4 +26,9 @@ describe('AlertsController role metadata', () => {
     expect(rolesOf('resolve')).not.toContain('analyst');
     expect(rolesOf('findAll')).toContain('analyst');
   });
+
+  it('สร้าง alert เองได้เฉพาะ admin — operator ทำได้แค่ resolve', () => {
+    expect(rolesOf('create')).toEqual(['admin']);
+    expect(rolesOf('resolve')).toContain('operator');
+  });
 });

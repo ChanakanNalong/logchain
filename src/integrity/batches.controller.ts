@@ -18,7 +18,7 @@ export class BatchesController {
    * โดยไม่ต้องรู้ log id มาก่อน
    */
   @Get()
-  @Roles('analyst', 'operator', 'admin')
+  @Roles('analyst', 'operator', 'auditor', 'admin')
   @ApiOperation({ summary: 'List the most recently sealed batches' })
   listBatches(@Query() query: ListBatchesDto) {
     return this.integrity.listBatches(query.limit ?? 10);
