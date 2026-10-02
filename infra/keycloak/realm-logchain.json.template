@@ -232,7 +232,7 @@
     {
       "alias": "logchain-admin-otp-role",
       "config": {
-        "condition.user.role": "admin",
+        "condUserRole": "admin",
         "negate": "false"
       }
     }

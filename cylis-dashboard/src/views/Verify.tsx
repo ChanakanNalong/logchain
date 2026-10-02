@@ -57,30 +57,32 @@ export default function Verify() {
   const [chainError, setChainError] = useState("");
 
   // สรุปสถานะ chain โหลดแยกจากฟอร์ม — ถ้าส่วนนี้ล่ม ฟอร์ม verify ต้องยังใช้ได้อยู่
+  // แต่ละส่วนแสดงผลของตัวเอง: auditor อ่าน /batches ได้แต่ /stats/overview กับ /logs ไม่ได้ —
+  // Promise.all ทิ้ง batch ที่โหลดได้แล้วขึ้น "No batches sealed yet" ทั้งที่มี
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
+    Promise.allSettled([
       api.get("/stats/overview"),
       api.get("/batches", { params: { limit: 8 } }),
       api.get("/logs", { params: { limit: 6 } }),
-    ])
-      .then(([overviewRes, batchesRes, logsRes]) => {
-        if (cancelled) return;
-        setOverview(overviewRes.data);
-        setBatches(batchesRes.data ?? []);
-        setRecentLogs(unwrapLogs(logsRes.data).slice(0, 6).map(mapLog));
-      })
-      .catch((e) => {
-        if (cancelled) return;
+    ]).then(([overviewRes, batchesRes, logsRes]) => {
+      if (cancelled) return;
+      if (overviewRes.status === "fulfilled") setOverview(overviewRes.value.data);
+      setBatches(batchesRes.status === "fulfilled" ? (batchesRes.value.data ?? []) : []);
+      if (logsRes.status === "fulfilled") setRecentLogs(unwrapLogs(logsRes.value.data).slice(0, 6).map(mapLog));
+
+      const failed = [overviewRes, batchesRes, logsRes].find((r) => r.status === "rejected");
+      if (failed) {
+        const e = (failed as PromiseRejectedResult).reason;
         console.error("verify overview fetch failed", e);
-        setBatches([]);
         setChainError(
-          e.response?.status === 403
+          e?.response?.status === 403
             ? "Not authorised — this account needs the analyst, operator or admin role."
             : "Could not load the chain status.",
         );
-      });
+      }
+    });
 
     return () => { cancelled = true; };
   }, []);

@@ -642,7 +642,7 @@ logchain-browser (top-level)
  └─ logchain-browser-forms           ALTERNATIVE
      ├─ auth-username-password-form  REQUIRED
      └─ logchain-conditional-otp     CONDITIONAL
-         ├─ conditional-user-role    REQUIRED   (condition.user.role = admin)
+         ├─ conditional-user-role    REQUIRED   (condUserRole = admin · ชื่อ key ของ Keycloak — ผิดแล้วข้าม OTP เงียบ ๆ)
          └─ auth-otp-form            REQUIRED
 ```
 
