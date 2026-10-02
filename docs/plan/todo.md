@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-09-28 (HEAD `cef8e76` — ข้อ 8–11 ใหม่จาก worklog 2026-09-28 · ข้อ 1–5 ปิดครบ ดู worklog 2026-09-25) · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
+> อัปเดต 2026-10-02 (HEAD `7b63bf3` — ติ๊กข้อ 9 · 12 ตามสถานะจริง · เล่มรอบ 7 · worklog 2026-10-02) · ก่อนหน้า 2026-09-28 · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -18,9 +18,11 @@
 | 6 | งานตามรอบเวลา (หัวข้อ 6) | เจ้าของ | ตามกำหนด |
 | 7 | เอกสาร sign-off — Claude เตรียมแล้ว 2026-09-25 เหลือลงนาม (หัวข้อ 7) | เจ้าของ + ทีม | เล็ก |
 | 8 ✅ | commit detection ที่ระบบรันอยู่แล้ว (หัวข้อ 8) | เสร็จ 2026-09-28 (`979aa3d`) | — |
-| 9 | ตัวเลข log key / F1 สำหรับรายงาน (หัวข้อ 9) — 5 seed เสร็จแล้ว เหลือเขียนรายงาน | เจ้าของ | เล็ก |
+| 9 ✅ | ตัวเลข log key / F1 สำหรับรายงาน (หัวข้อ 9) — อยู่ในเล่มแล้ว (4.6.3 · 4.14) | เสร็จ 2026-10-02 | — |
 | 10 | clone ทดสอบ: CA ชื่อใหม่ · ลบ volume smoke · (อาจารย์ตอบแล้ว: blockchain ใส่แค่ขั้นตอน ✅) (หัวข้อ 10) | เจ้าของ | เล็ก |
 | 11 | ทดสอบ `trust-web-ca.sh` บน macOS / Windows (หัวข้อ 11) | คนที่มีเครื่อง | เล็ก |
+| 12 | กรณีทดสอบ/เล่ม (หัวข้อ 12) — ฝั่ง Claude ปิดครบ · เหลือเจ้าของเปิดเล่มรอบ 7 ใน MS Word | เจ้าของ | เล็ก |
+| 13 ✅ | deploy ขึ้นอินเทอร์เน็ต https://logchain.nareubad.work (NB-Lab · Cloudflare Tunnel) | เสร็จ 2026-10-02 · `docs/runbooks/deploy-cloud.md` | — |
 
 ---
 
@@ -126,7 +128,7 @@ Caddy (`https-proxy`) หน้า Keycloak `:8443` / backend `:3443` / dashboar
 image detection บนเครื่อง rebuild แล้ว + ทดสอบบนระบบจริงผ่าน (worklog 2026-09-28 หัวข้อ 9) · ตรงกับ git แล้ว:
 - [x] `979aa3d` — `detection/app/consumer.py` · `detection/app/log_keys.py` · `detection/tests/test_log_keys.py` — ข้าม ML เมื่อ key 0 +
   `mask()` รับรูปที่ backend PII-mask แล้ว (ไม่งั้น ~66% ของ log HDFS ถูกข้าม ML) · คำสั่ง commit ท้าย worklog
-- [x] worklog `cef8e76` · [ ] `docs/plan/next-steps.md` + ไฟล์นี้
+- [x] worklog `cef8e76` · [x] `docs/plan/next-steps.md` + ไฟล์นี้
 
 ---
 
@@ -148,13 +150,13 @@ image detection บนเครื่อง rebuild แล้ว + ทดสอ�
 ## 12. กรณีทดสอบในเล่มที่ "รอผล" (2026-09-29 · worklog 2026-09-29)
 
 - [x] 21 กรณี: ผ่าน 18 · FT-14 ผ่านบางส่วน (ค้นได้ 100 log ล่าสุด) · DR-09/10 เอาออก (Isolation Forest ไม่มีในโค้ด) · กรอกลงเล่มแล้ว
-- [x] บั๊ก IM-12 (seal พร้อมกัน → batch ผี) แก้แล้ว — [ ] commit
-- [ ] rate limit ไม่ทำงาน (ไม่มี `ThrottlerGuard`) — ตัดสินใจเปิดหรือไม่
-- [ ] ปิด batch ได้ 100 log/นาที (รับได้ ~280/วิ) — เขียนเป็นข้อจำกัดในเล่มแล้ว · แก้ถ้าจะใช้งานจริง
-- [ ] เติม POL — gas Amoy 155 gwei = 0.012 POL/batch · เหลือ 0.0949
-- [ ] (ไม่บังคับ) Isolation Forest จำแนก batch — วิเคราะห์ + ขอบเขตงาน ~4–6 วัน: [`isolation-forest-option.md`](isolation-forest-option.md)
-- [ ] เขียนในรายงานว่าแก้ parse แล้ว **ประสิทธิภาพไม่ลดลง** — ห้ามเขียนว่าแม่นขึ้น · **ต้องรายงานทั้ง 0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
-- [ ] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
+- [x] บั๊ก IM-12 (seal พร้อมกัน → batch ผี) แก้แล้ว — commit `9d96376`
+- [x] rate limit — เปิดแล้ว global `ThrottlerGuard` `a33b455` (worklog 09-30 หัวข้อ 5) · ทดสอบผ่าน Cloudflare Tunnel 200×401 + 10×429 (worklog 10-01 หัวข้อ 4.7)
+- [ ] ปิด batch ได้ 100 log/นาที (รับได้ ~280/วิ) — เขียนเป็นข้อจำกัดในเล่มแล้ว (4.18 · PT-07) · **ไม่แก้ในรอบนี้** แก้ถ้าจะใช้งานจริง
+- [x] เติม POL — เติมแล้ว 09-30 · ยอด 2026-10-02: เครื่อง local `0x8cBC…4C55` **0.147** · cloud `0xA03e…1C59` **0.080** POL
+- [x] Isolation Forest จำแนก batch — ทำครบ 5 สเตจ 2026-09-30 (`5cb1303` … `5caeffe`) · DR-09/10 กลับเข้าเล่มพร้อมผลจริง: [`isolation-forest-option.md`](isolation-forest-option.md)
+- [x] (มีในเล่มตั้งแต่ก่อนรอบ 6 · ตรวจ 2026-10-02: 4.14 ย่อหน้า short-block / model-only / 45 vs 47 key) เขียนในรายงานว่าแก้ parse แล้ว **ประสิทธิภาพไม่ลดลง** — ห้ามเขียนว่าแม่นขึ้น · **ต้องรายงานทั้ง 0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
+- [x] ระบุในรายงานว่า DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`) — **เล่มรอบ 7** (2026-10-02): 4.6.3 · 4.18 · ตาราง 5-9 · สคริปต์ `~/Documents/logchain-data/tools/edit_book7.py`
 
 ---
 

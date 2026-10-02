@@ -4,17 +4,16 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-02 · **HEAD:** `eeb037a` · งานล่าสุด: `docs/worklog/2026-10-01.md` หัวข้อ 4–5 (deploy NB-Lab ครบ · เล่มรอบ 6)
-> **สถานะ:** ฝั่งระบบเสร็จหมดแล้ว — เหลือเล่ม + เอกสารลงนาม
+> **เขียนเมื่อ:** 2026-10-02 (บ่าย) · **HEAD:** `7b63bf3` · งานล่าสุด: `docs/worklog/2026-10-02.md` (เล่มรอบ 7 · todo ตรงสถานะจริง)
+> **สถานะ:** ฝั่งระบบเสร็จหมดแล้ว · ฝั่ง Claude ของเล่มเสร็จแล้ว — เหลือเจ้าของเปิดเล่มใน MS Word + เอกสารลงนาม
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. **(Claude ทำได้)** เช็คเล่มรอบ 6 ว่ามีข้อความที่ `todo.md` บรรทัด 156–157 บังคับไว้หรือยัง (อ่าน `word/document.xml` ด้วย python + lxml · ห้ามเปิด/save ด้วย LibreOffice):
->    - DeepLog แก้ parse แล้ว "ประสิทธิภาพไม่ลดลง" (ห้ามเขียนว่าแม่นขึ้น) · ต้องรายงานทั้ง **0.725 และ 0.49** พร้อมเหตุผลเรื่อง block สั้น
->    - DeepLog train ด้วย HDFS อย่างเดียว — log อื่นไป rule engine (`ml_skipped_unknown`)
->    → ขาดตรงไหน = ทำรอบ 7 ด้วยสคริปต์แบบ `~/Documents/logchain-data/tools/edit_book6.py` (anchor ด้วยข้อความ · ฉบับสะอาด hl 0 + ไฮไลต์ hl 1 จากรอบล่าสุด)
-> 2. **(Claude ทำได้)** อัปเดต `todo.md` ให้ตรงสถานะจริง — หลายข้อเสร็จแล้วแต่ยังไม่ติ๊ก (rate limit · POL · Isolation Forest · deploy)
-> 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ6.docx` (หรือรอบ 7 ถ้ามี) — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
->    ตาราง 4-2 ไม่ล้นหน้า (ช่องที่อยู่สัญญายาวขึ้น) · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) → export PDF จาก**ฉบับสะอาด** → แทนไฟล์เดิม
+> 1. ✅ (2026-10-02) เช็คเล่มรอบ 6 กับ `todo.md` ข้อ 12 — "ประสิทธิภาพไม่ลดลง" + 0.725/0.49 + เหตุผล block สั้น **มีแล้ว** (4.14) ·
+>    "DeepLog train ด้วย HDFS อย่างเดียว · log อื่นไป rule engine" **ขาด → ทำรอบ 7 แล้ว** (4.6.3 · 4.18 · ตาราง 5-9 · `edit_book7.py`) — worklog 2026-10-02
+> 2. ✅ (2026-10-02) `todo.md` ตรงสถานะจริงแล้ว (rate limit · POL · Isolation Forest · IM-12 · deploy · ข้อ 9)
+> 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx` — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
+>    ตาราง 4-2 ไม่ล้นหน้า (ช่องที่อยู่สัญญายาวขึ้น) · ตาราง 5-9 แถวชุดข้อมูลยาวขึ้น · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) → export PDF จาก**ฉบับสะอาด-รอบ7** → แทนไฟล์เดิม
+>    · ฉบับสะอาดยังมีไฮไลต์เหลือง 6 + แดง 1 ที่ติดมาตั้งแต่ไฟล์ต้นฉบับ (เช่น "ตารางที่ 4-9 (ข)" · "ฟังก์ชันหลักใน Smart Contract LogIntegrity") — ลบก่อน export
 > 4. **(เจ้าของ)** เอกสารลงนาม `todo.md` บรรทัด 118–120 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น
 > 5. (ไม่บังคับ · host · sudo) bind MySQL `:3306` เป็น 127.0.0.1 · ลบ clone `logchain-smoke`
 >
@@ -71,6 +70,7 @@ T=$(curl -sf -X POST "http://localhost:8080/realms/logchain/protocol/openid-conn
 docker exec logchain-postgres psql -U logchain -d logchain -c "select ..."
 
 ./scripts/demo-brute-force.sh "$T"     # ยิง 6 AUTH_FAILURE → rule 5710
+./scripts/demo-all-rules.sh "$T"      # ยิงครบ 9 rule ทีละข้อ + ตรวจ alert เอง (อัดคลิป: STEP=1 กด Enter ทีละข้อ · cloud: API=https://logchain-api.nareubad.work/api/v1 READ_TOKEN=<analyst+>)
 ./scripts/demo-tamper.sh "$ADMIN_TOK"  # แก้ข้อมูล → TAMPERED (กู้คืนด้วย arg `restore`)
 ./scripts/vault-unlock.sh              # ดู/ปลด Vault user lockout
 ```
@@ -197,7 +197,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 + `mask()` รับรูปที่ backend PII-mask แล้ว (`.xxx` · `blk_-[PAN]` — หัวข้อ 8) · image บนเครื่อง rebuild แล้ว · ทดสอบบนระบบจริงผ่าน (หัวข้อ 9)
 · image บนเครื่องตรงกับ git แล้ว
 
-### 7.2 ⬜ ตัวเลขสำหรับรายงาน
+### 7.2 ✅ ตัวเลขสำหรับรายงาน — อยู่ในเล่มแล้ว (4.6.3 · 4.14 · ตรวจ 2026-10-02)
 
 - log key: **45** (โค้ดปัจจุบัน `parse_logs.py`) เทียบ Loghub **29** (`HDFS_v1.zip` preprocessed · สำเนาที่ `~/Documents/logchain-data/HDFS.log_templates.csv`)
   — ไฟล์บน GitHub ของ Loghub มี 30 (E30 ไม่มีใน trace) · 45 = 29 + 17 (Drain แยก exception) − 1 (E8 + E11 รวม)
