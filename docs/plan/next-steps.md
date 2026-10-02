@@ -4,12 +4,12 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-03 · **HEAD:** `e958d21` (+ ยังไม่ commit: lockfile axios/next · next-steps · worklog 10-02 หัวข้อ 6) · งานล่าสุด: `docs/worklog/2026-10-02.md` หัวข้อ 3–6
-> **สถานะ:** ฝั่งระบบเสร็จ · RBAC/Logout ของเพื่อน merge + ทดสอบครบ 5 role แล้ว · **MFA ของ admin เพิ่งใช้ได้จริง 2026-10-02** — เหลืองานเจ้าของ
+> **เขียนเมื่อ:** 2026-10-03 (ปิดวัน) · **HEAD:** `21ba423` · git สะอาด · CI + Security Scan เขียว · cloud = `a05cd69` (ต่างแค่ worklog) · งานล่าสุด: `docs/worklog/2026-10-02.md` หัวข้อ 3–6
+> **สถานะ:** ฝั่งระบบ + ฝั่ง Claude เสร็จหมด · RBAC/Logout ของเพื่อน merge + ทดสอบครบ 5 role · **MFA ของ admin ใช้ได้จริงตั้งแต่ 2026-10-02** —
+> **เหลือเฉพาะงานเจ้าของ ข้อ 2–6 ด้านล่าง (ทำ 2026-10-03)**
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. **(เจ้าของ)** commit + push lockfile (แก้ Security Scan แดงตั้งแต่ 10-01 — axios advisory) → เช็ค Actions เขียว →
->    cloud: `git pull` + rebuild **backend + cylis-dashboard** (axios อยู่ใน backend ผ่าน node-vault · next 16.3.8 ใน dashboard)
+> 1. ✅ (2026-10-03) lockfile axios 1.20.0 / next 16.3.8 → Security Scan เขียว · cloud rebuild backend + dashboard แล้ว (worklog หัวข้อ 6)
 > 2. **(เจ้าของ)** บัญชีสาธิตบน cloud (analyst/operator/auditor/ingestor-user · สร้างใน admin console 10-02) — รหัสเป็นแพทเทิร์นเดาได้ + ไม่มี OTP
 >    → หลังอัดคลิป: เปลี่ยนเป็นรหัสสุ่ม หรือ Disable (Settings ของ dashboard)
 > 3. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
