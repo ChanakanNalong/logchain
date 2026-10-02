@@ -4,23 +4,32 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-02 (บ่าย) · **HEAD:** `7b63bf3` · งานล่าสุด: `docs/worklog/2026-10-02.md` (เล่มรอบ 7 · todo ตรงสถานะจริง)
-> **สถานะ:** ฝั่งระบบเสร็จหมดแล้ว · ฝั่ง Claude ของเล่มเสร็จแล้ว — เหลือเจ้าของเปิดเล่มใน MS Word + เอกสารลงนาม
+> **เขียนเมื่อ:** 2026-10-03 · **HEAD:** `e958d21` (+ ยังไม่ commit: lockfile axios/next · next-steps · worklog 10-02 หัวข้อ 6) · งานล่าสุด: `docs/worklog/2026-10-02.md` หัวข้อ 3–6
+> **สถานะ:** ฝั่งระบบเสร็จ · RBAC/Logout ของเพื่อน merge + ทดสอบครบ 5 role แล้ว · **MFA ของ admin เพิ่งใช้ได้จริง 2026-10-02** — เหลืองานเจ้าของ
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. ✅ (2026-10-02) เช็คเล่มรอบ 6 กับ `todo.md` ข้อ 12 — "ประสิทธิภาพไม่ลดลง" + 0.725/0.49 + เหตุผล block สั้น **มีแล้ว** (4.14) ·
->    "DeepLog train ด้วย HDFS อย่างเดียว · log อื่นไป rule engine" **ขาด → ทำรอบ 7 แล้ว** (4.6.3 · 4.18 · ตาราง 5-9 · `edit_book7.py`) — worklog 2026-10-02
-> 2. ✅ (2026-10-02) `todo.md` ตรงสถานะจริงแล้ว (rate limit · POL · Isolation Forest · IM-12 · deploy · ข้อ 9)
-> 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx` — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
+> 1. **(เจ้าของ)** commit + push lockfile (แก้ Security Scan แดงตั้งแต่ 10-01 — axios advisory) → เช็ค Actions เขียว →
+>    cloud: `git pull` + rebuild **backend + cylis-dashboard** (axios อยู่ใน backend ผ่าน node-vault · next 16.3.8 ใน dashboard)
+> 2. **(เจ้าของ)** บัญชีสาธิตบน cloud (analyst/operator/auditor/ingestor-user · สร้างใน admin console 10-02) — รหัสเป็นแพทเทิร์นเดาได้ + ไม่มี OTP
+>    → หลังอัดคลิป: เปลี่ยนเป็นรหัสสุ่ม หรือ Disable (Settings ของ dashboard)
+> 3. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
+>    (มีรหัส user ทดสอบ 4 บรรทัดใหม่จาก `seed-test-users.sh` ด้วย)
+> 4. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx` — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
 >    ตาราง 4-2 ไม่ล้นหน้า (ช่องที่อยู่สัญญายาวขึ้น) · ตาราง 5-9 แถวชุดข้อมูลยาวขึ้น · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) → export PDF จาก**ฉบับสะอาด-รอบ7** → แทนไฟล์เดิม
 >    · ฉบับสะอาดยังมีไฮไลต์เหลือง 6 + แดง 1 ที่ติดมาตั้งแต่ไฟล์ต้นฉบับ (เช่น "ตารางที่ 4-9 (ข)" · "ฟังก์ชันหลักใน Smart Contract LogIntegrity") — ลบก่อน export
-> 4. **(เจ้าของ)** เอกสารลงนาม `todo.md` บรรทัด 118–120 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น
-> 5. (ไม่บังคับ · host · sudo) bind MySQL `:3306` เป็น 127.0.0.1 · ลบ clone `logchain-smoke`
+> 5. **(เจ้าของ)** เอกสารลงนาม `todo.md` ข้อ 7 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น ·
+>    **ช่องวันที่ที่ยืนยัน MFA ของ admin ต้อง ≥ 2026-10-02** (ก่อนหน้านั้น OTP ถูกข้าม — worklog 10-02 หัวข้อ 5.5)
+> 6. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 · ลบ clone `logchain-smoke` (sudo) · ปิด alert เก่า 3 ใบบน cloud (ทดสอบอีเมล 10-01) · ปิด WireGuard
+>
+> **เสร็จแล้ว 2026-10-02** (worklog 2026-10-02): เล่มรอบ 7 (DeepLog HDFS-only) · todo ตรงสถานะ · `scripts/demo-all-rules.sh` 9/9 local + cloud ·
+> merge `feature/rbac-logout-seed-users` (`ed46643`) · logout เด้งกลับ dashboard (`post.logout.redirect.uris = "+"`) · `scripts/check-rbac-live.py` ·
+> ทดสอบหน้าเว็บ 5 role ผ่าน Chrome ตรงตาราง · แก้ Verify ของ auditor (`Promise.allSettled`) · **แก้ admin OTP ถูกข้าม (`condUserRole`)** · cloud → `e958d21`
 >
 > **ระบบบนอินเทอร์เน็ต (เสร็จ 2026-10-02):** https://logchain.nareubad.work — server เพื่อน NB-Lab (LXC CT141 `172.16.40.141`) ผ่าน Cloudflare Tunnel
 > · เข้าเครื่อง: `sudo wg-quick up wg-friend` แล้ว `ssh -i ~/.ssh/nblab_ct141 -o IdentitiesOnly=yes root@172.16.40.141` (ระบบรันในนาม user `logchain` · `~/logchain`)
 > · contract cloud `0xF05D8e0c743180483AbBADcBA79A3DA2AAdd8F0B` (wallet `0xA03e…1C59`) แยกจากเครื่อง local `0x5dC86975…` · อีเมล backend + Alertmanager เปิดแล้ว
-> · login dashboard `admin-user` + TOTP · user/role ตั้งใน Keycloak admin console (`https://logchain-auth.nareubad.work/admin` · `kc-admin` + TOTP) — บัญชีสาธิตเป็นงานของเพื่อน
+> · login dashboard `admin-user` + TOTP (บังคับจริงตั้งแต่ 2026-10-02) · user/role ตั้งใน Keycloak admin console (`https://logchain-auth.nareubad.work/admin` · `kc-admin` + TOTP) ·
+>   บัญชีสาธิต 4 role สร้างแล้ว 10-02 (ห้ามใช้ `seed-test-users.sh` บน cloud — guard กันไว้ · ไม่มี OTP)
 > · คู่มือ: `docs/runbooks/deploy-cloud.md` · รายละเอียด: worklog 2026-10-01 หัวข้อ 4.1–4.7
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
@@ -292,6 +301,8 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | `bootstrap.sh` ของ clone ที่สองหยุดตั้งแต่ต้น (`project 'logchain' เป็นของ …` / `มี volume logchain_vault_data อยู่แล้ว`) | ตัวกันของ `b5a98d6` ทำงานถูก — clone บนเครื่องที่มีชุดจริงใช้ `COMPOSE_PROJECT_NAME=logchain-smoke ./scripts/bootstrap.sh` · ถ้า container ของ smoke รอบก่อนค้าง (โฟลเดอร์ถูกลบแล้ว key ของ Vault หาย) → `docker compose -p logchain-smoke down -v` ก่อน (worklog 2026-09-28 หัวข้อ 1) |
 | `NET::ERR_CERT_AUTHORITY_INVALID` ทั้งที่ `curl --cacert infra/tls/certs/ca.crt` ได้ 200 · มีสองชุดในเครื่อง | CA ชื่อซ้ำใน NSS (CA ที่สร้างก่อน 2026-09-28 ชื่อ `LogChain-Web-CA` ทุกชุด) — เทียบ `certutil -L -d sql:$HOME/.pki/nssdb -n 'LogChain-Web-CA' -a \| openssl x509 -noout -fingerprint -sha256` กับ `ca.crt` · แล้ว **ปิด Chrome จริง** (`pkill -f /opt/google/chrome/chrome` — ปิดหน้าต่างแล้วยังรันเบื้องหลัง) |
 | ML alert ไม่เด้งเลยทั้งที่ยิง log HDFS · `ml_skipped_unknown` ขึ้น | ข้อความไม่ตรง template ใน `drain_state.json` — ลอง `python -c "from app.log_keys import *; m=LogKeyMatcher.from_file(); print(m.match(mask('<ข้อความใน DB>')))"` ใน `detection/` · ได้ 0 = mask ไม่รองรับรูปที่ backend ส่งมา (ดูหัวข้อ "ห้ามทำ") |
+| admin login ได้โดยไม่ถูกถาม OTP · log Keycloak `ConditionalRoleAuthenticator: Invalid role name submitted: null` | config ของ `conditional-user-role` ต้องใช้ key **`condUserRole`** (ไม่ใช่ `condition.user.role` — Keycloak 24 ข้ามเงียบ) · แก้ใน admin console: Authentication → logchain-browser → Condition - user role → Role = admin · ทดสอบ: login ใน cookie jar ใหม่ต้องเจอฟอร์ม OTP (worklog 2026-10-02 หัวข้อ 5.5) |
+| Security Scan แดงที่ `npm audit` ทั้งที่ CI เขียว | advisory ใหม่ของ dependency (เช่น axios 10-01) · `npm audit fix` (ไม่ `--force`) ทั้ง root + `cylis-dashboard` · job หยุดที่ step แรก → step หลัง (pip-audit/ClamAV/gitleaks/Trivy) ไม่ได้รัน ต้องเช็คต่อ |
 | รัน `parse_logs.py` ใหม่แล้ว `detect.py` / API โหลดโมเดลไม่ขึ้น (size mismatch `fc`) | จำนวน log key เปลี่ยน — `NUM_CLASSES` = key + 1 ต้องแก้ครบ 3 ไฟล์แล้ว train ใหม่ · `tests/test_log_keys.py` เช็คให้ |
 | เบราว์เซอร์เตือน cert ที่ `:3453` / `:8443` · login ขึ้น `Invalid parameter: redirect_uri` | ยังไม่ trust CA → `./scripts/trust-web-ca.sh` (ต้องมี `libnss3-tools`) · realm เดิมไม่มี URL https → `./scripts/sync-keycloak-urls.sh` |
 | backend บน host (`start:dev`) ตอบ 401 ทุก request หลังเปลี่ยนเป็น HTTPS | `KEYCLOAK_INTERNAL_URL` ว่าง → ดึง JWKS จาก `https://localhost:8443` ที่ Node ไม่ trust — ตั้ง `KEYCLOAK_INTERNAL_URL=http://localhost:8080` |
