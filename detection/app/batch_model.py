@@ -18,7 +18,7 @@ from pathlib import Path
 
 from prometheus_client import Counter
 
-from app.batch_features import FEATURE_NAMES, extract_features
+from app.batch_features import FEATURE_NAMES, deviations, extract_features
 
 ISOFOREST_ANOMALY = Counter(
     "isoforest_anomaly_total",
@@ -39,6 +39,8 @@ class BatchAnomalyDetector:
     def __init__(self, model_path: Path = MODEL_PATH):
         self.model = None
         self.feature_names: list[str] = FEATURE_NAMES
+        # ช่วง p05/median/p95 ของ batch ตอนฝึก (train_isoforest.py) · ไม่มี = โมเดลเก่า → ใช้เกณฑ์ตายตัวแทน
+        self.profile: dict[str, dict[str, float]] | None = None
         self.unavailable_reason: str | None = None
         self._load(model_path)
 
@@ -58,6 +60,7 @@ class BatchAnomalyDetector:
                 self.unavailable_reason = "feature ของโมเดลไม่ตรงกับโค้ดปัจจุบัน — ต้อง retrain"
                 return
             self.feature_names = list(saved_features)
+            self.profile = bundle.get("feature_profile")
         except Exception as e:  # noqa: BLE001 — โหลดพังต้องไม่ทำให้ service ล้ม
             self.model = None
             self.unavailable_reason = f"โหลดโมเดลไม่สำเร็จ: {e}"
@@ -108,6 +111,15 @@ class BatchAnomalyDetector:
 
     def _explain(self, features: list[float]) -> str:
         """สรุปสั้น ๆ ว่า feature ตัวไหนเด่น เพื่อให้ผู้ดูแลเข้าใจว่าทำไมถูกแจ้ง"""
+        head = "batch ผิดปกติ (Isolation Forest)"
+        if self.profile:
+            devs = deviations(features, self.profile)[:3]
+            if not devs:
+                return f"{head}: แต่ละค่าอยู่ในช่วงตอนฝึก แต่รวมกันแล้วไม่เหมือน batch ที่ใช้ฝึก"
+            parts = [_describe(name, value, median) for name, value, median in devs]
+            return f"{head}: {' · '.join(parts)}"
+
+        # โมเดลที่ยังไม่มี feature_profile — เกณฑ์ตายตัวแบบเดิม
         fmap = dict(zip(self.feature_names, features))
         signals = []
         if fmap.get("frac_auth_failure", 0) >= 0.3:
@@ -118,8 +130,28 @@ class BatchAnomalyDetector:
             signals.append(f"severity สูงเยอะ ({fmap['frac_high_severity']:.0%})")
         if fmap.get("distinct_source_ips", 0) >= 30:
             signals.append(f"IP ต้นทางหลากหลาย ({int(fmap['distinct_source_ips'])} IP)")
-        head = "batch ผิดปกติ (Isolation Forest)"
         return f"{head}: {' · '.join(signals)}" if signals else head
+
+
+# ชื่อ + รูปแบบตัวเลขของแต่ละ feature สำหรับข้อความเหตุผล
+_LABELS: dict[str, tuple[str, str]] = {
+    "log_count": ("จำนวน log", "{:.0f}"),
+    "distinct_source_ips": ("IP ต้นทาง", "{:.0f} IP"),
+    "distinct_sources": ("จำนวน source", "{:.0f}"),
+    "distinct_event_types": ("ประเภท event", "{:.0f} ประเภท"),
+    "event_type_entropy": ("ความหลากหลายของ event", "{:.2f} bit"),
+    "max_event_type_share": ("event ประเภทเดียวครอง", "{:.0%}"),
+    "frac_auth_failure": ("AUTH_FAILURE", "{:.0%}"),
+    "frac_high_severity": ("severity ERROR/CRITICAL", "{:.0%}"),
+    "frac_cde": ("log ในขอบเขต CDE", "{:.0%}"),
+    "logs_per_second": ("อัตรา log", "{:.1f}/วินาที"),
+}
+
+
+def _describe(name: str, value: float, median: float) -> str:
+    """เช่น 'อัตรา log 1.7/วินาที (ตอนฝึก ~154.2/วินาที)'"""
+    label, fmt = _LABELS.get(name, (name, "{:.2f}"))
+    return f"{label} {fmt.format(value)} (ตอนฝึก ~{fmt.format(median)})"
 
 
 # singleton

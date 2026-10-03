@@ -4,7 +4,7 @@ test ของ batch_features — บริสุทธิ์ ไม่พึ่
 """
 import unittest
 
-from app.batch_features import FEATURE_NAMES, extract_features
+from app.batch_features import FEATURE_NAMES, deviations, extract_features, feature_profile
 
 
 def _f(name):
@@ -101,6 +101,52 @@ class TestExtractFeatures(unittest.TestCase):
         self.assertEqual(v[_f("log_count")], 2.0)
         self.assertEqual(v[_f("distinct_source_ips")], 0.0)
         self.assertEqual(v[_f("logs_per_second")], 0.0)
+
+
+def _row(**overrides):
+    """feature vector ที่ทุกค่าเป็น 0 ยกเว้นที่ระบุ"""
+    v = [0.0] * len(FEATURE_NAMES)
+    for name, value in overrides.items():
+        v[_f(name)] = value
+    return v
+
+
+class TestFeatureProfile(unittest.TestCase):
+    def test_percentiles_per_feature(self):
+        rows = [_row(log_count=float(n)) for n in range(1, 101)]  # 1..100
+        p = feature_profile(rows)["log_count"]
+        self.assertAlmostEqual(p["p05"], 5.95)
+        self.assertAlmostEqual(p["median"], 50.5)
+        self.assertAlmostEqual(p["p95"], 95.05)
+
+    def test_covers_every_feature(self):
+        self.assertEqual(set(feature_profile([_row()])), set(FEATURE_NAMES))
+
+    def test_empty_rows_rejected(self):
+        with self.assertRaises(ValueError):
+            feature_profile([])
+
+
+class TestDeviations(unittest.TestCase):
+    def setUp(self):
+        # ตอนฝึก: อัตรา ~150 log/วินาที · ไม่มี AUTH_FAILURE เลย
+        rows = [_row(logs_per_second=140.0 + i, log_count=100.0) for i in range(21)]
+        self.profile = feature_profile(rows)
+
+    def test_inside_range_is_not_a_deviation(self):
+        self.assertEqual(deviations(_row(logs_per_second=150.0, log_count=100.0), self.profile), [])
+
+    def test_slow_batch_points_at_rate(self):
+        devs = deviations(_row(logs_per_second=1.7, log_count=100.0), self.profile)
+        self.assertEqual([d[0] for d in devs], ["logs_per_second"])
+        name, value, median = devs[0]
+        self.assertEqual(value, 1.7)
+        self.assertEqual(median, 150.0)
+
+    def test_feature_constant_in_training_ranks_first(self):
+        # AUTH_FAILURE ไม่เคยเกิดตอนฝึก → แค่ 20% ก็ต้องมาก่อนอัตราที่เพี้ยนเล็กน้อย
+        devs = deviations(_row(logs_per_second=120.0, log_count=100.0, frac_auth_failure=0.2), self.profile)
+        self.assertEqual([d[0] for d in devs], ["frac_auth_failure", "logs_per_second"])
 
 
 if __name__ == "__main__":

@@ -136,3 +136,55 @@ def extract_features(logs: list[dict]) -> list[float]:
         cde / n,
         logs_per_second,
     ]
+
+
+# ---- โปรไฟล์ของ feature ตอน train (ใช้อธิบายว่าทำไม batch ถูกแจ้ง) ----
+# Isolation Forest บอกได้แค่ "ผิดปกติ" ไม่บอกว่าเพราะ feature ไหน · เก็บช่วง p05–p95 + มัธยฐาน
+# ของ batch ที่ใช้ฝึกไว้ในไฟล์โมเดล แล้วตอน serve ชี้ feature ที่หลุดช่วงนั้นออกไปไกลที่สุด
+
+def _percentile(sorted_values: list[float], q: float) -> float:
+    """percentile แบบ linear interpolation (เหมือน numpy ค่าเริ่มต้น) · sorted_values ต้องเรียงแล้ว ไม่ว่าง"""
+    pos = (len(sorted_values) - 1) * q
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
+    return sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * (pos - lo)
+
+
+def feature_profile(rows: list[list[float]]) -> dict[str, dict[str, float]]:
+    """สรุปช่วงของแต่ละ feature จาก feature vector ของ batch ที่ใช้ฝึก → {name: {p05, median, p95}}"""
+    if not rows:
+        raise ValueError("ต้องมี feature vector อย่างน้อย 1 แถว")
+    profile: dict[str, dict[str, float]] = {}
+    for i, name in enumerate(FEATURE_NAMES):
+        col = sorted(r[i] for r in rows)
+        profile[name] = {
+            "p05": _percentile(col, 0.05),
+            "median": _percentile(col, 0.5),
+            "p95": _percentile(col, 0.95),
+        }
+    return profile
+
+
+def deviations(
+    features: list[float], profile: dict[str, dict[str, float]]
+) -> list[tuple[str, float, float]]:
+    """feature ที่อยู่นอกช่วง p05–p95 ของตอนฝึก เรียงจากหลุดไกลสุด → [(name, value, median)]
+
+    ระยะวัดเทียบกับความกว้างของช่วง (feature ที่ตอนฝึกคงที่ เช่น frac_auth_failure = 0 ทุกชุด
+    ขยับนิดเดียวก็ถือว่าหลุดมาก — ซึ่งถูก เพราะโมเดลไม่เคยเห็นค่านั้นเลย)
+    """
+    out: list[tuple[float, str, float, float]] = []
+    for name, value in zip(FEATURE_NAMES, features):
+        p = profile.get(name)
+        if not p:
+            continue
+        if value < p["p05"]:
+            gap = p["p05"] - value
+        elif value > p["p95"]:
+            gap = value - p["p95"]
+        else:
+            continue
+        scale = max(p["p95"] - p["p05"], abs(p["median"]) * 0.1, 1e-6)
+        out.append((gap / scale, name, value, p["median"]))
+    out.sort(reverse=True)
+    return [(name, value, median) for _, name, value, median in out]

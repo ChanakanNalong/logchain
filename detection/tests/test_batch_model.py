@@ -112,6 +112,37 @@ class TestWithModel(unittest.TestCase):
         self.assertTrue(out["is_anomaly"])
         self.assertIn("Isolation Forest", out["reason"])
 
+    def test_reason_without_profile_uses_fixed_thresholds(self):
+        d = BatchAnomalyDetector(model_path=self.path)
+        self.assertIsNone(d.profile)
+        self.assertIn("ประเภทเดียวครอง", d._explain(self._attack_features()))
+
+    def test_reason_with_profile_names_out_of_range_feature(self):
+        import joblib
+        from app.batch_features import extract_features, feature_profile
+        rng = random.Random(1234)
+        rows = [extract_features(_normal_batch(rng)) for _ in range(120)]
+        withp = self.path.parent / "with_profile.joblib"
+        bundle = joblib.load(self.path)
+        bundle["feature_profile"] = feature_profile(rows)
+        joblib.dump(bundle, withp)
+
+        d = BatchAnomalyDetector(model_path=withp)
+        self.assertIsNotNone(d.profile)
+        reason = d._explain(self._attack_features())
+        self.assertIn("AUTH_FAILURE 100%", reason)
+        self.assertIn("ตอนฝึก ~", reason)
+        # เกณฑ์ตายตัวเดิมไม่ถูกใช้แล้ว
+        self.assertNotIn("IP ต้นทางหลากหลาย", reason)
+
+    def _attack_features(self):
+        from app.batch_features import extract_features
+        return extract_features([{
+            "eventType": "AUTH_FAILURE", "severity": "WARNING",
+            "sourceIp": "203.0.113.9", "source": "host-a", "cdeScope": False,
+            "createdAt": f"2026-09-29T10:00:{i % 60:02d}+00:00",
+        } for i in range(100)])
+
     def test_feature_mismatch_rejected(self):
         import joblib
         bad = self.path.parent / "bad.joblib"

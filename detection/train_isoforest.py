@@ -6,10 +6,15 @@ unsupervised: ฝึกด้วย batch "ปกติ" เท่านั้�
 
 input: ไฟล์ JSONL — หนึ่งบรรทัดต่อหนึ่ง batch: {"logs": [ {eventType, severity, sourceIp, source, cdeScope, createdAt}, ... ]}
   สร้างจาก log ปกติของระบบด้วย export_batches.py (ยังไม่ทำ) หรือมือ
-output: data/isoforest_model.joblib = {"model", "feature_names", "n_train", "contamination"}
+output: data/isoforest_model.joblib = {"model", "feature_names", "n_train", "contamination", "feature_profile"}
+  feature_profile = ช่วง p05/median/p95 ของแต่ละ feature ในชุดฝึก — batch_model.py ใช้เขียนเหตุผล
+  ว่า batch ที่ถูกแจ้งหลุดช่วงที่ feature ไหน (ไม่มีผลต่อการทำนาย)
 
 ใช้:
   python -m train_isoforest --input data/normal_batches.jsonl --contamination 0.02
+  python -m train_isoforest --input data/normal_batches.jsonl --profile-only
+    → เติม feature_profile ลงโมเดลที่มีอยู่ (--output) โดยไม่ train ใหม่ — ตัวโมเดลเดิมทุกอย่าง
+      (ต้องใช้ไฟล์ batch ปกติชุดเดียวกับตอน train)
   (รันใน image ของ detection ที่มี scikit-learn: docker run ... python -m train_isoforest ...)
 
 หมายเหตุความซื่อตรง: ตัวเลขประเมินที่ได้มาจากสถานการณ์ที่สร้างเอง น้ำหนักทางวิชาการ
@@ -22,7 +27,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.batch_features import FEATURE_NAMES, extract_features
+from app.batch_features import FEATURE_NAMES, extract_features, feature_profile
 
 DEFAULT_OUT = Path(__file__).parent / "data" / "isoforest_model.joblib"
 
@@ -55,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="สัดส่วน outlier ที่คาด (float เช่น 0.02 หรือ 'auto')")
     ap.add_argument("--n-estimators", type=int, default=200)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--profile-only", action="store_true",
+                    help="ไม่ train · เติม feature_profile ลงโมเดลที่ --output ซึ่งมีอยู่แล้ว")
     args = ap.parse_args(argv)
 
     # import หนัก ๆ หลัง parse args เพื่อให้ --help ไม่ต้องมี sklearn
@@ -64,6 +71,18 @@ def main(argv: list[str] | None = None) -> int:
     batches = load_batches(args.input)
     X = [extract_features(logs) for logs in batches]
     print(f"โหลด {len(X)} batch · feature {len(FEATURE_NAMES)} ตัว: {FEATURE_NAMES}")
+    profile = feature_profile(X)
+
+    if args.profile_only:
+        bundle = joblib.load(args.output)
+        if list(bundle.get("feature_names", [])) != list(FEATURE_NAMES):
+            raise SystemExit("feature ของโมเดลไม่ตรงกับโค้ดปัจจุบัน — ต้อง train ใหม่")
+        if bundle.get("n_train") not in (None, len(X)):
+            raise SystemExit(f"โมเดล train ด้วย {bundle['n_train']} batch แต่ไฟล์นำเข้ามี {len(X)} — คนละชุด?")
+        bundle["feature_profile"] = profile
+        joblib.dump(bundle, args.output)
+        print(f"เติม feature_profile → {args.output} (ไม่ได้ train ใหม่)")
+        return 0
 
     contamination = args.contamination
     if contamination != "auto":
@@ -86,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             "feature_names": list(FEATURE_NAMES),
             "n_train": len(X),
             "contamination": contamination,
+            "feature_profile": profile,
         },
         args.output,
     )
