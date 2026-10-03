@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Target, TrendingUp, Activity, Brain } from "lucide-react";
+import { Target, TrendingUp, Activity, Brain, ShieldAlert } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Badge, Th, Td } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -9,7 +9,7 @@ import { DEEPLOG_TOP_G, DEEPLOG_WINDOW_SIZE } from "@/data/referenceData";
  * Offline benchmark result — DeepLog on HDFS_v1 with the 45 Drain log keys the
  * running detector uses. These numbers are baked into the build on purpose: they
  * describe offline evaluation runs, NOT anything the running system has measured.
- * Section 3 below is the only part of this page that reflects live runtime state.
+ * The "Runtime detections" section is the only part of this page that reflects live runtime state.
  *
  * Metric cards = mean ± SD of 5 training seeds (1–5) on the same seed-42 split,
  * g = TOP_K_G = 8 (docs/worklog/2026-09-28.md sections 10–11):
@@ -46,6 +46,35 @@ const metricCards = [
   { l: "Precision", v: TRAINING.precision, sub: `± ${TRAINING.precisionSd} · TP/(TP+FP)`, icon: Target, tone: "blue" },
   { l: "Recall", v: TRAINING.recall, sub: `± ${TRAINING.recallSd} · TP/(TP+FN)`, icon: Activity, tone: "warn" },
   { l: "Model", v: "DeepLog", sub: `LSTM · window=${DEEPLOG_WINDOW_SIZE} · top-${DEEPLOG_TOP_G}`, icon: Brain, tone: "cyan" },
+];
+
+/**
+ * Offline evaluation of the batch-level Isolation Forest (detection level 3) —
+ * detection/data/isoforest_model.joblib, eval_isoforest.py on the logchain-smoke
+ * clone (worklog 2026-09-30, docs/plan/isolation-forest-option.md stage 4):
+ *   TP 21  FP 4  TN 176  FN 0 | precision 0.8400 recall 1.0000 F1 0.9130 · FP-rate 4/180
+ * Traffic was generated through the real ingest pipeline (gen_traffic.py), so it is a
+ * controlled evaluation, not a benchmark dataset. Training batches arrived at a near
+ * constant rate (median ~154 logs/s), so slower normal batches are flagged too
+ * (worklog 2026-10-03 section 1).
+ */
+const ISOFOREST = {
+  precision: "0.8400",
+  recall: "1.0000",
+  f1: "0.9130",
+  fpRate: "2.22%",
+  fp: 4,
+  nTrain: 180,
+  nNormalEval: 180,
+  nAttackEval: 21,
+  trainRate: "~154",
+};
+
+const isoforestCards = [
+  { l: "F1 Score", v: ISOFOREST.f1, sub: "controlled evaluation", icon: TrendingUp, tone: "good" },
+  { l: "Precision", v: ISOFOREST.precision, sub: "TP/(TP+FP)", icon: Target, tone: "blue" },
+  { l: "Recall", v: ISOFOREST.recall, sub: "brute force · port scan · DoS", icon: Activity, tone: "warn" },
+  { l: "False positive rate", v: ISOFOREST.fpRate, sub: `${ISOFOREST.fp}/${ISOFOREST.nNormalEval} normal batches`, icon: ShieldAlert, tone: "cyan" },
 ];
 
 /**
@@ -106,6 +135,11 @@ const DETECTION_CAPABILITY = [
         desc: `Sequence anomaly detection (LSTM, window=${DEEPLOG_WINDOW_SIZE}, next event outside top-${DEEPLOG_TOP_G})`,
         severity: "ML",
       },
+      {
+        id: "Isolation Forest",
+        desc: "Batch-level anomaly (10 features per sealed batch — event mix, source IPs, rate)",
+        severity: "ML",
+      },
     ],
   },
 ];
@@ -115,7 +149,6 @@ const countRules = (kind: string) =>
 
 const RULE_BASED_COUNT = countRules("rule");
 const ML_BASED_COUNT = countRules("ml");
-const TOTAL_COUNT = RULE_BASED_COUNT + ML_BASED_COUNT;
 
 /** One row of GET /api/v1/stats/overview → anomalyTypes */
 interface AnomalyType {
@@ -237,12 +270,50 @@ export default function MLDetection() {
         </div>
       </Card>
 
+      {/* ── 1b. Isolation Forest — static controlled evaluation, not runtime ── */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <SectionLabel dot={t.cyan}>Isolation Forest — batch-level (ระดับที่ 3)</SectionLabel>
+          <Badge tone="neutral">controlled evaluation (static)</Badge>
+        </div>
+        <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 14 }}>
+          จำแนกทั้ง batch ตอนปิดชุด · ประเมินด้วยทราฟฟิกจำลองที่ยิงผ่านช่องทางรับ Log จริง (ฝึก {ISOFOREST.nTrain} batch ปกติ ·
+          ประเมิน {ISOFOREST.nNormalEval} ปกติ + {ISOFOREST.nAttackEval} โจมตี) —{" "}
+          <span style={{ color: t.warn, fontWeight: 600 }}>ไม่ใช่ชุดข้อมูลมาตรฐาน และไม่ใช่ค่า runtime</span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+          {isoforestCards.map((m) => (
+            <div
+              key={m.l}
+              style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: "14px 16px" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <SectionLabel dot={t[m.tone] || t.blue}>{m.l}</SectionLabel>
+                <m.icon size={15} color={t.muted} />
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 4, ...monoFont }}>{m.v}</div>
+              <div style={{ fontSize: 11, color: t.muted, marginTop: 4, ...sansFont }}>{m.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 9 }}>
+          <div style={{ fontSize: 11, color: t.muted, ...sansFont }}>
+            ข้อจำกัด — batch ที่ใช้ฝึกมาด้วยอัตราเกือบคงที่ (มัธยฐาน{" "}
+            <span style={{ color: t.warn, ...monoFont }}>{ISOFOREST.trainRate} log/วินาที</span>) โมเดลจึงไวต่ออัตราการไหลของ log:
+            batch ปกติที่ช้ากว่านี้ก็ถูกแจ้งได้ · FP-rate {ISOFOREST.fpRate} ใช้ได้เฉพาะเงื่อนไขทดสอบที่ควบคุมไว้ ·
+            เป็นตัวเสริม ไม่ใช่ตัวจับหลัก (ตรวจจับล่ม batch ยังปิดได้)
+          </div>
+        </div>
+      </Card>
+
       {/* ── 2. Detection capability — static catalogue of what we can detect ── */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <SectionLabel dot={t.blue}>Detection capability</SectionLabel>
           <Badge tone="blue">
-            {RULE_BASED_COUNT} rule-based + {ML_BASED_COUNT} ML-based = {TOTAL_COUNT} ประเภท
+            {RULE_BASED_COUNT} rule-based + {ML_BASED_COUNT} ML-based
           </Badge>
         </div>
         <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 14 }}>
