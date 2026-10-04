@@ -258,7 +258,7 @@ export default function MLDetection() {
               <span style={{ color: t.good }}>{TRAINING.f1}</span>
               <div style={{ marginTop: 4 }}>
                 เพราะ block ที่สั้นเป็น anomaly <b>6,191 จาก 16,838</b> ตัว แต่ฝั่ง normal{" "}
-                <b>0 จาก 446,579</b> ตัว — กฎนี้เลยได้ TP ฟรีโดยไม่เพิ่ม FP เลย
+                <b>0 จาก 446,579</b> ตัวใน test set — กฎนี้เลยได้ TP ฟรีโดยไม่เพิ่ม FP เลย
               </div>
               <div style={{ marginTop: 4 }}>
                 วัดเฉพาะ sequence ที่โมเดลตัดสิน (ตัด block สั้นออก) ได้ F1{" "}
@@ -317,7 +317,7 @@ export default function MLDetection() {
           </Badge>
         </div>
         <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 14 }}>
-          ประเภทภัยคุกคามที่ระบบตรวจจับได้ — rule ID และ severity ตรงกับ{" "}
+          ประเภทภัยคุกคามที่ระบบตรวจจับได้ — rule ID และ severity ของกลุ่ม rule ตรงกับ{" "}
           <span style={{ ...monoFont, color: t.blue2 }}>rules/security_rules.yaml</span> ของ detection service
         </div>
 
@@ -354,10 +354,10 @@ export default function MLDetection() {
           <Badge tone="good">live</Badge>
         </div>
         <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 12 }}>
-          จำนวนครั้งที่ระบบตรวจเจอจริงต่อรายการ จาก{" "}
+          จำนวน alert ต่อรายการ จาก{" "}
           <span style={{ ...monoFont, color: t.blue2 }}>GET /api/v1/stats/overview</span>
           {!loading && !error && detections && detections.length > 0 && (
-            <> — รวม {totalDetections.toLocaleString()} ครั้ง · {detections.length} รายการ (แยกตามแหล่งและระดับ)</>
+            <> — รวม {totalDetections.toLocaleString()} alert · {detections.length} รายการ (แยกตามแหล่งและระดับ)</>
           )}
         </div>
 
@@ -375,7 +375,7 @@ export default function MLDetection() {
                   <Th>Alert type</Th>
                   <Th>Severity</Th>
                   <Th>Source</Th>
-                  <Th>Count</Th>
+                  <Th>Alerts</Th>
                 </tr>
               </thead>
               <tbody>

@@ -42,7 +42,7 @@ const NAV_ITEMS = [
 const PAGE_TITLES = {
   dashboard: "Security overview",
   logs: "Log explorer",
-  ml: "ML Detection — DeepLog",
+  ml: "ML Detection — DeepLog · Isolation Forest",
   dataset: "Dataset — HDFS_v1",
   verify: "Integrity verification",
   alerts: "Alert triage",
