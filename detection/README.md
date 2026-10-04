@@ -67,7 +67,7 @@ Loaded 9 security rules
 | ไฟล์ | ขนาด | อยู่ใน repo? | ต้องใช้ตอน |
 |---|---|---|---|
 | `deeplog_model.pt` | 217 KB | ✅ commit | **runtime** — ขาดไม่ได้ |
-| `drain_state.json` | 4 KB | ✅ commit | train ใหม่ (47 template ที่เรียนไว้แล้ว) |
+| `drain_state.json` | 4 KB | ✅ commit | train ใหม่ (45 template ที่เรียนไว้แล้ว) |
 | `HDFS.log` | 1.5 GB | ❌ โหลดเอง | train ใหม่ |
 | `anomaly_label.csv` | 18 MB | ❌ โหลดเอง | train ใหม่ |
 | `hdfs_sequences.csv` | 48 MB | ❌ สร้างเอง | train ใหม่ |
@@ -114,7 +114,7 @@ python detect.py
 ```
 
 ทุกขั้น seed คงที่ (42) ผลจึง reproducible
-โมเดลปัจจุบัน: 47 log key, window=10, top-k g=8, **F1 ≈ 0.71** บน HDFS
+โมเดลปัจจุบัน: 45 log key, window=10, top-k g=8, **F1 0.7252 ± 0.0181** บน HDFS (เฉลี่ย 5 seed)
 
 `deeplog.py` / `detect.py` ใช้ CUDA ถ้ามี (`torch.cuda.is_available()`) —
 CPU ก็ train ได้แต่ช้ากว่ามาก ส่วน **inference ตอน runtime ใช้ CPU ล้วน** ซึ่งเป็น

@@ -354,10 +354,10 @@ export default function MLDetection() {
           <Badge tone="good">live</Badge>
         </div>
         <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2, marginBottom: 12 }}>
-          จำนวนครั้งที่ระบบตรวจเจอจริงต่อประเภท จาก{" "}
+          จำนวนครั้งที่ระบบตรวจเจอจริงต่อรายการ จาก{" "}
           <span style={{ ...monoFont, color: t.blue2 }}>GET /api/v1/stats/overview</span>
           {!loading && !error && detections && detections.length > 0 && (
-            <> — รวม {totalDetections.toLocaleString()} ครั้ง จาก {detections.length} ประเภท</>
+            <> — รวม {totalDetections.toLocaleString()} ครั้ง · {detections.length} รายการ (แยกตามแหล่งและระดับ)</>
           )}
         </div>
 
@@ -372,7 +372,7 @@ export default function MLDetection() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
-                  <Th>Type</Th>
+                  <Th>Alert type</Th>
                   <Th>Severity</Th>
                   <Th>Source</Th>
                   <Th>Count</Th>

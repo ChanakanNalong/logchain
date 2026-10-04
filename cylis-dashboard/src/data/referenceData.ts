@@ -12,7 +12,7 @@
  * Sources (repo `logchain-detection`, sibling checkout of this repo):
  *   data/HDFS.log            — 11,175,629 raw lines
  *   data/anomaly_label.csv   — 575,061 labelled blocks
- *   data/drain_state.json    — 47 Drain3 templates
+ *   data/drain_state.json    — 45 Drain3 templates
  *   app/model.py             — WINDOW_SIZE / TOP_K_G / NUM_CLASSES
  *   rules/security_rules.yaml — rule IDs, severities, thresholds
  */
@@ -29,10 +29,10 @@ export const HDFS_ANOMALY_BLOCKS = 16_838;
 /** Rows labelled "Normal" in data/anomaly_label.csv. */
 export const HDFS_NORMAL_BLOCKS = 558_223;
 /**
- * Distinct Drain3 templates in data/drain_state.json (47 keys).
- * Matches app/model.py NUM_CLASSES = 48 minus index 0, which is padding.
+ * Distinct Drain3 templates in data/drain_state.json (45 keys).
+ * Matches app/model.py NUM_CLASSES = 46 minus index 0, which is padding.
  */
-export const HDFS_EVENT_TYPES = 47;
+export const HDFS_EVENT_TYPES = 45;
 /** app/model.py WINDOW_SIZE — the LSTM input window DeepLog slides over a block. */
 export const DEEPLOG_WINDOW_SIZE = 10;
 /** app/model.py TOP_K_G — next event must fall inside the top-8 predictions. */
