@@ -4,22 +4,37 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-03 (ปิดวัน) · **HEAD:** `21ba423` · git สะอาด · CI + Security Scan เขียว · cloud = `a05cd69` (ต่างแค่ worklog) · งานล่าสุด: `docs/worklog/2026-10-02.md` หัวข้อ 3–6
-> **สถานะ:** ฝั่งระบบ + ฝั่ง Claude เสร็จหมด · RBAC/Logout ของเพื่อน merge + ทดสอบครบ 5 role · **MFA ของ admin ใช้ได้จริงตั้งแต่ 2026-10-02** —
-> **เหลือเฉพาะงานเจ้าของ ข้อ 2–6 ด้านล่าง (ทำ 2026-10-03)**
+> **เขียนเมื่อ:** 2026-10-04 · **HEAD:** `0a257d7` · git สะอาด · **cloud = `5bfc97b`** (ต่างแค่ worklog) · WireGuard ปิดแล้ว · งานล่าสุด: `docs/worklog/2026-10-03.md`
+> **สถานะ:** ฝั่งระบบ + ฝั่ง Claude เสร็จหมด · **เหลืองานเจ้าของ: สไลด์ · โปสเตอร์ · เล่มรอบ 7 · เอกสารลงนาม · บัญชี/รหัส** ·
+> สรุปสำหรับ Claude แชท = Claude Doc "LogChain — อัปเดตสถานะระบบ (2026-10-03)" https://claude.ai/code/artifact/03409103-1f33-4bc1-8b19-ca55a3e9b2e5
 >
 > **▶ งานถัดไป (เรียงตามนี้):**
-> 1. ✅ (2026-10-03) lockfile axios 1.20.0 / next 16.3.8 → Security Scan เขียว · cloud rebuild backend + dashboard แล้ว (worklog หัวข้อ 6)
-> 2. **(เจ้าของ)** บัญชีสาธิตบน cloud (analyst/operator/auditor/ingestor-user · สร้างใน admin console 10-02) — รหัสเป็นแพทเทิร์นเดาได้ + ไม่มี OTP
->    → หลังอัดคลิป: เปลี่ยนเป็นรหัสสุ่ม หรือ Disable (Settings ของ dashboard)
-> 3. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
->    (มีรหัส user ทดสอบ 4 บรรทัดใหม่จาก `seed-test-users.sh` ด้วย)
-> 4. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เปิด `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx` — เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 ·
->    ตาราง 4-2 ไม่ล้นหน้า (ช่องที่อยู่สัญญายาวขึ้น) · ตาราง 5-9 แถวชุดข้อมูลยาวขึ้น · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) → export PDF จาก**ฉบับสะอาด-รอบ7** → แทนไฟล์เดิม
->    · ฉบับสะอาดยังมีไฮไลต์เหลือง 6 + แดง 1 ที่ติดมาตั้งแต่ไฟล์ต้นฉบับ (เช่น "ตารางที่ 4-9 (ข)" · "ฟังก์ชันหลักใน Smart Contract LogIntegrity") — ลบก่อน export
-> 5. **(เจ้าของ)** เอกสารลงนาม `todo.md` ข้อ 7 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น ·
+> 1. **(เจ้าของ)** ถามคณะว่าต้องส่งเล่มก่อนสอบกี่วัน — กำหนดเส้นตายจริงของข้อ 3–4
+> 2. **(เจ้าของ)** แก้สไลด์ `~/Documents/present-final/CPE66-027.pdf` 8 จุด + โปสเตอร์ `LogChain_Poster_A1.png` 5 จุด (worklog 10-03 หัวข้อ 2 · ตารางใน Claude Doc)
+>    · สไลด์: หน้า 2 "ระแบบ" · หน้า 4 คำบรรยาย + **แผนภาพ** (WSL2 → Linux Mint 22.3 · detection ใน container) · หน้า 7 "Triggerp" + mTLS ผ่าน Kafka ·
+>      หน้า 10 → 31 ชุด 416 กรณี (+ เล่ม 4.15) · หน้า 12 เพิ่มผล IF · หน้า 15 เพิ่มข้อจำกัด IF
+>    · โปสเตอร์: P 0.9705 · F1 0.7252 · R 0.5791 · ภาพ ③ ใช้ `ml-detection-2026-10-03.jpg` / `ml-detection-isoforest-2026-10-03.jpg` · Contact "[อีเมล]" ·
+>      เติม IF เป็น "9 กฎ + DeepLog + Isolation Forest" (**ไม่ใช่ "11 ประเภท"**)
+> 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เล่มรอบ 7 `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx`:
+>    · **ใหม่:** 4.1.1 บรรทัด OS → Linux Mint 22.3 (kernel 6.8) บนเครื่องจริง (เดิม "Ubuntu 22.04 บน WSL2 / Windows 11" ผิด) + ข้อความ "detection นอก container" ·
+>      เพิ่มข้อจำกัด IF ใน 4.18 / 5.6 (ฝึกด้วยอัตราเกือบคงที่ ~154 log/วินาที → ไวต่ออัตรา log · FP 2.22% เฉพาะเงื่อนไขควบคุม)
+>    · เดิม: เช็คภาพ 3.9.6/4.6.6 · ตาราง DR-09/10 · ตาราง 4-2 ไม่ล้นหน้า · ตาราง 5-9 · ไฮไลต์เขียว → update field → ภาพที่ 4-4 (3 กล่อง) →
+>      ลบไฮไลต์เหลือง 6 + แดง 1 ในฉบับสะอาด → export PDF จาก**ฉบับสะอาด-รอบ7** → แทนไฟล์เดิม
+> 4. **(เจ้าของ)** เอกสารลงนาม `todo.md` ข้อ 7 — RTO-RPO §4 ชื่อคนตรวจ · Chain-of-Custody T001–T003 · ชื่อ Person 3 + Supervisor + ลายเซ็น ·
 >    **ช่องวันที่ที่ยืนยัน MFA ของ admin ต้อง ≥ 2026-10-02** (ก่อนหน้านั้น OTP ถูกข้าม — worklog 10-02 หัวข้อ 5.5)
-> 6. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 · ลบ clone `logchain-smoke` (sudo) · ปิด alert เก่า 3 ใบบน cloud (ทดสอบอีเมล 10-01) · ปิด WireGuard
+> 5. **(เจ้าของ)** บัญชีสาธิตบน cloud (analyst/operator/auditor/ingestor-user) — รหัสเดาได้ + ไม่มี OTP → หลังอัดคลิป: รหัสสุ่ม หรือ Disable (Settings ของ dashboard)
+> 6. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
+>    (มีรหัส user ทดสอบ 4 บรรทัดใหม่จาก `seed-test-users.sh` ด้วย)
+> 7. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 (MySQL ของเครื่อง ไม่ใช่ของ LogChain) · ลบ clone `~/clone_logchain` (sudo) · ปิด alert เก่า 3 ใบบน cloud
+>
+> **ตัดสินใจแล้ว 2026-10-04:** **ห้ามเพิ่มเทสจนกว่าจะสอบเสร็จ** — ล็อกไว้ที่ 31 ชุด 416 กรณี (unit 26/385 + integration 5/31) ให้ตรงเล่ม 4.15 / สไลด์หน้า 10
+>
+> **ตัดสินใจแล้ว 2026-10-03 (อย่าถกใหม่):** IF **ไม่ retrain** ก่อนสอบ (ตัวเลขเล่ม/สไลด์/โปสเตอร์จะต้องแก้ทั้งหมด) → เขียนเป็นข้อจำกัด + **ไม่โชว์ IF ใน demo สด** ·
+> **contract คงอ้างเครื่องทดลอง `0x5dC86975…`** (เล่มรอบ 6 ระบุทั้ง 2 สัญญาแล้ว: 4.1.1 · ตาราง 4-2 · ภาคผนวก ข.1 / ค) · OS ในเล่มผิด → แก้เป็น Linux Mint 22.3
+>
+> **เสร็จแล้ว 2026-10-03** (worklog 2026-10-03): lockfile axios 1.20.0 / next 16.3.8 → Security Scan เขียว ·
+> **เหตุผลของ IF อ้างช่วงค่าตอนฝึก** (`feature_profile` ในไฟล์โมเดล · `train_isoforest.py --profile-only` · ผลทำนายเดิมทุก batch 381/381) ·
+> **หน้า ML Detection แสดงการ์ด IF** + ข้อจำกัด · ป้าย "9 rule-based + 2 ML-based" · ตรวจสไลด์/โปสเตอร์เทียบเล่มรอบ 7 · cloud → `5bfc97b`
 >
 > **เสร็จแล้ว 2026-10-02** (worklog 2026-10-02): เล่มรอบ 7 (DeepLog HDFS-only) · todo ตรงสถานะ · `scripts/demo-all-rules.sh` 9/9 local + cloud ·
 > merge `feature/rbac-logout-seed-users` (`ed46643`) · logout เด้งกลับ dashboard (`post.logout.redirect.uris = "+"`) · `scripts/check-rbac-live.py` ·
@@ -33,6 +48,7 @@
 > · คู่มือ: `docs/runbooks/deploy-cloud.md` · รายละเอียด: worklog 2026-10-01 หัวข้อ 4.1–4.7
 >
 > **✅ Isolation Forest เสร็จครบ 5 สเตจ** (code `5cb1303`/`8112e8f`/`abeac07` · โมเดล+tooling `794dc8d`/`5caeffe` · docx บนสำเนา) → รายละเอียด [`isolation-forest-option.md`](isolation-forest-option.md) · โมเดล live: detection 3 ระดับจริง (Rule+DeepLog+IF) · ปรัชญา "detection เป็นส่วนเสริม ไม่ใช่ gate"
+>   · **ข้อจำกัด (2026-10-03):** batch ฝึกมาด้วยอัตรา ~154 log/วินาที → batch ปกติที่ช้ากว่าถูกแจ้งด้วย (worklog 10-03 หัวข้อ 1)
 >
 > **บันทึกงานเต็ม:** `docs/worklog/2026-09-29.md` (กรณีทดสอบ · IM-12 · PT-07 · เล่ม) · `docs/worklog/2026-09-28.md` (clone · CA · DeepLog) · `docs/worklog/2026-09-25.md` (LUKS2) · `docs/worklog/2026-09-24.md` (6.8 pseudonymize) · `docs/worklog/2026-09-23.md` (หัวข้อ 1–39) · `docs/worklog/2026-09-22.md`
 
