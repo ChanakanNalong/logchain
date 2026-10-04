@@ -26,10 +26,13 @@ jobs:
       # ── ช่องโหว่ของ dependency (blocking ที่ HIGH ขึ้นไป — PCI 6.3.3 ต้องแก้ critical/high) ──
       # 2026-09-24: ทั้งสองฝั่ง 0 ทุกระดับ จึงเปิด block ได้โดยไม่ค้าง · moderate ลงมายังไม่ block
       # (advisory ระดับกลางออกบ่อย ถ้า block จะแดงเพราะงานที่ไม่เกี่ยวกัน) — ดูใน log ของ step นี้
+      # ขั้นหลังจากนี้ใส่ if: !cancelled() ทุกขั้น — เดิม npm audit แดงแล้ว gitleaks / Trivy / ClamAV ถูกข้ามหมด
+      # (2026-10-03–04: 6 commit ไม่ได้สแกน secret เลย) · job ยังแดงถ้าขั้นไหนแดง แค่ทุกด่านได้รันและรายงานผล
       - name: npm audit (backend)
         run: npm audit --audit-level=high
 
       - name: npm audit (dashboard)
+        if: ${{ !cancelled() }}
         run: npm --prefix cylis-dashboard audit --audit-level=high
 
       # audit requirements.lock ไม่ใช่ image: ใน image torch ติดตั้งเป็น `2.13.0+cpu` ซึ่ง scanner
@@ -38,9 +41,11 @@ jobs:
       # = ตรวจตาม lock ตรง ๆ ไม่ติดตั้ง torch (~GB) · สร้าง lock ใหม่: ./scripts/detection-lock.sh
       # ubuntu-latest (24.04) ห้าม pip install ลง python ของระบบ (PEP 668) → ใช้ setup-python
       - uses: actions/setup-python@v5
+        if: ${{ !cancelled() }}
         with:
           python-version: '3.12'
       - name: pip-audit (detection)
+        if: ${{ !cancelled() }}
         run: |
           pip install --quiet pip-audit
           pip-audit -r detection/requirements.lock --no-deps --disable-pip --progress-spinner off
@@ -52,6 +57,7 @@ jobs:
       # freshclam ไม่ได้ (CDN ของ ClamAV จำกัด rate ต่อ IP ของ runner) = ใช้ฐานข้อมูลที่มากับ image แทน ไม่ทำ job แดง
       # clamscan: 0 = สะอาด · 1 = เจอ · 2 = error → ไม่ใช่ 0 แดงทั้งหมด (ทดสอบด้วยไฟล์ EICAR แล้ว)
       - name: ClamAV (blocking)
+        if: ${{ !cancelled() }}
         run: |
           git ls-files > "$RUNNER_TEMP/files.lst"
           docker run --rm -v "$PWD":/scan:ro -v "$RUNNER_TEMP/files.lst":/files.lst:ro -w /scan \
@@ -69,6 +75,7 @@ jobs:
       #   2. gitleaks — จับ key=value และ secret ที่ฝังในซอร์ส (ทดสอบแล้วจับได้ทั้งคู่)
       #   3. Trivy — จับ private key แบบ PEM/keystore ที่ gitleaks อาจข้าม
       - name: ไฟล์ความลับถูก track ไหม
+        if: ${{ !cancelled() }}
         run: ./scripts/check-tracked-secrets.sh
 
       # สแกนเฉพาะไฟล์ใน tree ไม่ไล่ทั้ง history — คอมมิตแรกสุดมี README ของ NestJS
@@ -80,11 +87,13 @@ jobs:
       # หมายเหตุ: อย่าเขียนค่าตัวอย่างที่หน้าตาเหมือน secret ลงในคอมเมนต์ไฟล์นี้
       # gitleaks สแกนไฟล์ workflow ด้วย และเคยจับคอมเมนต์ของตัวเองจน CI แดงมาแล้ว
       - name: gitleaks (blocking)
+        if: ${{ !cancelled() }}
         run: |
           docker run --rm -v "$PWD":/scan:ro zricethezav/gitleaks:latest \
             detect --source=/scan --no-git --redact -v
 
       - name: Trivy — secret scan (blocking)
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
@@ -95,6 +104,7 @@ jobs:
 
       # block เฉพาะที่มีเวอร์ชันแก้แล้ว — ช่องโหว่ที่ยังไม่มี fix แก้ไม่ได้อยู่ดี ถ้า block จะแดงค้าง
       - name: Trivy — vulnerability scan (blocking)
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
