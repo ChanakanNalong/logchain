@@ -20,6 +20,9 @@ rule engine + DeepLog) → alert · integrity ใช้ Merkle root ต่อ ba
   ชุดที่ CI รันจริง: `lint:ci` + `npm test` + `npm run build` + `npx jest --config test/jest-e2e.json`
   + ฝั่ง detection: `cd detection && python -m unittest discover -s tests -t . -v` (ต้องมี PyYAML)
 - **e2e ยิง DB จริงและทิ้ง batch UNVERIFIED ไว้** (`tx_hash` ขึ้นต้น `0xaaaa…`) ลบทุกครั้งหลังรัน
+- **ห้ามรัน integration test ในเครื่องขณะ backend ทำงานอยู่** — `docker compose stop backend` ก่อน แล้ว `start` คืนหลังรัน
+  cron ของ backend seal log ของเทสต์ไปพร้อมกัน (คิว `sealBatch` กันได้แค่ใน process เดียว) → เทสต์ลบ log ทิ้งตอนจบ
+  → batch ของ backend ไม่มี log เหลือ = TAMPERED/FAILED + alert CRITICAL + อีเมล + เสีย gas จริง (เกิดแล้ว 2026-10-04 · IM-12 ล้มด้วยเหตุนี้)
 - **`docker compose` ต้องมี `HOST_UID=$(id -u) HOST_GID=$(id -g)` เสมอ** ไม่งั้นไฟล์ของ Vault เป็นของ root
 - **ห้าม `docker compose down -v`** ถ้ายังอยากได้ข้อมูล demo เดิม
 - เจ้าของเครื่องชอบรัน git เอง — **พิมพ์คำสั่ง git ให้ผู้ใช้รัน อย่ารันเอง**

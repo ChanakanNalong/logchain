@@ -107,7 +107,11 @@ python3 scripts/check-rbac-live.py     # token จริงของ analyst/ope
 npm run lint:ci   # ← สำคัญ: มีเพดาน warning 667 · `npm run lint` ไม่เช็คเพดาน
 npm test
 npm run build
-npx jest --config test/jest-e2e.json    # ต้องมี stack รันอยู่
+# integration: ต้องมี stack รันอยู่ แต่ **ต้องหยุด backend ก่อน** — ไม่งั้น cron ของ backend seal log ของเทสต์
+# แล้วเทสต์ลบ log ทิ้ง → batch TAMPERED/FAILED + alert CRITICAL + อีเมล + gas จริง (เกิดแล้ว 2026-10-04)
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose stop backend
+npx jest --config test/jest-e2e.json
+HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose start backend
 # ฝั่ง detection (ต้องมี PyYAML — หรือรันใน image ของ detection)
 docker run --rm -v $PWD/detection:/w -w /w --entrypoint python logchain-detection:dev \
   -m unittest discover -s tests -t . -v
@@ -327,6 +331,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | rebuild consumer แล้วโค้ดไม่เปลี่ยน | `detection-consumer` ใช้ image ของ `detection-api` — build service นั้นแทน |
 | batch ค้าง `SEALED` ไม่ขึ้น `CONFIRMED` | ปกติถ้าไม่ได้ตั้ง blockchain — `anchorSealedBatches()` ตามไป anchor เองเมื่อ config ครบ · ถ้าตั้งแล้ว ดู log `Blockchain init failed (attempt N)` — ลองใหม่เองทุก ≤5 นาที |
 | เทสต์ ethers กับ RPC ปลอมแล้ว call ที่สองได้ error เดิมโดยไม่ยิงจริง | ethers cache ผลของ request ที่เหมือนกัน 250ms (รวม reject) — เว้นช่วงในเทสต์ |
+| รัน e2e ขณะ backend ทำงาน → batch TAMPERED / FAILED ไม่มี log ผูก + alert CRITICAL | cron ของ backend seal log ของเทสต์ แล้วเทสต์ลบ log ทิ้ง — **หยุด backend ก่อนรันเสมอ** · เก็บกวาด: สำรองด้วย pg_dump แล้วลบเฉพาะ batch ที่ไม่มี mapping ซึ่งเกิดช่วงรัน (2026-10-04 ลบไป 5 ใบ · สำรองที่ `backups/cleanup-2026-10-04/`) |
 | รัน e2e ในเครื่องแล้ว integrity ตกจาก 100% | e2e ทิ้ง batch UNVERIFIED (`tx_hash` ขึ้นต้น `0xaaaa…`) — ลบทิ้งหลังรัน · ลืมลบ 30 นาทีจะได้ email `BatchStuckUnverified` |
 | รันแอปบน host (`npm run start:dev`) แล้ว Prometheus/Grafana ไม่มีข้อมูล | target ชี้ชื่อ service ใน compose อย่างเดียว — เปลี่ยน target ของ job นั้นเป็น `host.docker.internal:<port>` (backend = **9464** ไม่ใช่ 3000) แล้ว `curl -X POST localhost:9090/-/reload` (อย่าใส่คู่กัน = scrape ซ้ำ worklog หัวข้อ 20) |
 | `setup-offsite-backup.sh` ขึ้น `access_denied` / 403 insufficient scopes | หน้า Google hasn't verified → Advanced → Go to rclone · คำถาม Shared Drive ตอบ `n` (worklog หัวข้อ 31) |
