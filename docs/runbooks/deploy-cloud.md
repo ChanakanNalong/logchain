@@ -127,10 +127,18 @@ login dashboard จะได้ 400 → เพิ่มเองใน `https://
 ## E. Caddy กับ IP ของผู้ใช้ (อ่านก่อนแก้ `Caddyfile.cloud`)
 
 - Caddy publish แค่ `172.17.0.1:80` (docker0) = ปลายทางที่ cloudflared ตั้งไว้ · เครื่องอื่นในวง `172.16.40.0/24` ยิงตรงไม่ได้
-- **IP ผู้ใช้:** Caddy เชื่อ `Cf-Connecting-IP` เฉพาะ request จาก `172.17.0.0/16` (`trusted_proxies` · เปลี่ยนได้ด้วย `TUNNEL_TRUSTED_CIDR`)
-  แล้วเขียน `X-Forwarded-For` เป็นค่านั้นค่าเดียว → backend `trust proxy` **1** ชั้นเหมือนเดิม (`src/main.ts`) · rate limit นับต่อผู้ใช้จริง
-  - ทดสอบแล้ว 2026-10-02 (container จำลอง): client ปลอม `X-Forwarded-For` → ถูกแทนด้วย Cf-Connecting-IP ·
-    request จากวงที่ไม่ trust ปลอม `Cf-Connecting-IP` → ไม่เชื่อ ใช้ IP ต้นทางจริง
+- **IP ผู้ใช้:** Caddy เชื่อ `Cf-Connecting-IP` เฉพาะ request จาก `TUNNEL_TRUSTED_CIDR` (`trusted_proxies`)
+  แล้วเขียน `X-Forwarded-For` เป็นค่านั้นค่าเดียว → backend `trust proxy` **1** ชั้นเหมือนเดิม (`src/main.ts`) · audit + rate limit เห็น IP จริง
+  - **บน CT141 ต้องตั้ง `.env`: `TUNNEL_TRUSTED_CIDR=172.18.0.1/32`** (ตั้งแล้ว 2026-10-05) — cloudflared อยู่ใน docker0 ก็จริง
+    แต่ docker-proxy ส่งต่อจาก `172.17.0.1:80` เข้า Caddy โดยใช้ **gateway ของ network compose** (`logchain_default` = `172.18.0.1`) เป็นต้นทาง
+    ค่า default `172.17.0.0/16` จึงไม่เคยตรง → ก่อน 2026-10-05 ทุกคนเป็น `172.18.0.1` ทั้งใน `audit_access` และ rate limit
+    (เดิม compose ไม่ส่งตัวแปรนี้เข้า container ด้วย — แก้ `493e0f9`)
+  - ทดสอบจริงบน cloud 2026-10-05: request จากภายนอก → audit ได้ IP สาธารณะจริง · ปลอม `X-Forwarded-For` → ถูกแทนด้วย IP จริง ·
+    ปลอม `Cf-Connecting-IP` จากภายนอก → Cloudflare ตอบ 403 (error 1000) ไม่ถึงเรา
+  - **ข้อจำกัด:** process บน CT141 เอง หรือ container ใน docker0 ที่ยิง `172.17.0.1:80` ก็มาจาก `172.18.0.1` เหมือนกัน → ปลอม IP ได้
+    (ต้องมีสิทธิ์บนเครื่องนั้นอยู่แล้ว — ขอบเขตเดียวกับที่ตั้งใจให้ trust docker0 ตั้งแต่แรก)
+  - ถ้า network `logchain_default` ถูกสร้างใหม่ (เช่น `docker compose down`) subnet อาจเปลี่ยน → เช็ค
+    `docker network inspect logchain_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'` ให้ตรงกับ `.env` แล้ว `up -d https-proxy`
   - ถ้าย้าย cloudflared ไป network อื่น / `--network host` ต้องแก้ `TUNNEL_TRUSTED_CIDR` ตาม ไม่งั้นทุกคนกลายเป็น IP เดียวกัน
 - `X-Forwarded-Proto` ถูกตั้งเป็น `https` เสมอ (ผู้ใช้เข้ามาทาง https ที่ Cloudflare) — Keycloak (`KC_PROXY_HEADERS=xforwarded`) ใช้สร้าง redirect
 - Host อื่น / เข้าด้วย IP ตรง → 404
@@ -157,6 +165,7 @@ ss -ltn | grep -vE '127\.0\.0\.|\[::1\]'
 
 - เปิด `https://logchain.nareubad.work` → login → ต้องเข้าหน้า Dashboard ได้ · user ของ realm `logchain` เป็นชุดใหม่ (bootstrap พิมพ์วิธีตั้งไว้)
 - ยิง log: บนเครื่องนี้ `./scripts/demo-brute-force.sh "$T"` (ขอ token ตามคำสั่งใน `docs/plan/next-steps.md`) → เห็น alert บน dashboard
+- audit เห็น IP จริง: ยิง `/api/v1/alerts` ไม่มี token จากภายนอก → `select ip_address from audit_access order by accessed_at desc limit 1` ต้องเป็น IP สาธารณะของเรา ไม่ใช่ `172.18.0.1`
 - rate limit เห็น IP จริง: ยิง `/api/v1/stats/overview` เกิน 200 ครั้งใน 1 นาทีจากเครื่องหนึ่งจนได้ 429 (ThrottlerGuard global ทำงานก่อนเช็ค token) → อีกเครื่อง (เน็ตคนละวง เช่นมือถือ) ต้องยังได้ 401 ไม่ใช่ 429
   (ถ้าได้ 429 ด้วย = ทุกคนถูกนับเป็น IP เดียว → ดูหัวข้อ E)
 - `docker compose ps` ครบ
