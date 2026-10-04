@@ -1,10 +1,10 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VaultService } from './vault/vault.service';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TerminusModule } from '@nestjs/terminus';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD } from '@nestjs/core';
 
 import { AuthModule } from './auth/auth.module';
 import { LogsModule } from './logs/logs.module';
@@ -16,7 +16,7 @@ import { KafkaModule } from './kafka/kafka.module';
 import { VaultModule } from './vault/vault.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { AuditModule } from './audit/audit.module';
-import { AuditInterceptor } from './common/interceptors/audit.interceptor';
+import { AuditMiddleware } from './common/middleware/audit.middleware';
 import { HealthController } from './health/health.controller';
 import { BlockchainModule } from './blockchain/blockchain.module';
 
@@ -99,11 +99,13 @@ import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000
   controllers: [AppController, HealthController],
   providers: [
     AppService,
-    // APP_INTERCEPTOR -> register AuditInterceptor แบบ global
-    // ทุก request จะถูก intercept โดยอัตโนมัติ ไม่ต้อง @UseInterceptors ทุก controller
-    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     // global guard รันก่อน AuthGuard ของ controller → request ที่ไม่มี token ก็โดนนับด้วย
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // audit ทุก request เป็น middleware (ไม่ใช่ interceptor) — เห็นคำขอที่ guard ปฏิเสธ และ status จริงหลัง exception filter
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(AuditMiddleware).forRoutes('{*splat}');
+  }
+}

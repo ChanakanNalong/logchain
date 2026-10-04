@@ -22,7 +22,7 @@
 | 7.1 | Restrict access by need | PASS | JWT RBAC 5 roles (admin / operator / ingestor / analyst / auditor) |
 | 8.1 | Identify and authenticate | PASS | JWT ทุก endpoint ใต้ `/api/v1` · `/`, `/health` เปิดสาธารณะโดยตั้งใจ · `/metrics` ย้ายไป `:9464` ไม่ publish ออก host (review B5 แก้ 2026-09-24) |
 | 9.1 | Restrict physical access | N/A | Cloud/local deployment |
-| 10.1 | Track and monitor access | PASS | AuditAccess entity logs all requests |
+| 10.1 | Track and monitor access | PASS | `audit_access` บันทึกทุก request (ยกเว้น `/health`) รวมคำขอที่ถูกปฏิเสธ 401 / 403 / 4xx ด้วย status จริง — แก้ 2026-10-04 (เดิมไม่บันทึกคำขอที่ guard ปฏิเสธ · 10.2.1.4) |
 | 10.2 | Audit log retention | PASS | `audit_access` เก็บ **อย่างน้อย 365 วันเสมอ** (โค้ดบังคับขั้นต่ำ · 10.5.1) · `alerts` ตาม `RETENTION_DAYS` (default 365) · ตาราง `logs` ไม่ถูกลบ (append-only) · PDPA erasure pseudonymize แทนลบ (E06) |
 | 11.1 | Vulnerability testing | PASS | Trivy CI scan on every push |
 | 12.1 | Security policy | PASS | ISO 27001 ISMS document |
@@ -37,8 +37,11 @@
   · `/metrics` (จำนวน batch ตามสถานะ) อยู่ port แยก `:9464` เข้าได้เฉพาะใน docker network — `:3000/metrics` ตอบ 404 (2026-09-24)
 
 ### E02 — Audit Logging
-- File: src/common/interceptors/audit.interceptor.ts
-- All API requests logged to audit_access table
+- File: src/common/middleware/audit.middleware.ts (ลงทะเบียนใน `AppModule.configure()`)
+- ทุก request ใต้ `/api/v1` ลง `audit_access`: user (`anonymous` ถ้าไม่มี token) · IP · method · path · status · เวลา · duration
+- บันทึกตอน response ส่งจบ → status เป็นค่าจริงหลัง exception filter · คำขอที่ guard ปฏิเสธ (401 / 403 / 429) ถูกบันทึกด้วย (PCI 10.2.1.4)
+- **ก่อน 2026-10-04** เป็น interceptor: 4xx/5xx ถูกบันทึกเป็น 200/201 และคำขอที่ guard ปฏิเสธไม่ถูกบันทึกเลย — แถวเก่าใน `audit_access` จึงไม่มี status ล้มเหลว
+- เขียนแบบ fire-and-forget — audit ล้มไม่ทำให้คำขอหลักพัง · คำขอลบข้อมูลที่ไม่สำเร็จเก็บ route pattern แทน id จริง
 
 ### E03 — Blockchain Integrity
 - Smart contract stores SHA-256 hash per log batch

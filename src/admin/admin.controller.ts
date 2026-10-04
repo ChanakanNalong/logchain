@@ -221,7 +221,7 @@ export class AdminController {
   }
 
   /**
-   * audit เฉพาะการเปลี่ยน privilege — ละเอียดกว่า AuditInterceptor ตัว global
+   * audit เฉพาะการเปลี่ยน privilege — ละเอียดกว่า AuditMiddleware ตัว global
    * ที่บันทึกแค่ "มีคนเรียก endpoint นี้" ตรงนี้ต้องตอบได้ว่า "ใครแก้ role ของใคร"
    */
   private async writeAudit(

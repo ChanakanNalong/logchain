@@ -40,7 +40,7 @@ export class ErasureController {
       userId,
       requestedBy,
     )) as { tombstone: { pseudonym: string } };
-    // AuditInterceptor บันทึกคำขอนี้หลังเรา — ไม่งั้น URL ของคำขอลบเองจะเก็บ userId ตัวจริงไว้ใน audit_access
+    // AuditMiddleware บันทึกคำขอนี้หลังเรา (ตอน response จบ) — ไม่งั้น URL ของคำขอลบเองจะเก็บ userId ตัวจริงไว้ใน audit_access
     req.auditResource = req.url
       .split('/')
       .map((seg) =>
