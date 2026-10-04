@@ -13,6 +13,18 @@ import {
 
 export default function Dataset() {
   const t = useTheme();
+
+  const sourceGrid = (rows: typeof dataSources) => (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+      {rows.map((r) => (
+        <div key={r.name} style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 12, color: t.blue2, fontWeight: 600, ...monoFont }}>{r.name}</div>
+          <div style={{ fontSize: 11, color: t.muted, marginTop: 4, ...sansFont }}>{r.desc}</div>
+          <div style={{ fontSize: 10, color: t.border, marginTop: 6, ...monoFont }}>{r.url}</div>
+        </div>
+      ))}
+    </div>
+  );
   // HDFS_v1 contains only INFO and WARN — there is no ERROR level in this corpus.
   const levelColor: Record<string, string> = { INFO: t.good, WARN: t.warn };
 
@@ -149,16 +161,16 @@ export default function Dataset() {
       </Card>
 
       <Card>
-        <SectionLabel>แหล่งข้อมูล</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-          {dataSources.map((r) => (
-            <div key={r.name} style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 12, color: t.blue2, fontWeight: 600, ...monoFont }}>{r.name}</div>
-              <div style={{ fontSize: 11, color: t.muted, marginTop: 4, ...sansFont }}>{r.desc}</div>
-              <div style={{ fontSize: 10, color: t.border, marginTop: 6, ...monoFont }}>{r.url}</div>
-            </div>
-          ))}
+        <SectionLabel>ที่มาของ HDFS_v1</SectionLabel>
+        {sourceGrid(dataSources.filter((r) => r.used))}
+
+        <div style={{ marginTop: 20 }}>
+          <SectionLabel>แหล่งข้อมูลอื่นสำหรับงานต่อยอด</SectionLabel>
         </div>
+        <div style={{ fontSize: 11.5, color: t.muted, ...sansFont, marginTop: -2 }}>
+          ระบบนี้ประเมินด้วย HDFS_v1 เท่านั้น ชุดข้อมูลด้านล่างเป็นทางเลือกสำหรับการพัฒนาต่อ
+        </div>
+        {sourceGrid(dataSources.filter((r) => !r.used))}
       </Card>
     </div>
   );

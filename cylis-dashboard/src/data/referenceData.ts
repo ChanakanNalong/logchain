@@ -101,7 +101,7 @@ export const rawHdfsLogs = [
 ];
 
 export const dataSources = [
-  { name: "logpai/loghub", url: "github.com/logpai/loghub", desc: "Repository หลักของ HDFS_v1 และ dataset อีก 16 ชุด" },
+  { name: "logpai/loghub", url: "github.com/logpai/loghub", desc: "Repository หลักของ HDFS_v1 และ dataset อีก 16 ชุด", used: true },
   { name: "ait-aecid/anomaly-detection-log-datasets", url: "github.com/ait-aecid", desc: "Dataset สำหรับ anomaly detection หลาย format" },
   { name: "CIC-IDS 2017", url: "unb.ca/cic/datasets", desc: "Network intrusion detection จาก Canadian Institute" },
   { name: "Mordor Project", url: "github.com/OTRF/mordor", desc: "Windows event log จำลองการโจมตีตาม MITRE ATT&CK" },
