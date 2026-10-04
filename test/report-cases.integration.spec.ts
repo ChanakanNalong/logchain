@@ -316,8 +316,10 @@ describe('Report test cases (chapter 4)', () => {
   });
 
   it('ST-13 writes an audit row with user, time and action for every mutating request', async () => {
+    // audit เป็น fire-and-forget — รอให้แถวของเทสต์ก่อนหน้า (FT-13) ลง DB ก่อนตั้ง since
+    // ไม่งั้นแถวที่เขียนช้าจะตกอยู่หลัง since แล้วนับเกินเป็น 4 (ล้ม ~48% เมื่อรันไฟล์นี้เดี่ยว ๆ · 2026-10-04)
+    await new Promise((r) => setTimeout(r, 500));
     const since = new Date();
-    await new Promise((r) => setTimeout(r, 20));
     await ingest(3);
     await new Promise((r) => setTimeout(r, 500)); // audit เป็น fire-and-forget
     const rows = await sql<{

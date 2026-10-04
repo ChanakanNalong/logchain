@@ -1,0 +1,12 @@
+# gitleaks — finding ที่ตรวจแล้วว่าเป็น false positive (ใช้ตอนสแกน history: `gitleaks git`)
+# CI สแกนแค่ tree (`detect --no-git`) จึงไม่ได้พึ่งไฟล์นี้ — มีไว้ให้สแกน history ทั้งหมดในเครื่องแล้วได้ "no leaks found"
+# fingerprint = <commit>:<file>:<rule>:<line> — ถ้า rewrite history ของ commit พวกนี้ ต้องอัปเดตตาม
+# ตรวจ 2026-10-04 (history 220 commit · เจอ 2 รายการ ทั้งคู่ด้านล่าง)
+
+# README.md ของ commit แรก (template NestJS) — badge shields.io ของ CircleCI ของโปรเจกต์ nestjs/nest
+# พารามิเตอร์ใน URL เป็นของ badge สาธารณะของ NestJS ไม่ใช่ของ LogChain · README ปัจจุบันไม่มีบรรทัดนี้แล้ว
+62fdcf763886971349fc7bb82a65074ab11ec6f6:README.md:generic-api-key:5
+
+# คอมเมนต์ใน security.yml ที่อธิบาย false positive ข้างบน โดยยกค่าจาก badge มาเป็นตัวอย่าง
+# ลบออกแล้วใน 6284c52 (2026-09-19) — ไม่ใช่ secret
+691d77ea0d4c81029740abc846f0bc63849eb572:.github/workflows/security.yml:generic-api-key:49
