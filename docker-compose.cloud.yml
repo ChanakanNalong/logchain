@@ -12,6 +12,10 @@ services:
       DASHBOARD_HOST: ${DASHBOARD_HOST}
       API_HOST: ${API_HOST}
       AUTH_HOST: ${AUTH_HOST}
+      # วงที่ Caddy เชื่อ Cf-Connecting-IP — ต้องเป็น IP ที่ Caddy เห็นเป็นต้นทางของ cloudflared จริง
+      # (docker-proxy ส่งต่อจาก 172.17.0.1:80 → Caddy เห็นเป็น gateway ของ network compose เช่น 172.18.0.1 ไม่ใช่ 172.17.x)
+      # ตั้งผิด = Caddy ไม่เชื่อ header → audit / rate limit เห็นทุกคนเป็น IP เดียว · ดู deploy-cloud.md หัวข้อ E
+      TUNNEL_TRUSTED_CIDR: ${TUNNEL_TRUSTED_CIDR:-172.17.0.0/16}
     ports: !override
       - "172.17.0.1:80:8080"
     volumes: !override
