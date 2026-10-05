@@ -1,6 +1,6 @@
 # สิ่งที่ต้องทำต่อ — LogChain
 
-> อัปเดต 2026-10-04 (HEAD `0a257d7` · cloud `5bfc97b` — เพิ่มข้อ 14 สไลด์/โปสเตอร์/เล่ม · ข้อ 15 บัญชี/รหัส · worklog 2026-10-03) · ก่อนหน้า 2026-10-02 · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
+> อัปเดต 2026-10-05 (HEAD = GitHub = cloud `f42991b` · WireGuard ปิด · ข้อ 14 ภาพ ML Detection ต้องถ่ายใหม่ · ข้อ 16 งานหลังสอบ · worklog 2026-10-04 / 05) · ก่อนหน้า 2026-10-04 · สรุปงานที่ทำไปแล้ว: [`docs/summary-2026-09-17-to-09-25.md`](../summary-2026-09-17-to-09-25.md)
 > คำสั่งที่ใช้บ่อย · ข้อ "ห้ามทำ" · ตารางกับดัก → [`next-steps.md`](next-steps.md) (อ่านก่อนลงมือทุกครั้ง)
 > ผลทบทวน compliance + หลักฐาน → [`docs/compliance-review-2026-09-23.md`](../compliance-review-2026-09-23.md)
 
@@ -25,6 +25,7 @@
 | 13 ✅ | deploy ขึ้นอินเทอร์เน็ต https://logchain.nareubad.work (NB-Lab · Cloudflare Tunnel) | เสร็จ 2026-10-02 · `docs/runbooks/deploy-cloud.md` | — |
 | 14 | **สไลด์ 8 จุด · โปสเตอร์ 5 จุด · เล่มรอบ 7 (OS + ข้อจำกัด IF)** (หัวข้อ 14) — ถามคณะก่อนว่าส่งเล่มล่วงหน้ากี่วัน | เจ้าของ (Claude แชทร่างข้อความ) | กลาง |
 | 15 | บัญชีสาธิตบน cloud · รหัส `admin-user` (หัวข้อ 15) | เจ้าของ | เล็ก |
+| 16 | **หลังสอบ:** ลบ Co-Authored-By 7 commit · ลบ branch เก่า · ซ่อนปุ่ม Resolve จาก analyst (หัวข้อ 16) | เจ้าของ + Claude | กลาง |
 
 ---
 
@@ -175,6 +176,8 @@ https://claude.ai/code/artifact/03409103-1f33-4bc1-8b19-ca55a3e9b2e5
       หน้า 10 → 31 ชุด 416 กรณี (unit 26 ชุด 385 + integration 5 ชุด 31 · วัด 2026-10-04) · หน้า 12 เพิ่มผล IF (P 0.8400 · R 1.0 · F1 0.9130 · FP 2.22% · ข้อมูลจำลอง) · หน้า 15 ข้อจำกัด IF
 - [ ] **โปสเตอร์ `LogChain_Poster_A1.png` 5 จุด:** P 0.9705 · F1 0.7252 · R 0.5791 · ภาพ ③ แทนด้วย `ml-detection-2026-10-03.jpg`
       (+ `ml-detection-isoforest-2026-10-03.jpg` ถ้ามีที่) · Contact "[อีเมล]" · เติม IF เป็น "9 กฎ + DeepLog + Isolation Forest" (**ไม่ใช่ "11 ประเภท"**)
+- [ ] **ถ่ายภาพหน้า ML Detection ใหม่หลัง `3490b21`** (โปสเตอร์ + เล่ม): confusion matrix เรียง **TP · FN · FP · TN** แล้ว (ภาพ 10-03 = TP · FP · FN · TN) ·
+      ตัวเลขเดิม · ภาพ 10-03 ยังมีหัว "— DeepLog" และ "9 rule-based + 1 ML-based = 10 ประเภท" (ปัจจุบัน "· Isolation Forest" / "2 ML-based") — worklog 10-05 หัวข้อ 4
 - [ ] **เล่มรอบ 7 (ใหม่):** 4.1.1 OS → Linux Mint 22.3 (kernel 6.8) บนเครื่องจริง (เดิม Ubuntu 22.04 บน WSL2 ผิด · CPU/RAM ตรงแล้ว) ·
       ลบ "detection นอก container" · ข้อจำกัด IF ใน 4.18 / 5.6 (ฝึกด้วย ~154 log/วินาที → ไวต่ออัตรา log · FP 2.22% เฉพาะเงื่อนไขควบคุม) ·
       4.15 เทสต์อัตโนมัติ 266 → **416** (unit 23 ชุด 235 → 26 ชุด 385 · integration 5 ชุด 31 เท่าเดิม) — เพิ่มจาก IF stage 2 · ThrottlerGuard · RBAC matrix 135 กรณี (`it.each`)
@@ -208,6 +211,12 @@ https://claude.ai/code/artifact/03409103-1f33-4bc1-8b19-ca55a3e9b2e5
 - [ ] ทดสอบหลังเปลี่ยนชื่อ CA (`2afc52e`) · ระวัง: รันกับ CA **ชื่อเก่า** จะลบ CA ของ clone อื่นด้วย (ค้นชื่อแบบ substring)
 
 ---
+
+## 16. งานหลังสอบ (ห้ามทำก่อนสอบ · รายละเอียด next-steps "📌 งานหลังสอบ")
+
+- [ ] เขียน history ใหม่ลบ `Co-Authored-By` 7 commit เก่า (`9d6c229` · `514f669` · `df18eea` `f9d0352` `8695840` `cf8b8ed` `a4315b5`) → force-push + CT141 + เพื่อน rebase
+- [ ] ลบ branch `feature/rbac-logout-seed-users` (เข้า main แล้วผ่าน PR #8) + branch เก่าที่ไม่ใช้ทั้งบน GitHub และในเครื่อง
+- [ ] ซ่อนปุ่ม Resolve จาก analyst (`Alerts.tsx` · API ต้อง operator / admin)
 
 ## ที่ตัดสินใจไม่ทำแล้ว (อย่าหยิบกลับมาโดยไม่อ่านเหตุผล)
 

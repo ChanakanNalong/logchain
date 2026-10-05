@@ -4,7 +4,7 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-04 · **HEAD:** `0a257d7` · git สะอาด · **cloud = `bc2c108`** (2026-10-05 · dashboard ซ่อนเมนูตาม role) · WireGuard ปิดแล้ว · งานล่าสุด: `docs/worklog/2026-10-03.md`
+> **เขียนเมื่อ:** 2026-10-05 · **HEAD = GitHub = cloud = `f42991b`** · git สะอาด (local + CT141) · WireGuard ปิดแล้ว · งานล่าสุด: `docs/worklog/2026-10-05.md` (+ `2026-10-04.md`)
 > **สถานะ:** ฝั่งระบบ + ฝั่ง Claude เสร็จหมด · **เหลืองานเจ้าของ: สไลด์ · โปสเตอร์ · เล่มรอบ 7 · เอกสารลงนาม · บัญชี/รหัส** ·
 > สรุปสำหรับ Claude แชท = Claude Doc "LogChain — อัปเดตสถานะระบบ (2026-10-03)" https://claude.ai/code/artifact/03409103-1f33-4bc1-8b19-ca55a3e9b2e5
 >
@@ -15,6 +15,8 @@
 >      หน้า 10 → 31 ชุด 416 กรณี (+ เล่ม 4.15) · หน้า 12 เพิ่มผล IF · หน้า 15 เพิ่มข้อจำกัด IF
 >    · โปสเตอร์: P 0.9705 · F1 0.7252 · R 0.5791 · ภาพ ③ ใช้ `ml-detection-2026-10-03.jpg` / `ml-detection-isoforest-2026-10-03.jpg` · Contact "[อีเมล]" ·
 >      เติม IF เป็น "9 กฎ + DeepLog + Isolation Forest" (**ไม่ใช่ "11 ประเภท"**)
+>    · **⚠ ภาพ ML Detection ต้องถ่ายใหม่หลัง `3490b21`** (2026-10-05): confusion matrix เรียง **TP · FN · FP · TN** แล้ว (ภาพ 10-03 ยังเป็น TP · FP · FN · TN)
+>      ตัวเลขไม่เปลี่ยน · ภาพ 10-03 ยังมีข้อความเก่าอีก (หัว "— DeepLog" · "9 rule-based + 1 ML-based = 10 ประเภท") — worklog 10-05 หัวข้อ 4
 > 3. **(เจ้าของ · MS Word ไม่ใช่ LibreOffice)** เล่มรอบ 7 `~/Documents/final_volume/…-ไฮไลต์จุดแก้-รอบ7.docx`:
 >    · **ใหม่:** 4.1.1 บรรทัด OS → Linux Mint 22.3 (kernel 6.8) บนเครื่องจริง (เดิม "Ubuntu 22.04 บน WSL2 / Windows 11" ผิด) + ข้อความ "detection นอก container" ·
 >      เพิ่มข้อจำกัด IF ใน 4.18 / 5.6 (ฝึกด้วยอัตราเกือบคงที่ ~154 log/วินาที → ไวต่ออัตรา log · FP 2.22% เฉพาะเงื่อนไขควบคุม)
@@ -25,29 +27,38 @@
 > 5. **(เจ้าของ)** บัญชีสาธิตบน cloud (analyst/operator/auditor/ingestor-user) — รหัสเดาได้ + ไม่มี OTP → หลังอัดคลิป: รหัสสุ่ม หรือ Disable (Settings ของ dashboard)
 > 6. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
 >    (มีรหัส user ทดสอบ 4 บรรทัดใหม่จาก `seed-test-users.sh` ด้วย)
-> 7. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 (MySQL ของเครื่อง ไม่ใช่ของ LogChain) · ลบ clone `~/clone_logchain` (sudo) · ปิด alert เก่า 3 ใบบน cloud
+> 7. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 (MySQL ของเครื่อง ไม่ใช่ของ LogChain) · ลบ clone `~/clone_logchain` (sudo)
+>    (alert เก่า 3 ใบบน cloud RESOLVED แล้ว — worklog 10-05 หัวข้อ 3)
 >
 > **🔒 FREEZE ตั้งแต่ 2026-10-05:** **ห้ามแก้โค้ดทุกส่วน** (backend · dashboard · detection · infra · script · เทส) จนสอบเสร็จ
 > **ยกเว้นบั๊กที่ทำให้ demo ใช้งานไม่ได้** — แก้ได้เฉพาะจุดนั้น ต้องรันชุดตรวจครบ (หยุด backend ก่อนรัน integration) และยังได้ 31 ชุด 416 กรณี ·
 > งานเอกสาร (docs / เล่ม / สไลด์ / โปสเตอร์) แก้ได้ตามปกติ · โค้ดที่ freeze = `main` หลัง commit ปิดงาน 2026-10-05 (local = GitHub = cloud)
 >
-> **ยกเว้น freeze 1 ครั้ง (2026-10-05 · เจ้าของยืนยันเอง):** branch `fix/rbac-menu` = main + `ab523b4` ของเพื่อน (ซ่อนเมนูตามบทบาท · `cylis-dashboard/src/lib/roles.ts` ใหม่ + `App.tsx`)
-> · รีวิวแล้วเจอ `PAGE_ROLES.verify` ไม่มี `auditor` → auditor เข้าหน้า Verify ไม่ได้ ทั้งที่ `/batches` อนุญาต auditor และหน้านี้ทดสอบผ่านกับ auditor แล้ว (worklog 10-02 หัวข้อ 5.4)
-> · **แก้บรรทัดเดียว** `verify: ['admin', 'analyst', 'operator', 'auditor']` · ไม่แตะปุ่ม Resolve (analyst ยังเห็นปุ่ม → 403 + ข้อความ · พฤติกรรมเดิมของ main)
-> · `tsc --noEmit` + `next build` ผ่าน · rebuild `cylis-dashboard` บน local แล้ว (bundle มี auditor ใน verify) · merge เข้า main = **`bc2c108`**
-> · **deploy cloud 2026-10-05 18:06** (เจ้าของ `git pull --ff-only` บน CT141 เอง → Claude build + `up -d --no-deps cylis-dashboard` + `builder prune -f`) ·
->   CT141 = GitHub = `bc2c108` · git สะอาด · image `cylis-dashboard:dev` สร้าง 18:06:52 · healthy · bundle มี auditor ใน verify ·
->   network `logchain_default` ID เดิม (172.18.0.0/16 · ไม่ถูกสร้างใหม่) · service อื่นไม่ถูกแตะ (uptime เดิม) · ไม่ได้รัน `seed-test-users.sh`
-> · **แก้กลับ 2026-10-05 19:09 (เจ้าของสั่ง · branch `fix/auditor-reports-only`):** `verify: ['admin', 'analyst', 'operator']` = ฉบับเดิมของเพื่อน (`roles.ts` ตรง `ab523b4` ทุกบรรทัด)
->   เหตุผล: **เล่มตาราง ก-4 และ ก-7 กำหนดให้ auditor ใช้ได้เฉพาะรายงาน** และ `GET /logs/:id/proof` (ฟอร์ม verify ของหน้านี้) ไม่อนุญาต auditor →
->   auditor เห็นแค่ Reports · การเพิ่ม auditor ข้างบนจึงผิดสเปก · `tsc --noEmit` + `next build` ผ่าน · rebuild `cylis-dashboard` บน local แล้ว (bundle ไม่มี auditor ใน verify)
->   · **ยังไม่ commit · ยังไม่ deploy → cloud ยังเป็น `bc2c108` (auditor ยังเห็น Verify) จนกว่าจะ deploy ตัวแก้กลับ**
-> · **🔒 freeze ต่อตั้งแต่หลังงานนี้** — การยกเว้นนี้ใช้เฉพาะงานนี้ ไม่ใช่ช่องให้แก้อย่างอื่น (กลับไปใช้กฎ FREEZE ด้านบนตามเดิม)
+> **ข้อยกเว้น freeze ที่เกิดแล้ว (2026-10-05 · ปิดแล้วทั้งหมด · รายละเอียด worklog 10-05 หัวข้อ 4–5):**
+> · **`3490b21`** confusion matrix เรียง TP · FN · FP · TN — **อาจารย์ที่ปรึกษาสั่งแก้** · ภาพหน้าจอ ML Detection เก่าต้องถ่ายใหม่
+> · **ซ่อนเมนูตาม role** (`ab523b4` ของเพื่อน · `lib/roles.ts` + `App.tsx`) → `bc2c108` (PR #8 · เพิ่ม auditor ใน Verify) → **แก้กลับ `f42991b`** (PR #9)
+>   ตามเล่มตาราง ก-4 / ก-7 (auditor ใช้ได้เฉพาะรายงาน · `/logs/:id/proof` ไม่อนุญาต auditor) → **auditor เห็นแค่ Reports** · ไม่แตะปุ่ม Resolve
+> · deploy dashboard บน cloud 2 รอบ (`bc2c108` 18:06 · `f42991b` 19:17) แบบ `up -d --no-deps cylis-dashboard` · network / service อื่นไม่ถูกแตะ · ไม่ได้รัน `seed-test-users.sh`
+> · **🔒 freeze ต่อตั้งแต่หลังงานนี้** — ข้อยกเว้นข้างบนใช้เฉพาะงานนั้น ไม่ใช่ช่องให้แก้อย่างอื่น (กลับไปใช้กฎ FREEZE ด้านบนตามเดิม)
+>
+> **📌 งานหลังสอบ (ห้ามทำก่อนสอบ):**
+> 1. **เขียน history ใหม่ลบ `Co-Authored-By` 7 commit เก่า** — `9d6c229` (07-15 · Opus 4.8) · `514f669` (09-04) · `df18eea` `f9d0352` `8695840` `cf8b8ed` `a4315b5` (09-09 · Sonnet 5)
+>    · ตั้งแต่ 10-03 ไม่มีหลุดแล้ว · เขียนใหม่ = hash เปลี่ยนทั้งสาย → ต้อง force-push + clone/pull ใหม่บน CT141 + เพื่อน rebase · ทำทีเดียวพร้อมข้อ 2
+> 2. **ลบ branch บน GitHub:** `feature/rbac-logout-seed-users` (เนื้อหาเข้า main แล้วผ่าน PR #8 แบบ squash) ·
+>    branch เก่าที่ไม่ใช้: `dashboard` (history ไม่เกี่ยวกับ main) · `docs/compliance-m6` · `feature-cylis-intergration-v2` (ไม่ merge · ส.ค.) ·
+>    `backup/pre-merge-cylis` `dashboard-graph-time` `docs/compliance-review-fixes` `edit-dashboard` `edit-dashboard-new` `feature/edit-front` `feature/reports-page` `feature/settings-page` `fix/docker-crlf-init` (merge แล้ว)
+>    · ในเครื่อง: `feat/onboarding-and-detection-merge` (upstream `[gone]`) + branch ชื่อเดียวกับข้างบน
+> 3. **ปุ่ม Resolve ที่ analyst ยังเห็น** (`cylis-dashboard/src/views/Alerts.tsx` · แสดงทุก alert OPEN) → กดแล้ว 403 + ข้อความ · ควรซ่อนถ้าไม่มี role operator / admin
+>    (`PATCH /alerts/:id/resolve` = `@Roles('operator', 'admin')`)
 >
 > **ตัดสินใจแล้ว 2026-10-04:** **ห้ามเพิ่มเทสจนกว่าจะสอบเสร็จ** — ล็อกไว้ที่ 31 ชุด 416 กรณี (unit 26/385 + integration 5/31) ให้ตรงเล่ม 4.15 / สไลด์หน้า 10
 >
 > **ตัดสินใจแล้ว 2026-10-03 (อย่าถกใหม่):** IF **ไม่ retrain** ก่อนสอบ (ตัวเลขเล่ม/สไลด์/โปสเตอร์จะต้องแก้ทั้งหมด) → เขียนเป็นข้อจำกัด + **ไม่โชว์ IF ใน demo สด** ·
 > **contract คงอ้างเครื่องทดลอง `0x5dC86975…`** (เล่มรอบ 6 ระบุทั้ง 2 สัญญาแล้ว: 4.1.1 · ตาราง 4-2 · ภาคผนวก ข.1 / ค) · OS ในเล่มผิด → แก้เป็น Linux Mint 22.3
+>
+> **เสร็จแล้ว 2026-10-04 / 05** (worklog 2026-10-04 · 2026-10-05): audit เก็บ status code จริง (`7007ad2`) · `TUNNEL_TRUSTED_CIDR=172.18.0.1/32` บน cloud → audit ได้ IP จริง ·
+> demo-tamper / demo-mtls ผ่านบน cloud (`demo-cloud.md`) · ล้าง batch 5 + alert 2 บน local (สำรอง `backups/cleanup-2026-10-04/`) · alert เก่า 3 ใบบน cloud RESOLVED ·
+> confusion matrix TP/FN/FP/TN · dashboard ซ่อนเมนูตาม role · cloud → `f42991b` · แถว audit `7.7.7.7` บน cloud = ข้อมูลทดสอบ (ไม่ใช่ผู้ใช้จริง)
 >
 > **เสร็จแล้ว 2026-10-03** (worklog 2026-10-03): lockfile axios 1.20.0 / next 16.3.8 → Security Scan เขียว ·
 > **เหตุผลของ IF อ้างช่วงค่าตอนฝึก** (`feature_profile` ในไฟล์โมเดล · `train_isoforest.py --profile-only` · ผลทำนายเดิมทุก batch 381/381) ·
