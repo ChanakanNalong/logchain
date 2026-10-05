@@ -14,7 +14,7 @@ export const PAGE_ROLES: Record<string, readonly AppRole[]> = {
   logs: ['admin', 'analyst', 'operator'],
   ml: ['admin', 'analyst', 'operator'],
   dataset: ['admin', 'analyst', 'operator'],
-  verify: ['admin', 'analyst', 'operator'],
+  verify: ['admin', 'analyst', 'operator', 'auditor'],
   alerts: ['admin', 'analyst', 'operator'],
   reports: ['admin', 'auditor'],
   settings: ['admin'],
