@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
 import { keycloak, logout } from "@/lib/keycloak";
+import { canAccessPage } from "@/lib/roles";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
@@ -51,7 +52,14 @@ const PAGE_TITLES = {
 };
 
 export default function App() {
-  const [activeId, setActiveId] = useState("dashboard");
+  // Page access comes from the token's roles (see lib/roles.ts). App re-renders
+  // every second for the clock, so roles from a refreshed token apply on the
+  // next tick. Hiding a page is only UX — the backend enforces every request.
+  const visibleNavItems = NAV_ITEMS.filter((item) => canAccessPage(item.id));
+  const firstAllowedId = visibleNavItems[0]?.id;
+  const canSeeAlerts = canAccessPage("alerts");
+
+  const [activeId, setActiveId] = useState(() => firstAllowedId ?? "dashboard");
   const [mode, setMode] = useState("dark"); // "dark" | "light"
   const [now, setNow] = useState(() => new Date());
 
@@ -59,6 +67,12 @@ export default function App() {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Bounce off a page the current roles no longer allow (e.g. role changed mid-session).
+  const activeAllowed = visibleNavItems.some((item) => item.id === activeId);
+  useEffect(() => {
+    if (!activeAllowed && firstAllowedId) setActiveId(firstAllowedId);
+  }, [activeAllowed, firstAllowedId]);
 
   const formattedNow = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
@@ -79,14 +93,8 @@ export default function App() {
   const isDark = mode === "dark";
   const username = keycloak.tokenParsed?.preferred_username as string | undefined;
 
-  // Hiding the link is just a UX shortcut to avoid a dead-end click — the
-  // admin endpoints behind Settings enforce the admin role themselves on
-  // every request, regardless of what's shown in this sidebar.
-  const visibleNavItems = NAV_ITEMS.filter(
-    (item) => item.id !== "settings" || keycloak.hasRealmRole("admin"),
-  );
+  // undefined when the account has no dashboard page at all (e.g. ingestor).
   const active = visibleNavItems.find((item) => item.id === activeId) ?? visibleNavItems[0];
-  const ActivePage = active.Page;
 
   return (
     <ThemeContext.Provider value={theme}>
@@ -154,7 +162,7 @@ export default function App() {
             </div>
 
             {visibleNavItems.map((item) => {
-              const isActive = item.id === activeId;
+              const isActive = item.id === active?.id;
               return (
                 <button
                   key={item.id}
@@ -203,11 +211,11 @@ export default function App() {
                     fontWeight: 600,
                   }}
                 >
-                  LogChain · {active.label}
+                  LogChain{active && ` · ${active.label}`}
                 </div>
-                {PAGE_TITLES[activeId] && (
+                {active && PAGE_TITLES[active.id] && (
                   <h1 style={{ margin: "3px 0 0", fontSize: 24, fontWeight: 700, letterSpacing: "-0.015em", ...sansFont }}>
-                  {PAGE_TITLES[activeId]}
+                  {PAGE_TITLES[active.id]}
                 </h1>
                   )}
               </div>
@@ -248,15 +256,17 @@ export default function App() {
                   )}
                 </button>
                 {/* กระดิ่งเดิมเป็นไอคอนเฉยๆ — ต่อให้พาไปหน้า Alerts จะได้ไม่ตายอยู่บนหัว */}
-                <button
-                  type="button"
-                  onClick={() => setActiveId("alerts")}
-                  title="Alert triage"
-                  aria-label="Alert triage"
-                  style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
-                >
-                  <Bell size={16} color={activeId === "alerts" ? theme.blue2 : theme.muted} />
-                </button>
+                {canSeeAlerts && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveId("alerts")}
+                    title="Alert triage"
+                    aria-label="Alert triage"
+                    style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
+                  >
+                    <Bell size={16} color={active?.id === "alerts" ? theme.blue2 : theme.muted} />
+                  </button>
+                )}
                 {username && (
                   <span style={{ fontSize: 12, color: theme.text, fontWeight: 600, ...sansFont }}>{username}</span>
                 )}
@@ -286,9 +296,15 @@ export default function App() {
               </div>
             </div>
 
-            <Suspense fallback={null}>
-              <ActivePage />
-            </Suspense>
+            {active ? (
+              <Suspense fallback={null}>
+                <active.Page />
+              </Suspense>
+            ) : (
+              <div style={{ marginTop: 80, textAlign: "center", fontSize: 15, color: theme.muted, ...sansFont }}>
+                บัญชีนี้ไม่ได้ใช้สำหรับ dashboard
+              </div>
+            )}
           </main>
         </div>
       </div>
