@@ -199,8 +199,8 @@ export default function MLDetection() {
 
   const confusionCells = [
     { label: "True Positive", v: TRAINING.confusion.tp, bg: "rgba(52,211,153,0.1)", bd: "rgba(52,211,153,0.3)", fg: t.good, note: "ทายถูกว่าผิดปกติ" },
-    { label: "False Positive", v: TRAINING.confusion.fp, bg: "rgba(245,158,11,0.08)", bd: "rgba(245,158,11,0.3)", fg: t.warn, note: "ทายพลาด (จริง ๆ ปกติ)" },
     { label: "False Negative", v: TRAINING.confusion.fn, bg: "rgba(244,63,94,0.08)", bd: "rgba(244,63,94,0.3)", fg: t.danger, note: "ทายพลาด (จริง ๆ ผิดปกติ)" },
+    { label: "False Positive", v: TRAINING.confusion.fp, bg: "rgba(245,158,11,0.08)", bd: "rgba(245,158,11,0.3)", fg: t.warn, note: "ทายพลาด (จริง ๆ ปกติ)" },
     { label: "True Negative", v: TRAINING.confusion.tn, bg: "rgba(59,130,246,0.08)", bd: "rgba(59,130,246,0.3)", fg: t.blue2, note: "ทายถูกว่าปกติ" },
   ];
 
