@@ -38,7 +38,11 @@
 > · **deploy cloud 2026-10-05 18:06** (เจ้าของ `git pull --ff-only` บน CT141 เอง → Claude build + `up -d --no-deps cylis-dashboard` + `builder prune -f`) ·
 >   CT141 = GitHub = `bc2c108` · git สะอาด · image `cylis-dashboard:dev` สร้าง 18:06:52 · healthy · bundle มี auditor ใน verify ·
 >   network `logchain_default` ID เดิม (172.18.0.0/16 · ไม่ถูกสร้างใหม่) · service อื่นไม่ถูกแตะ (uptime เดิม) · ไม่ได้รัน `seed-test-users.sh`
-> · **🔒 freeze ต่อตั้งแต่หลัง deploy นี้** — การยกเว้นนี้ใช้เฉพาะงานนี้ ไม่ใช่ช่องให้แก้อย่างอื่น (กลับไปใช้กฎ FREEZE ด้านบนตามเดิม)
+> · **แก้กลับ 2026-10-05 19:09 (เจ้าของสั่ง · branch `fix/auditor-reports-only`):** `verify: ['admin', 'analyst', 'operator']` = ฉบับเดิมของเพื่อน (`roles.ts` ตรง `ab523b4` ทุกบรรทัด)
+>   เหตุผล: **เล่มตาราง ก-4 และ ก-7 กำหนดให้ auditor ใช้ได้เฉพาะรายงาน** และ `GET /logs/:id/proof` (ฟอร์ม verify ของหน้านี้) ไม่อนุญาต auditor →
+>   auditor เห็นแค่ Reports · การเพิ่ม auditor ข้างบนจึงผิดสเปก · `tsc --noEmit` + `next build` ผ่าน · rebuild `cylis-dashboard` บน local แล้ว (bundle ไม่มี auditor ใน verify)
+>   · **ยังไม่ commit · ยังไม่ deploy → cloud ยังเป็น `bc2c108` (auditor ยังเห็น Verify) จนกว่าจะ deploy ตัวแก้กลับ**
+> · **🔒 freeze ต่อตั้งแต่หลังงานนี้** — การยกเว้นนี้ใช้เฉพาะงานนี้ ไม่ใช่ช่องให้แก้อย่างอื่น (กลับไปใช้กฎ FREEZE ด้านบนตามเดิม)
 >
 > **ตัดสินใจแล้ว 2026-10-04:** **ห้ามเพิ่มเทสจนกว่าจะสอบเสร็จ** — ล็อกไว้ที่ 31 ชุด 416 กรณี (unit 26/385 + integration 5/31) ให้ตรงเล่ม 4.15 / สไลด์หน้า 10
 >
