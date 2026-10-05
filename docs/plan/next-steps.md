@@ -4,7 +4,7 @@
 >
 > **ไฟล์นี้คือจุดเริ่มของ session ถัดไป** (คนหรือ Claude Code) อ่านจบแล้วลงมือได้เลย ไม่ต้องสืบใหม่
 >
-> **เขียนเมื่อ:** 2026-10-04 · **HEAD:** `0a257d7` · git สะอาด · **cloud = `5bfc97b`** (ต่างแค่ worklog) · WireGuard ปิดแล้ว · งานล่าสุด: `docs/worklog/2026-10-03.md`
+> **เขียนเมื่อ:** 2026-10-04 · **HEAD:** `0a257d7` · git สะอาด · **cloud = `bc2c108`** (2026-10-05 · dashboard ซ่อนเมนูตาม role) · WireGuard ปิดแล้ว · งานล่าสุด: `docs/worklog/2026-10-03.md`
 > **สถานะ:** ฝั่งระบบ + ฝั่ง Claude เสร็จหมด · **เหลืองานเจ้าของ: สไลด์ · โปสเตอร์ · เล่มรอบ 7 · เอกสารลงนาม · บัญชี/รหัส** ·
 > สรุปสำหรับ Claude แชท = Claude Doc "LogChain — อัปเดตสถานะระบบ (2026-10-03)" https://claude.ai/code/artifact/03409103-1f33-4bc1-8b19-ca55a3e9b2e5
 >
@@ -34,8 +34,11 @@
 > **ยกเว้น freeze 1 ครั้ง (2026-10-05 · เจ้าของยืนยันเอง):** branch `fix/rbac-menu` = main + `ab523b4` ของเพื่อน (ซ่อนเมนูตามบทบาท · `cylis-dashboard/src/lib/roles.ts` ใหม่ + `App.tsx`)
 > · รีวิวแล้วเจอ `PAGE_ROLES.verify` ไม่มี `auditor` → auditor เข้าหน้า Verify ไม่ได้ ทั้งที่ `/batches` อนุญาต auditor และหน้านี้ทดสอบผ่านกับ auditor แล้ว (worklog 10-02 หัวข้อ 5.4)
 > · **แก้บรรทัดเดียว** `verify: ['admin', 'analyst', 'operator', 'auditor']` · ไม่แตะปุ่ม Resolve (analyst ยังเห็นปุ่ม → 403 + ข้อความ · พฤติกรรมเดิมของ main)
-> · `tsc --noEmit` + `next build` ผ่าน · rebuild `cylis-dashboard` บน local แล้ว (bundle มี auditor ใน verify) · **ยังไม่ commit · ยังไม่ merge · ไม่ deploy cloud**
-> · **หลังจากนี้ freeze ต่อตามเดิม** — การยกเว้นนี้ใช้เฉพาะงานนี้ ไม่ใช่ช่องให้แก้อย่างอื่น
+> · `tsc --noEmit` + `next build` ผ่าน · rebuild `cylis-dashboard` บน local แล้ว (bundle มี auditor ใน verify) · merge เข้า main = **`bc2c108`**
+> · **deploy cloud 2026-10-05 18:06** (เจ้าของ `git pull --ff-only` บน CT141 เอง → Claude build + `up -d --no-deps cylis-dashboard` + `builder prune -f`) ·
+>   CT141 = GitHub = `bc2c108` · git สะอาด · image `cylis-dashboard:dev` สร้าง 18:06:52 · healthy · bundle มี auditor ใน verify ·
+>   network `logchain_default` ID เดิม (172.18.0.0/16 · ไม่ถูกสร้างใหม่) · service อื่นไม่ถูกแตะ (uptime เดิม) · ไม่ได้รัน `seed-test-users.sh`
+> · **🔒 freeze ต่อตั้งแต่หลัง deploy นี้** — การยกเว้นนี้ใช้เฉพาะงานนี้ ไม่ใช่ช่องให้แก้อย่างอื่น (กลับไปใช้กฎ FREEZE ด้านบนตามเดิม)
 >
 > **ตัดสินใจแล้ว 2026-10-04:** **ห้ามเพิ่มเทสจนกว่าจะสอบเสร็จ** — ล็อกไว้ที่ 31 ชุด 416 กรณี (unit 26/385 + integration 5/31) ให้ตรงเล่ม 4.15 / สไลด์หน้า 10
 >
