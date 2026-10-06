@@ -76,3 +76,70 @@ docker compose exec -T postgres psql -U logchain -d logchain -tAc "select status
 
 cloud ล่ม / เน็ตห้องสอบมีปัญหา → ใช้ stack บนเครื่อง (`https://localhost:3453`) สคริปต์ชุดเดียวกันรันจาก repo ได้เลย
 เช็คก่อนสอบ: `./scripts/demo-preflight.sh` ต้องจบด้วย `🎉 พร้อม demo` (2026-10-04 ผ่าน · FAILED 2 ใบจาก 09-22 เป็น ⚠ ปกติ)
+
+## 6. นาฬิกากระโดด → Kafka ค้างเงียบ (local และ cloud)
+
+> เกิดจริงบน local 2026-10-06 — รายละเอียดใน `docs/worklog/2026-10-06.md` ข้อ 1 และ 4
+
+**สาเหตุ (local):** เครื่องตั้ง `RTC in local TZ: yes` → หลัง suspend kernel อ่านนาฬิกาฮาร์ดแวร์ (เก็บเวลาไทย) เป็น UTC
+→ เวลากระโดด**ไปข้างหน้า** +7 ชม. · NTP ติดต่อ `ntp.ubuntu.com` ไม่ได้จึงไม่แก้คืนเอง · พอแก้เวลาก็กระโดด**ถอยหลัง** 7 ชม.
+Kafka (KRaft) ทนการกระโดดไปข้างหน้าได้ (broker ถูก fence แล้วกลับมาเอง) แต่หลังถอยหลัง produce บาง partition ค้าง
+**cloud (CT141):** เป็น LXC ใช้นาฬิกาของ Proxmox host — ไม่มี suspend แต่ถ้า host ปรับเวลาแบบกระโดด อาการจะเหมือนกัน · แก้เวลาใน CT ไม่ได้ ต้องแจ้งเพื่อน
+
+**อาการ**
+- `POST /logs` ค้างจน client timeout (ผ่านไปได้บาง source แล้วค้างเมื่อเจอ partition ที่ค้าง) · แถวถูกบันทึกใน DB และ seal ขึ้น chain ตามปกติ
+  แต่**ไม่ถึง detection** → ไม่มี alert
+- backend log: `[Producer] Failed to send messages: The request timed out` ซ้ำทุก ~30 วิ
+- ทุกอย่างที่ preflight ตรวจยังผ่าน: container healthy · `/health` ต่อ Kafka อยู่ · topic ครบ · ISR ครบ · batch CONFIRMED
+  → **`demo-preflight.sh` ตรวจไม่เจอ** (ไม่มีขั้นที่ produce จริง และไม่ตรวจนาฬิกา)
+- ผลข้างเคียงจากนาฬิกาเพี้ยน: one-time code (TOTP) ไม่ผ่าน → login พลาดซ้ำจน Keycloak ล็อก user (`user_temporarily_disabled`)
+
+**ตรวจ** (รันในโฟลเดอร์ repo · cloud = บน CT141 ในนาม `logchain`)
+
+```bash
+date -u; curl -sI https://www.google.com | grep -i '^date'           # ต่างกันเกินไม่กี่วินาที = นาฬิกาเพี้ยน
+timedatectl | grep -E 'synchronized|RTC in local'                   # ต้องเป็น yes / no
+docker compose logs --since 10m backend | grep -c 'Failed to send messages'   # ต้องเป็น 0
+docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --describe --under-replicated-partitions   # ต้องไม่มีผลลัพธ์
+```
+
+ตรวจแบบ end-to-end (เพิ่ม log 1 แถวซึ่งลบไม่ได้ + เสีย gas 1 tx ตอน seal · ข้อความไม่เข้ากฎใด จึงไม่เกิด alert)
+— **อย่าใช้ `scripts/ingest-log.sh` แทน** เพราะข้อความมีเลขบัตร จะเกิด alert CRITICAL พร้อมอีเมล (กฎ 90001)
+
+```bash
+set -a; . ./.env; set +a
+KC="${KEYCLOAK_LOCAL_URL:-http://localhost:${KEYCLOAK_HOST_PORT:-8080}}"
+T=$(curl -s -d grant_type=client_credentials -d client_id=log-ingestor \
+      --data-urlencode client_secret="$LOGCHAIN_INGESTOR_SECRET" \
+      "$KC/realms/logchain/protocol/openid-connect/token" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s -m 10 -o /dev/null -w '%{http_code} %{time_total}s\n' -X POST http://localhost:3000/api/v1/logs \
+  -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"source":"probe-kafka","eventType":"WEB_REQUEST","severity":"INFO","message":"kafka probe"}'
+# ปกติ: 201 ภายใน < 1 วิ · ค้าง: 000 หลัง 10 วิ
+```
+
+**กู้ (ตามลำดับ)**
+
+1. **แก้เวลาให้ถูกก่อน** — ถ้าเวลายังผิด restart ไปก็ไม่หาย
+   local (sudo — รันในเทอร์มินัลเอง):
+   ```bash
+   sudo timedatectl set-ntp false
+   sudo date -s "$(curl -sI https://www.google.com | grep -i '^date:' | cut -d' ' -f2- | tr -d '\r')"
+   sudo timedatectl set-local-rtc 0
+   sudo hwclock --systohc --utc          # เขียน UTC ลงนาฬิกาฮาร์ดแวร์ — ตรวจด้วย cat /sys/class/rtc/rtc0/time ต้องเท่ากับ date -u
+   sudo timedatectl set-ntp true
+   ```
+   cloud: แจ้งเพื่อนให้ตรวจ NTP ของ Proxmox host
+2. restart Kafka ทั้ง 3 ตัวพร้อมกัน แล้วรอให้ healthy ครบ:
+   `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose restart kafka-1 kafka-2 kafka-3`
+3. ตรวจ `--under-replicated-partitions` ต้องไม่มีผลลัพธ์
+4. restart ตัวที่เชื่อม Kafka **หลัง** Kafka เสมอ:
+   `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose restart backend detection-consumer`
+   (ช่วงที่ Kafka ปิด backend จะ log `ECONNREFUSED` / `No broker available` — ปกติ)
+5. ตรวจ end-to-end ด้านบนต้องได้ 201 ภายใน < 1 วิ
+6. ถ้ามี user ถูกล็อก (เกิดจาก TOTP ไม่ผ่าน) → admin console `https://localhost:8443` (cloud: `logchain-auth`) → realm `logchain` → Users → ปิด Temporarily locked
+7. `./scripts/demo-preflight.sh` ต้องจบด้วย `🎉 พร้อม demo`
+
+ข้อความที่**ไม่ต้องตกใจ**หลัง restart: `The metadata log appears to be empty` ตอน kafka-1 เริ่ม (ขึ้นทุกครั้งที่ container start)
+· ประมาณ 5 นาทีหลัง restart มี `Partition ... marked as failed` ใน kafka-3 = การย้าย leader กลับตามปกติ (ISR ยังครบ)
+· log ที่ส่งตอน Kafka ค้างจะอยู่ใน DB และ chain แต่ detection ไม่เห็น — ต้องส่งใหม่ด้วย source ชื่อใหม่ถ้าต้องการ alert
