@@ -173,7 +173,10 @@ ss -ltn | grep -vE '127\.0\.0\.|\[::1\]'
 ## H. ดูแลระบบ
 
 - **Grafana / Prometheus ภายใน** — ต่อ VPN แล้ว SSH tunnel:
-  `ssh -i ~/.ssh/nblab_ct141 -L 3002:127.0.0.1:3002 -L 9090:127.0.0.1:9090 root@172.16.40.141` แล้วเปิด `http://localhost:3002`
+  `ssh -i ~/.ssh/nblab_ct141 -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes -N -L 13002:127.0.0.1:3002 -L 19090:127.0.0.1:9090 root@172.16.40.141`
+  แล้วเปิด `http://localhost:13002` (login `admin` / `GRAFANA_ADMIN_PASSWORD` ใน `.env` **บน cloud**)
+  · ใช้ 13002/19090 เพราะ Grafana/Prometheus local จับ 3002/9090 อยู่ — ถ้า forward ทับ จะเปิดเจอของ local แล้ว login ไม่ผ่าน
+  · ไม่มี `IdentitiesOnly=yes` = ssh ลอง key อื่นก่อนจนโดนตัด แล้วถามรหัสผ่าน
 - **Keycloak admin console** ถึงได้จาก internet ที่ `https://logchain-auth.nareubad.work/admin` — รัน `./scripts/harden-master-admin.sh`
   ทันทีหลัง bootstrap (บังคับ TOTP ให้ master admin)
 - อัปเดตโค้ด (user `logchain`): `git pull` → `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build backend && docker compose up -d --no-deps backend`

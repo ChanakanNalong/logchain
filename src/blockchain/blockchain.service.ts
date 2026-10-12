@@ -127,6 +127,13 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   private sendQueue: Promise<unknown> = Promise.resolve();
   /** nonce ของ tx ล่าสุดที่ส่งสำเร็จ — ใช้กัน RPC ตอบ pending nonce ล้าหลัง */
   private lastSent: { nonce: number; at: number } | null = null;
+  /**
+   * เพดาน priority fee (wei) · null = ใช้ค่าที่ RPC แนะนำตรง ๆ (พฤติกรรมเดิม)
+   * base fee ของ Amoy แทบเป็น 0 ค่า gas เกือบทั้งหมดคือทิป ซึ่ง eth_maxPriorityFeePerGas
+   * ของ public RPC แนะนำเหวี่ยง 30 → 135 → 500 gwei ทั้งที่ 30 ก็ลง block ได้
+   * (เจอจริง 2026-10-11: tx ละ 0.039 POL แทน 0.0023 = แพงขึ้น 17 เท่า)
+   */
+  private maxPriorityFeeWei: bigint | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -220,9 +227,16 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         Number(this.configService.get<string>('BLOCKCHAIN_TX_TIMEOUT_MS')) ||
         DEFAULT_TX_TIMEOUT_MS;
 
+      const capGwei = Number(
+        this.configService.get<string>('BLOCKCHAIN_MAX_PRIORITY_FEE_GWEI'),
+      );
+      this.maxPriorityFeeWei =
+        capGwei > 0 ? ethers.parseUnits(String(capGwei), 'gwei') : null;
+
       this.isReady = true;
       this.logger.log(
-        `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms`,
+        `Blockchain connected: ${rpcUrl} contract=${address} txTimeout=${this.txTimeoutMs}ms ` +
+          `maxPriorityFee=${capGwei > 0 ? `${capGwei} gwei` : 'uncapped'}`,
       );
     } catch (err) {
       const delay = Math.min(
@@ -328,9 +342,11 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
           ? this.lastSent.nonce + 1
           : 0;
       const nonce = Math.max(pending, hint);
+      const fees = await this.cappedFees();
 
       const tx = (await this.contract.storeRoot(batchBytes, rootBytes, {
         nonce,
+        ...fees,
       })) as ethers.ContractTransactionResponse;
       this.lastSent = { nonce, at: Date.now() };
       return tx;
@@ -340,6 +356,33 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
     const run = this.sendQueue.then(send, send);
     this.sendQueue = run.catch(() => undefined);
     return run;
+  }
+
+  /**
+   * ค่า fee ของ tx เมื่อตั้งเพดานไว้ — ทิปที่ RPC แนะนำเกินเพดานจะถูกกดลงเท่าเพดาน
+   * maxFeePerGas ลดลงเท่ากัน (ethers ตั้ง = 2×baseFee + ทิป) · ไม่ตั้งเพดาน = {} ให้ ethers ทำเอง
+   * log ทุก tx ว่า RPC แนะนำเท่าไรและใช้จริงเท่าไร — ไว้ไล่ว่า POL หายไปกับอะไร
+   */
+  private async cappedFees(): Promise<{
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  }> {
+    const cap = this.maxPriorityFeeWei;
+    if (cap === null) return {};
+
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      await this.provider.getFeeData();
+    if (maxFeePerGas === null || maxPriorityFeePerGas === null) return {};
+
+    const tip = maxPriorityFeePerGas > cap ? cap : maxPriorityFeePerGas;
+    const gwei = (v: bigint) => ethers.formatUnits(v, 'gwei');
+    this.logger.log(
+      `Priority fee: RPC suggested ${gwei(maxPriorityFeePerGas)} gwei → using ${gwei(tip)} gwei`,
+    );
+    return {
+      maxFeePerGas: maxFeePerGas - maxPriorityFeePerGas + tip,
+      maxPriorityFeePerGas: tip,
+    };
   }
 
   /**
