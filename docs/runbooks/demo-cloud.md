@@ -1,6 +1,19 @@
 # Runbook — รัน demo-tamper / demo-mtls กับ cloud (CT141)
 
 > ทดสอบจริงบน cloud 2026-10-04 (`041902e`) — ผ่านทั้ง 2 สคริปต์ · ติดตั้ง/อัปเดตระบบดู [`deploy-cloud.md`](deploy-cloud.md)
+> · ชุดคำสั่งวันสอบแบบก๊อปรันได้: [`exam-commands.md`](exam-commands.md)
+
+> **⛔ ห้ามรัน `scripts/demo-start.sh` (ทั้ง local และ CT141)**
+> สคริปต์นี้เขียนไว้ตอน backend/detection ยังรันบน host — ตอนนี้ทั้งคู่อยู่ใน container แล้ว
+> `pkill -f "node dist/[m]ain"` ในสคริปต์ไปโดน **backend ใน container** เพราะ node ใน image รันเป็น user `node` uid 1000
+> ซึ่งตรงกับ uid ของคนรัน (local `chanakan` = 1000 · CT141 `logchain` = 1000) → kill ได้โดยไม่ต้อง sudo
+> ผล: backend รับ SIGTERM ปิด HTTP + การเชื่อมต่อ DB แต่ process ไม่ตาย → container ค้าง `Up (unhealthy)` Docker ไม่ restart ให้
+> → `/health` ไม่ตอบ · `POST /logs` ไม่ได้ · ไม่ seal · alert ไม่เข้า DB · log มี `TypeORMError: Driver not Connected`
+> จากนั้นสคริปต์ build + สตาร์ต `node dist/main` บน host แล้ว exit เพราะไม่มี `detection/venv` (ทั้ง 2 เครื่องไม่มี) → ไม่เหลืออะไรฟัง :3000
+> **เกิดจริงบน local 2026-10-09 19:03** (ค้าง ~5 นาที จน restart)
+>
+> ถ้าเผลอรัน: `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose restart backend` → `curl -s localhost:3000/health` ต้องมี `"connected":true`
+> → `./scripts/demo-preflight.sh` (local) ต้องจบด้วย `🎉 พร้อม demo` · หลักฐานว่าถูกรัน: มีไฟล์ `/tmp/logchain-backend.log`
 
 ทั้ง 2 สคริปต์ใช้ `docker exec` เข้า Postgres / Kafka และยิง `localhost:3000` / `localhost:39092`
 ซึ่ง bind 127.0.0.1 บน CT141 เท่านั้น → **ต้องรันบน CT141 เอง** (ผ่าน SSH) ยิงจากเครื่องเราผ่าน internet ไม่ได้
@@ -84,14 +97,19 @@ cloud ล่ม / เน็ตห้องสอบมีปัญหา → ใ
 **สาเหตุ (local):** เครื่องตั้ง `RTC in local TZ: yes` → หลัง suspend kernel อ่านนาฬิกาฮาร์ดแวร์ (เก็บเวลาไทย) เป็น UTC
 → เวลากระโดด**ไปข้างหน้า** +7 ชม. · NTP ติดต่อ `ntp.ubuntu.com` ไม่ได้จึงไม่แก้คืนเอง · พอแก้เวลาก็กระโดด**ถอยหลัง** 7 ชม.
 Kafka (KRaft) ทนการกระโดดไปข้างหน้าได้ (broker ถูก fence แล้วกลับมาเอง) แต่หลังถอยหลัง produce บาง partition ค้าง
+**reboot ก็เกิดได้:** เครื่องนี้ dual-boot Windows ซึ่งเขียน RTC เป็นเวลาท้องถิ่นโดยค่าเริ่มต้น — ถ้า RTC เป็นเวลาไทยตอนบูต container ทุกตัวสตาร์ตด้วยเวลา +7 ชม.
+แล้ว NTP ถอยกลับภายใน ~30 วิ (เกิดจริง 2026-10-06 17:22 หลัง reboot → kafka-3 หลุด ISR 24 partition)
 **cloud (CT141):** เป็น LXC ใช้นาฬิกาของ Proxmox host — ไม่มี suspend แต่ถ้า host ปรับเวลาแบบกระโดด อาการจะเหมือนกัน · แก้เวลาใน CT ไม่ได้ ต้องแจ้งเพื่อน
 
 **อาการ**
 - `POST /logs` ค้างจน client timeout (ผ่านไปได้บาง source แล้วค้างเมื่อเจอ partition ที่ค้าง) · แถวถูกบันทึกใน DB และ seal ขึ้น chain ตามปกติ
   แต่**ไม่ถึง detection** → ไม่มี alert
 - backend log: `[Producer] Failed to send messages: The request timed out` ซ้ำทุก ~30 วิ
-- ทุกอย่างที่ preflight ตรวจยังผ่าน: container healthy · `/health` ต่อ Kafka อยู่ · topic ครบ · ISR ครบ · batch CONFIRMED
-  → **`demo-preflight.sh` ตรวจไม่เจอ** (ไม่มีขั้นที่ produce จริง และไม่ตรวจนาฬิกา)
+- ทุกอย่างที่ preflight ตรวจยังผ่าน: container healthy · `/health` ต่อ Kafka อยู่ · topic ครบ · batch CONFIRMED
+  → **`demo-preflight.sh` ตรวจไม่เจอ** (ไม่มีขั้นที่ produce จริง ไม่ตรวจ ISR และไม่ตรวจนาฬิกา)
+- ISR: ครั้งแรก (หลัง suspend) ISR ยังครบแต่ produce ค้าง · ครั้งที่สอง (หลัง reboot) มี under-replicated partition — **ต้องเช็คทั้งสองอย่าง**
+- `docker compose ps` ขึ้น `Up Less than a second` ค้าง = container สตาร์ตตอนนาฬิกาเดินหน้าเกิน (`StartedAt` เป็นเวลาอนาคต)
+  · ผลข้างเคียง: `docker compose logs --since 10m` จะดึงบรรทัดเก่าที่ timestamp อนาคตมาด้วย — ดูเวลาใน `"timestamp"` ของแต่ละบรรทัดประกอบ
 - ผลข้างเคียงจากนาฬิกาเพี้ยน: one-time code (TOTP) ไม่ผ่าน → login พลาดซ้ำจน Keycloak ล็อก user (`user_temporarily_disabled`)
 
 **ตรวจ** (รันในโฟลเดอร์ repo · cloud = บน CT141 ในนาม `logchain`)
@@ -99,6 +117,8 @@ Kafka (KRaft) ทนการกระโดดไปข้างหน้าไ
 ```bash
 date -u; curl -sI https://www.google.com | grep -i '^date'           # ต่างกันเกินไม่กี่วินาที = นาฬิกาเพี้ยน
 timedatectl | grep -E 'synchronized|RTC in local'                   # ต้องเป็น yes / no
+cat /sys/class/rtc/rtc0/time; date -u +%T                           # local เท่านั้น: RTC ต้องเท่ากับ UTC (ต่าง 7 ชม. = RTC เป็นเวลาไทย)
+docker inspect -f '{{.Name}} {{.State.StartedAt}}' logchain-kafka-1 logchain-backend   # StartedAt ต้องไม่เป็นเวลาอนาคต
 docker compose logs --since 10m backend | grep -c 'Failed to send messages'   # ต้องเป็น 0
 docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --describe --under-replicated-partitions   # ต้องไม่มีผลลัพธ์
 ```
@@ -126,7 +146,7 @@ curl -s -m 10 -o /dev/null -w '%{http_code} %{time_total}s\n' -X POST http://loc
    sudo timedatectl set-ntp false
    sudo date -s "$(curl -sI https://www.google.com | grep -i '^date:' | cut -d' ' -f2- | tr -d '\r')"
    sudo timedatectl set-local-rtc 0
-   sudo hwclock --systohc --utc          # เขียน UTC ลงนาฬิกาฮาร์ดแวร์ — ตรวจด้วย cat /sys/class/rtc/rtc0/time ต้องเท่ากับ date -u
+   sudo hwclock --systohc --utc          # เขียน UTC ลง RTC (Ubuntu/Mint 24.04: sudo apt install util-linux-extra ก่อน) — ตรวจด้วย cat /sys/class/rtc/rtc0/time ต้องเท่ากับ date -u
    sudo timedatectl set-ntp true
    ```
    cloud: แจ้งเพื่อนให้ตรวจ NTP ของ Proxmox host
@@ -143,3 +163,21 @@ curl -s -m 10 -o /dev/null -w '%{http_code} %{time_total}s\n' -X POST http://loc
 ข้อความที่**ไม่ต้องตกใจ**หลัง restart: `The metadata log appears to be empty` ตอน kafka-1 เริ่ม (ขึ้นทุกครั้งที่ container start)
 · ประมาณ 5 นาทีหลัง restart มี `Partition ... marked as failed` ใน kafka-3 = การย้าย leader กลับตามปกติ (ISR ยังครบ)
 · log ที่ส่งตอน Kafka ค้างจะอยู่ใน DB และ chain แต่ detection ไม่เห็น — ต้องส่งใหม่ด้วย source ชื่อใหม่ถ้าต้องการ alert
+
+**กันซ้ำ (local · dual-boot Windows)**
+
+1. ให้ Windows เก็บ RTC เป็น UTC เหมือน Linux — บูตเข้า Windows แล้วเปิด Command Prompt แบบ **Run as administrator**:
+   ```bat
+   reg add "HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" /v RealTimeIsUniversal /t REG_DWORD /d 1 /f
+   ```
+   แล้ว restart Windows หนึ่งครั้ง · ตรวจ: `reg query "HKLM\SYSTEM\CurrentControlSet\Control\TimeZoneInformation" /v RealTimeIsUniversal` ต้องได้ `0x1`
+   · นาฬิกาใน Windows ต้องแสดงเวลาไทยถูกต้องหลัง restart (ถ้าเพี้ยน: Settings → Time & language → Sync now)
+2. ฝั่ง Linux: `timedatectl` ต้องเป็น `RTC in local TZ: no` (ห้าม `set-local-rtc 1` เพื่อให้ตรงกับ Windows — แก้ที่ Windows แทน)
+3. **หลังบูตทุกครั้ง (โดยเฉพาะหลังสลับมาจาก Windows และก่อนสอบ):**
+   ```bash
+   cat /sys/class/rtc/rtc0/time; date -u +%T          # ต้องเท่ากัน
+   docker inspect -f '{{.Name}} {{.State.StartedAt}}' logchain-kafka-1 logchain-backend   # ต้องไม่เป็นเวลาอนาคต
+   docker exec logchain-kafka-1 sh /opt/logchain/kafka-cli.sh kafka-topics.sh --describe --under-replicated-partitions   # ต้องว่าง
+   ```
+   ถ้าข้อใดไม่ผ่าน → ทำ "กู้" ข้อ 2–7 ด้านบน (เวลาถูกแล้วจาก NTP ไม่ต้องทำข้อ 1 ถ้า `date -u` ตรงกับ Google)
+4. ก่อนสอบอย่าปล่อยเครื่อง suspend / hibernate ระหว่างที่ stack รันอยู่

@@ -50,6 +50,10 @@
 >    · ในเครื่อง: `feat/onboarding-and-detection-merge` (upstream `[gone]`) + branch ชื่อเดียวกับข้างบน
 > 3. **ปุ่ม Resolve ที่ analyst ยังเห็น** (`cylis-dashboard/src/views/Alerts.tsx` · แสดงทุก alert OPEN) → กดแล้ว 403 + ข้อความ · ควรซ่อนถ้าไม่มี role operator / admin
 >    (`PATCH /alerts/:id/resolve` = `@Roles('operator', 'admin')`)
+> 4. **cloud: ปิด 2 บัญชีของเพื่อน `admin-pam` · `admin-com`** (realm `logchain` · worklog 2026-10-06 ข้อ 14)
+>    · admin console `https://logchain-auth.nareubad.work/admin` → realm `logchain` → Users → ปิด Enabled (หรือลบ) ทั้ง 2 บัญชี
+>    · ลบไฟล์รหัสชั่วคราวที่เหลือใน `~/Documents/deploy/CT141 - kan/` (`admin-pam-…` · `admin-com-…`) ถ้ายังไม่ได้ลบ
+>    · `admin-user` ไม่ได้ใช้ร่วม — ไม่ต้องถอด OTP / เปลี่ยนรหัสจากเรื่องนี้
 >
 > **ตัดสินใจแล้ว 2026-10-04:** **ห้ามเพิ่มเทสจนกว่าจะสอบเสร็จ** — ล็อกไว้ที่ 31 ชุด 416 กรณี (unit 26/385 + integration 5/31) ให้ตรงเล่ม 4.15 / สไลด์หน้า 10
 >
