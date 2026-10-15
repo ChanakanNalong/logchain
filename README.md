@@ -624,7 +624,7 @@ rm -rf infra/vault/.secrets infra/kafka/certs .env detection/.env
 | `scripts/harden-master-admin.sh` | harden master realm (strong cred + MFA + automation service account, idempotent) |
 | `scripts/check-tracked-secrets.sh` | ตรวจว่าไม่มี `.env` / key / cert หลุดเข้า git |
 | `scripts/demo-brute-force.sh` | ยิง log รัว ๆ ให้ detection จับได้ → alert โผล่ที่หน้า Alerts (ต้องใช้ token ที่มี role `analyst`/`operator`/`admin` ไม่งั้นขั้นสุดท้ายที่ไปอ่าน `/alerts` ได้ 403 ทั้งที่ alert ถูกบันทึกแล้ว) |
-| `scripts/demo-tamper.sh` | แก้ log ในฐานข้อมูลตรง ๆ → Merkle verify จับได้ |
+| `scripts/demo-tamper.sh` | แก้ log ในฐานข้อมูลตรง ๆ → Merkle verify จับได้ + diff พิมพ์ `position N · field · before → after` · `TAMPER=message` แก้ข้อความแทน raw_hash · `API=` / `PG_CONTAINER=` ชี้ stack อื่น (เช่น hh) |
 | `scripts/demo-mtls.sh` | ต่อ Kafka ผ่าน SSL listener (39092-39094) |
 | `scripts/seed-test-users.sh` | สร้าง/อัปเดต user ทดสอบ 1 คนต่อ role ใน Keycloak (**dev เท่านั้น**) — ดูหัวข้อถัดไป |
 | `scripts/demo-all-rules.sh` | ยิง log ให้โดน detection rule ครบ 9 ข้อทีละข้อ แล้วตรวจว่า alert ขึ้น (`STEP=1` กด Enter ทีละข้อ) |
@@ -669,10 +669,12 @@ grep -E '^(ANALYST|OPERATOR|AUDITOR|INGESTOR)_USER_PASSWORD=.' .env
 | `GET` | `/api/v1/logs/:id/proof` | `analyst`, `operator`, `admin` | Merkle proof ของ log |
 | `GET` | `/api/v1/alerts` | `analyst`, `operator`, `admin` | alert ทั้งหมด (array) |
 | `GET` | `/api/v1/alerts/:id` | `analyst`, `operator`, `admin` | alert + log ทุกตัวที่ผูกไว้ (`trigger` / `window` / `prior` / `repeat`) |
+| `GET` | `/api/v1/batches` | `analyst`, `operator`, `auditor`, `admin` | แบ่งหน้า + filter `status` → `{ items, total, limit, offset }` · `hasSnapshot` |
+| `GET` | `/api/v1/batches/:id/diff` | `admin`, `auditor` | log ตำแหน่งไหนถูกแก้ / ลบ / แทรก เทียบ snapshot ตอน seal (พิสูจน์ snapshot กับ root บน chain ก่อน) |
 | `GET` | `/health` | — | Health check |
 
 ทุก endpoint ของ logs/integrity ป้องกันด้วย `AuthGuard('jwt')` + `RolesGuard` (Bearer token).
-ตัวอย่าง JSON ของ logs / log detail / alert detail: [docs/api/logs-alerts.md](docs/api/logs-alerts.md)
+ตัวอย่าง JSON ของ logs / log detail / alert detail: [docs/api/logs-alerts.md](docs/api/logs-alerts.md) · batches / diff: [docs/api/batches-diff.md](docs/api/batches-diff.md)
 ระบบมี 5 roles: `admin` / `operator` / `ingestor` / `analyst` / `auditor` — หน้า Reports ผูกกับ role `auditor`.
 
 ---

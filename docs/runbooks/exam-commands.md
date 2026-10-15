@@ -104,6 +104,8 @@ STEP=1 ./scripts/demo-all-rules.sh "$T"
 ./scripts/demo-tamper.sh no-admin-token
 #   → "IMMUTABLE_LOG: UPDATE not permitted on logs table" (trigger บล็อก UPDATE ตรง)
 #   → "แก้ hash แล้ว" · verify-now ได้ 401 (ตั้งใจ — ให้ cron ตรวจแทน)
+#   → "diff: อ่านไม่ได้" เพราะไม่มี token จริง · ส่ง token ของ auditor/admin แทน no-admin-token
+#     จะได้ "position N · rawHash · <เดิม> → fff…" (เฉพาะ batch ที่ seal หลังมี snapshot)
 B=$(awk '{print $3}' /tmp/logchain-tamper-backup.txt)
 # ⏳ รอ cron verify รอบที่ 1 (≤ 1 นาที · ซ้อม ~25 วิ) — รันซ้ำจนขึ้น TAMPERED
 PSQL "select status from batches where id='$B'"

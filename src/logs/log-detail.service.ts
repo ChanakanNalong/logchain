@@ -4,9 +4,10 @@ import { IntegrityService } from '../integrity/integrity.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { AlertsService, LogAlertView } from '../alerts/alerts.service';
 import { explorerTxUrl } from '../blockchain/explorer';
+import { CHAIN_READ_TIMEOUT_MS, readChainRoot } from '../blockchain/chain-read';
 
-/** เพดานเวลาอ่าน root จาก chain — public RPC ค้างได้ ห้ามให้ request ค้างตาม */
-export const CHAIN_CHECK_TIMEOUT_MS = 5000;
+/** เพดานเวลาอ่าน root จาก chain (ดู readChainRoot) */
+export const CHAIN_CHECK_TIMEOUT_MS = CHAIN_READ_TIMEOUT_MS;
 
 export type ChainCheck =
   | { chainRoot: string; dbRoot: string; match: boolean; checkedAt: Date }
@@ -111,42 +112,16 @@ export class LogDetailService {
     merkleRoot: string,
   ): Promise<ChainCheck> {
     const dbRoot = ('0x' + merkleRoot.replace(/^0x/, '')).toLowerCase();
-    if (!this.blockchain.ready) {
-      return { error: 'Blockchain not configured', checkedAt: new Date() };
+    const read = await readChainRoot(this.blockchain, batchId);
+    if ('error' in read) {
+      this.logger.warn(`chainCheck for batch ${batchId} failed: ${read.error}`);
+      return { error: read.error, checkedAt: new Date() };
     }
-
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new Error(`request timed out after ${CHAIN_CHECK_TIMEOUT_MS}ms`),
-            ),
-          CHAIN_CHECK_TIMEOUT_MS,
-        );
-        timer.unref?.();
-      });
-      const { root } = await Promise.race([
-        this.blockchain.getRoot(batchId),
-        timeout,
-      ]);
-      const chainRoot = String(root).toLowerCase();
-      return {
-        chainRoot,
-        dbRoot,
-        match: chainRoot === dbRoot,
-        checkedAt: new Date(),
-      };
-    } catch (err) {
-      const msg = (err as Error).message ?? String(err);
-      this.logger.warn(`chainCheck for batch ${batchId} failed: ${msg}`);
-      return {
-        error: `could not read root from chain: ${msg.slice(0, 200)}`,
-        checkedAt: new Date(),
-      };
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+    return {
+      chainRoot: read.root,
+      dbRoot,
+      match: read.root === dbRoot,
+      checkedAt: new Date(),
+    };
   }
 }

@@ -21,6 +21,7 @@ import { ErasureController } from '../erasure/erasure.controller';
 import { ErasureService } from '../erasure/erasure.service';
 import { HealthController } from '../health/health.controller';
 import { BatchesController } from '../integrity/batches.controller';
+import { BatchDiffService } from '../integrity/batch-diff.service';
 import { IntegrityController } from '../integrity/integrity.controller';
 import { IntegrityService } from '../integrity/integrity.service';
 import { KafkaConsumerService } from '../kafka/kafka-consumer.service';
@@ -113,6 +114,12 @@ const ENDPOINTS: Endpoint[] = [
     ok: 200,
     allowed: [...READERS, 'auditor'],
   },
+  {
+    method: 'get',
+    path: `/api/v1/batches/${UUID}/diff`,
+    ok: 200,
+    allowed: ['admin', 'auditor'],
+  },
   // stats
   { method: 'get', path: '/api/v1/stats/overview', ok: 200, allowed: READERS },
   { method: 'get', path: '/api/v1/stats/traffic', ok: 200, allowed: READERS },
@@ -181,6 +188,7 @@ const mocks = {
       .mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 }),
     findOne: jest.fn().mockResolvedValue({ id: UUID }),
   },
+  batchDiff: { diff: jest.fn().mockResolvedValue({ batchId: UUID }) },
   logDetail: {
     getDetail: jest.fn().mockResolvedValue({ log: { id: UUID } }),
   },
@@ -208,7 +216,9 @@ const mocks = {
       proof: [],
       verified: true,
     }),
-    listBatches: jest.fn().mockResolvedValue([]),
+    listBatches: jest
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, limit: 10, offset: 0 }),
   },
   stats: {
     getOverview: jest.fn().mockResolvedValue({}),
@@ -250,6 +260,7 @@ describe('RBAC matrix (role × endpoint)', () => {
         AppService,
         { provide: LogService, useValue: mocks.logs },
         { provide: LogDetailService, useValue: mocks.logDetail },
+        { provide: BatchDiffService, useValue: mocks.batchDiff },
         { provide: AlertsService, useValue: mocks.alerts },
         { provide: IntegrityService, useValue: mocks.integrity },
         { provide: StatsService, useValue: mocks.stats },

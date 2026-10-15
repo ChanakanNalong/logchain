@@ -1,23 +1,52 @@
 #!/usr/bin/env bash
-# Demo: แก้ log ในฐานข้อมูล → ระบบจับได้เป็น TAMPERED
+# Demo: แก้ log ในฐานข้อมูล → ระบบจับได้เป็น TAMPERED + diff บอกตำแหน่ง/field ที่ถูกแก้
 # ใช้:  ./demo-tamper.sh <TOKEN>          ← ทำลาย + ตรวจจับ
 #       ./demo-tamper.sh <TOKEN> restore  ← กู้คืนหลัง demo
+# env:  TAMPER=hash (ค่าเริ่มต้น: เขียนทับ raw_hash) | message (แก้ข้อความ log)
+#       API=http://localhost:3000/api/v1  PG_CONTAINER=logchain-postgres  ← ชี้ไป stack อื่นได้ (เช่น hh)
 set -uo pipefail
 TOKEN="${1:?ต้องส่ง admin token}"; MODE="${2:-tamper}"
-API="http://localhost:3000/api/v1"
-PSQL(){ docker exec logchain-postgres psql -U logchain -d logchain -tAc "$1"; }
-BAK="/tmp/logchain-tamper-backup.txt"
+API="${API:-http://localhost:3000/api/v1}"
+PG_CONTAINER="${PG_CONTAINER:-logchain-postgres}"
+TAMPER="${TAMPER:-hash}"
+PSQL(){ docker exec "$PG_CONTAINER" psql -U logchain -d logchain -tAc "$1"; }
+# stack หลักใช้ path เดิม (docs/runbooks/exam-commands.md อ่านไฟล์นี้) · stack อื่นแยกไฟล์ไม่ให้ทับกัน
+if [ "$PG_CONTAINER" = "logchain-postgres" ]; then BAK="/tmp/logchain-tamper-backup.txt"
+else BAK="/tmp/logchain-tamper-backup-${PG_CONTAINER}.txt"; fi
+
+# GET /batches/:id/diff → "position N · field · before → after" (ต้องมี snapshot — batch ที่ seal หลัง BatchLogSnapshot)
+print_diff() {
+  local body
+  body=$(curl -s -H "Authorization: Bearer $TOKEN" "$API/batches/$1/diff")
+  if ! echo "$body" | jq -e '.summary' >/dev/null 2>&1; then
+    echo "  diff: อ่านไม่ได้ ($(echo "$body" | head -c 120))"; return
+  fi
+  echo "$body" | jq -r '
+    "  verdict: \(.summary.verdict) · snapshotTrusted: \(.snapshotTrusted) · legacy: \(.legacy)",
+    (if .legacy then "  (batch นี้ seal ก่อนมี snapshot — บอกได้แค่ระดับ batch)" else empty end),
+    (.changes[] |
+      if .type == "DELETED" then "  position \(.position) · DELETED (\(.reason)) · เนื้อเดิม: \(.snapshot.message)"
+      elif .type == "UNMAPPED_OR_INSERTED" then "  position \(.position) · INSERTED · \(.current.message)"
+      else (.position as $p | .fields[] | "  position \($p) · \(.field) · \(.before) → \(.after)")
+      end)'
+}
 
 if [ "$MODE" = "restore" ]; then
   [ -f "$BAK" ] || { echo "ไม่มีไฟล์สำรอง"; exit 1; }
-  read -r LOG_ID ORIG BATCH_ID STARTED_AT < "$BAK"
+  read -r LOG_ID ORIG BATCH_ID STARTED_DATE STARTED_TIME ORIG_MSG_B64 < "$BAK"
+  STARTED_AT="${STARTED_DATE:-}${STARTED_TIME:+ $STARTED_TIME}"
   # ไฟล์สำรองรูปแบบเก่า (ก่อนเก็บ batch id) มีแค่ 3 ช่อง — ช่องที่ 3 จะเป็นเวลา ไม่ใช่ uuid
   if ! [[ "$BATCH_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
     STARTED_AT="$BATCH_ID${STARTED_AT:+ $STARTED_AT}"
     BATCH_ID=$(PSQL "SELECT batch_id FROM log_batch_mapping WHERE log_id='$LOG_ID'")
   fi
+  # ข้อความเดิมเก็บเป็น base64 (มีช่องว่าง/อัญประกาศได้) · ไฟล์สำรองรุ่นเก่าไม่มีช่องนี้ = ไม่ได้แก้ข้อความ
+  RESTORE_MSG=""
+  if [ -n "${ORIG_MSG_B64:-}" ]; then
+    RESTORE_MSG=", message=convert_from(decode('$ORIG_MSG_B64','base64'),'UTF8')"
+  fi
   PSQL "ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
-        UPDATE logs SET raw_hash='$ORIG' WHERE id='$LOG_ID';
+        UPDATE logs SET raw_hash='$ORIG'$RESTORE_MSG WHERE id='$LOG_ID';
         ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update;" >/dev/null
   VCODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" "$API/logs/verify-now")
   [ "$VCODE" = 200 ] || echo "⚠ verify-now ตอบ HTTP $VCODE (token หมดอายุ/ไม่ใช่ admin?) — รอ cron verify แทน"
@@ -63,6 +92,7 @@ if [ "$MODE" = "restore" ]; then
     fi
   fi
 
+  echo "diff หลังกู้คืน:"; print_diff "$BATCH_ID"
   echo "กู้คืนแล้ว — batches: $(PSQL "SELECT status||' x'||count(*) FROM batches GROUP BY status" | tr '\n' ' ')"
   BY_BACKEND=$(( $(PSQL "SELECT count(*) FROM alerts WHERE $DEMO_ALERTS AND status='RESOLVED'") - ${RESOLVED:-0} ))
   STILL_OPEN=$(PSQL "SELECT count(*) FROM alerts WHERE $DEMO_ALERTS AND status='OPEN'")
@@ -71,12 +101,18 @@ if [ "$MODE" = "restore" ]; then
   rm -f "$BAK"; exit 0
 fi
 
-LOG_ID=$(PSQL "SELECT l.id FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id LIMIT 1")
+# เลือก log ตรงกลางของ batch ล่าสุดที่มี snapshot (diff ชี้ตำแหน่งได้) · ไม่มีเลย = log ไหนก็ได้ที่ seal แล้ว
+LOG_ID=$(PSQL "SELECT s.log_id FROM batch_log_snapshot s JOIN batches b ON b.id = s.batch_id
+               WHERE b.status IN ('CONFIRMED','SEALED')
+                 AND s.position = (SELECT COUNT(*) / 2 FROM batch_log_snapshot x WHERE x.batch_id = b.id)
+               ORDER BY b.sealed_at DESC LIMIT 1" 2>/dev/null)
+[ -n "$LOG_ID" ] || LOG_ID=$(PSQL "SELECT l.id FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id LIMIT 1")
 BATCH_ID=$(PSQL "SELECT batch_id FROM log_batch_mapping WHERE log_id='$LOG_ID'")
 ORIG=$(PSQL "SELECT raw_hash FROM logs WHERE id='$LOG_ID'")
+ORIG_MSG_B64=$(PSQL "SELECT encode(convert_to(message,'UTF8'),'base64') FROM logs WHERE id='$LOG_ID'" | tr -d '\n')
 # เวลาเริ่ม demo (นาฬิกาของ DB) — restore ใช้เป็นเส้นแบ่งว่า batch FAILED ไหนเกิดจาก demo นี้
 STARTED_AT=$(PSQL "SELECT now()")
-echo "$LOG_ID $ORIG $BATCH_ID $STARTED_AT" > "$BAK"
+echo "$LOG_ID $ORIG $BATCH_ID $STARTED_AT $ORIG_MSG_B64" > "$BAK"
 
 echo "═══ ก่อนแก้ ═══"
 echo "  log   : $LOG_ID"
@@ -86,10 +122,17 @@ echo; echo "═══ ลอง UPDATE ตรงๆ (ต้องโดนบล
 PSQL "UPDATE logs SET message='hacked' WHERE id='$LOG_ID'" 2>&1 | head -2
 
 echo; echo "═══ ปิด trigger แล้วแก้ (จำลองว่า DB ถูกยึด) ═══"
-PSQL "ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
-      UPDATE logs SET raw_hash=repeat('f',64) WHERE id='$LOG_ID';
-      ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update;" >/dev/null
-echo "  แก้ hash แล้ว"
+if [ "$TAMPER" = "message" ]; then
+  PSQL "ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
+        UPDATE logs SET message='user jdoe opened the reports page' WHERE id='$LOG_ID';
+        ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update;" >/dev/null
+  echo "  แก้ข้อความแล้ว"
+else
+  PSQL "ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
+        UPDATE logs SET raw_hash=repeat('f',64) WHERE id='$LOG_ID';
+        ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update;" >/dev/null
+  echo "  แก้ hash แล้ว"
+fi
 
 echo; echo "═══ สั่งระบบตรวจสอบ ═══"
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/logs/verify-now" | head -c 100; echo
@@ -100,4 +143,6 @@ ALERT=$(PSQL "SELECT severity||' | '||title FROM alerts
               WHERE batch_id='$BATCH_ID' AND status='OPEN'
               ORDER BY created_at DESC LIMIT 1")
 echo "  alert → ${ALERT:-(ยังไม่มี alert OPEN — ถ้า verify-now ไม่ผ่าน cron verify จะจับได้ภายใน 1 นาที)}"
+echo; echo "═══ diff: ตำแหน่งไหนถูกแก้ ═══"
+print_diff "$BATCH_ID"
 echo; echo "กู้คืนด้วย: ./scripts/demo-tamper.sh \$TOKEN restore"

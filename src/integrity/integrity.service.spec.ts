@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
+import { fakeSealManager } from './fake-seal-transaction';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
@@ -139,6 +140,13 @@ describe('IntegrityService — Merkle determinism', () => {
         async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
       ),
     };
+    // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
+    Object.assign(mappingRepo, {
+      manager: fakeSealManager({
+        batches: () => batchesRepo,
+        mapping: () => mappingRepo,
+      }),
+    });
 
     const alertsRepo = {
       // dedup ต้องเห็น alert ที่เคยบันทึกไว้จริง ไม่ใช่คืน null ตลอด

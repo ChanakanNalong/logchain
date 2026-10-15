@@ -11,7 +11,9 @@ import {
   classifyChainError,
 } from '../blockchain/blockchain.service';
 import { DetectionService } from './detection.service';
-import { isRawHashIntact } from '../logs/services/log-hash';
+import { isRawHashIntact, rawHashCanonical } from '../logs/services/log-hash';
+import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
+import { explorerTxUrl } from '../blockchain/explorer';
 import { ethers } from 'ethers';
 import { readSealConfig, SealConfig, SealSkippedError } from './seal-config';
 
@@ -23,6 +25,24 @@ export const LOW_BALANCE_ALERT_TYPE = 'WALLET_LOW_BALANCE';
  * 1,000 × batch size 100 = 100,000 log ต่อรอบ เกินกว่านี้รอบถัดไปปิดต่อ
  */
 const MAX_BATCHES_PER_TICK = 1000;
+
+/** แถวดิบของ GET /batches (ชื่อคอลัมน์ Postgres) */
+interface BatchListRow {
+  id: string;
+  merkle_root: string;
+  tx_hash: string | null;
+  block_number: string | number | null;
+  status: string;
+  log_count: number;
+  sealed_at: Date;
+  confirmed_at: Date | null;
+  if_anomaly: boolean | null;
+  if_score: number | null;
+  if_reason: string | null;
+  if_scored_at: Date | null;
+  has_snapshot: boolean;
+  total: string | number;
+}
 
 /** ผลของรอบ seal ตาม cron — skipped = รอบนี้ไม่ได้พยายาม seal (log ยังค้างครบ) */
 export interface SealRunResult {
@@ -440,12 +460,7 @@ export class IntegrityService {
     root: string,
   ): Promise<Batch> {
     batch.status = 'SEALED';
-    await this.batchesRepo.save(batch);
-
-    const mappings = logs.map((log) =>
-      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
-    );
-    await this.mappingRepo.save(mappings);
+    await this.writeMappingAndSnapshot(batch, logs);
 
     this.logger.log(
       `Batch ${batch.id} sealed (ไม่ anchor): ${logs.length} log, root=${root.slice(0, 18)}... — ` +
@@ -519,18 +534,47 @@ export class IntegrityService {
   ): Promise<Batch> {
     batch.status = 'CONFIRMED';
     batch.confirmedAt = new Date();
-    await this.batchesRepo.save(batch);
-
-    // INSERT mapping (ไม่ใช่ UPDATE logs - logs ยัง imutable)
-    const mappings = logs.map((log) =>
-      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
-    );
-    await this.mappingRepo.save(mappings);
+    await this.writeMappingAndSnapshot(batch, logs);
 
     this.logger.log(
       `Batch ${batch.id} sealed: ${logs.length} log, root=${root.slice(0, 18)}...`,
     );
     return batch;
+  }
+
+  /**
+   * สถานะ batch + mapping + snapshot ใน transaction เดียว — ทั้ง 3 ที่ที่ปิด batch เรียกตัวนี้
+   * (confirmBatch / deferConfirmation / sealWithoutAnchor)
+   *
+   * logs ต้องเป็นชุดเดียวกับที่สร้าง Merkle tree (ห้ามอ่านใหม่) — position = index ในชุดนี้ = ลำดับ leaf
+   * พังตรงไหน = ไม่มีอะไรถูกเขียนเลย: batch ใน DB ยังเป็น PENDING และ log ยังไม่ถูก map
+   * (path ที่ anchor แล้วตกไปที่ catch ของ sealBatchNow → FAILED · รอบถัดไป seal log ชุดเดิมใหม่)
+   * เดิม save สถานะก่อนแล้วค่อยเขียน mapping แยก — mapping พังแล้วได้ batch CONFIRMED ที่ไม่มี log
+   */
+  private async writeMappingAndSnapshot(
+    batch: Batch,
+    logs: Log[],
+  ): Promise<void> {
+    await this.mappingRepo.manager.transaction(async (m) => {
+      await m.getRepository(Batch).save(batch);
+      // INSERT mapping (ไม่ใช่ UPDATE logs - logs ยัง imutable)
+      await m
+        .getRepository(LogBatchMapping)
+        .save(
+          logs.map((log) =>
+            this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
+          ),
+        );
+      await m.getRepository(BatchLogSnapshot).insert(
+        logs.map((log, position) => ({
+          batchId: batch.id,
+          logId: log.id,
+          position,
+          snapshot: rawHashCanonical(log),
+          rawHash: log.rawHash,
+        })),
+      );
+    });
   }
 
   /**
@@ -542,12 +586,7 @@ export class IntegrityService {
    */
   private async deferConfirmation(batch: Batch, logs: Log[]): Promise<Batch> {
     batch.status = 'UNVERIFIED';
-    await this.batchesRepo.save(batch);
-
-    const mappings = logs.map((log) =>
-      this.mappingRepo.create({ logId: log.id, batchId: batch.id }),
-    );
-    await this.mappingRepo.save(mappings);
+    await this.writeMappingAndSnapshot(batch, logs);
 
     this.logger.warn(
       `Batch ${batch.id} sealed but unconfirmed (tx=${batch.txHash?.slice(0, 12)}...) — ` +
@@ -768,7 +807,8 @@ export class IntegrityService {
    * helper — ดึง logs ใน batch (เรียงตามลำดับเดิมที่ใช้ตอน seal)
    * leaf ของ Merkle tree = rawHash ของแต่ละ log ตามลำดับนี้
    */
-  private async getLogsForBatch(batchId: string): Promise<Log[]> {
+  /** log ปัจจุบันที่ผูกกับ batch เรียงตามลำดับ leaf (ใช้ทั้ง verify และ BatchDiffService) */
+  async getLogsForBatch(batchId: string): Promise<Log[]> {
     const mappings = await this.mappingRepo.find({ where: { batchId } });
     const logIds = mappings.map((m) => m.logId);
     if (logIds.length === 0) return [];
@@ -848,27 +888,64 @@ export class IntegrityService {
    * batch ล่าสุดเรียงตามเวลา seal — ใช้บนหน้า Verify เพื่อให้เห็นว่ามีอะไรถูก
    * ผูกขึ้น chain ไปแล้วบ้าง โดยไม่ต้องมี log id ในมือก่อน
    */
-  async listBatches(limit = 10) {
-    const batches = await this.batchesRepo.find({
-      order: { sealedAt: 'DESC' },
-      take: limit,
-    });
+  /**
+   * GET /batches — แบ่งหน้า + กรอง status · ใหม่สุดก่อน · total จาก COUNT(*) OVER () ใน query เดียว
+   * hasSnapshot = มี snapshot ให้ diff รายตำแหน่ง (batch ที่ seal ก่อน BatchLogSnapshot = false)
+   */
+  async listBatches(
+    opts: { limit?: number; offset?: number; status?: string } = {},
+  ) {
+    const limit = opts.limit ?? 10;
+    const offset = opts.offset ?? 0;
+    const statuses = (opts.status ?? '')
+      .split(',')
+      .map((v) => v.trim().toUpperCase())
+      .filter(Boolean);
+    const filter = statuses.length ? statuses : null;
 
-    return batches.map((batch) => ({
-      id: batch.id,
-      merkleRoot: batch.merkleRoot,
-      txHash: batch.txHash,
-      blockNumber: batch.blockNumber,
-      status: batch.status,
-      logCount: batch.logCount,
-      sealedAt: batch.sealedAt,
-      confirmedAt: batch.confirmedAt,
-      // ผลจำแนก Isolation Forest (ระดับที่ 3) — null = ยังไม่ได้จำแนก
-      ifAnomaly: batch.ifAnomaly,
-      ifScore: batch.ifScore,
-      ifReason: batch.ifReason,
-      ifScoredAt: batch.ifScoredAt,
-    }));
+    const rows: BatchListRow[] = await this.batchesRepo.query(
+      `SELECT b.id, b.merkle_root, b.tx_hash, b.block_number, b.status, b.log_count,
+              b.sealed_at, b.confirmed_at, b.if_anomaly, b.if_score, b.if_reason, b.if_scored_at,
+              EXISTS (SELECT 1 FROM batch_log_snapshot s WHERE s.batch_id = b.id) AS has_snapshot,
+              COUNT(*) OVER () AS total
+         FROM batches b
+        WHERE ($1::text[] IS NULL OR b.status = ANY($1))
+        ORDER BY b.sealed_at DESC, b.id DESC
+        LIMIT $2 OFFSET $3`,
+      [filter, limit, offset],
+    );
+    let total = rows.length ? Number(rows[0].total) : 0;
+    if (!rows.length && offset > 0) {
+      const counted: Array<{ count: string }> = await this.batchesRepo.query(
+        `SELECT COUNT(*) AS count FROM batches b
+          WHERE ($1::text[] IS NULL OR b.status = ANY($1))`,
+        [filter],
+      );
+      total = Number(counted[0]?.count ?? 0);
+    }
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        merkleRoot: r.merkle_root,
+        txHash: r.tx_hash,
+        blockNumber: r.block_number === null ? null : Number(r.block_number),
+        polygonscanUrl: explorerTxUrl(r.tx_hash),
+        status: r.status,
+        logCount: r.log_count,
+        sealedAt: new Date(r.sealed_at),
+        confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
+        // ผลจำแนก Isolation Forest (ระดับที่ 3) — null = ยังไม่ได้จำแนก
+        ifAnomaly: r.if_anomaly,
+        ifScore: r.if_score,
+        ifReason: r.if_reason,
+        ifScoredAt: r.if_scored_at ? new Date(r.if_scored_at) : null,
+        hasSnapshot: r.has_snapshot,
+      })),
+      total,
+      limit,
+      offset,
+    };
   }
 
   /**
