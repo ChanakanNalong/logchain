@@ -227,6 +227,7 @@ describe('AlertsService', () => {
         source: 'web-server-01',
         batchId: IsNull(),
         ruleId: '5710',
+        sourceIp: IsNull(),
       },
     });
     expect(mockRepo.save).toHaveBeenCalledWith(

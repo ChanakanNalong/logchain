@@ -1,0 +1,138 @@
+import { NotFoundException } from '@nestjs/common';
+import { Repository } from 'typeorm';
+import { LogService } from './logs.service';
+import { Log } from './entities/log.entity';
+import { KafkaProducerService } from '../kafka/kafka-producer.service';
+import { PiiMaskingService } from './services/pii-masking.service';
+import { MetricsService } from '../metrics/metrics.service';
+
+/**
+ * GET /logs — parameter ที่ส่งเข้า SQL + แปลงแถวเป็น item
+ * SQL จริง (JOIN / COUNT OVER / ILIKE) ทดสอบกับ Postgres ใน test/log-onchain-status.integration.spec.ts
+ */
+describe('LogService.list / findOne', () => {
+  let query: jest.Mock;
+  let findOneBy: jest.Mock;
+  let service: LogService;
+
+  beforeEach(() => {
+    query = jest.fn(() => Promise.resolve([]));
+    findOneBy = jest.fn(() => Promise.resolve(null));
+    service = new LogService(
+      { query, findOneBy } as unknown as Repository<Log>,
+      {} as KafkaProducerService,
+      {} as PiiMaskingService,
+      {} as MetricsService,
+    );
+  });
+
+  const params = (n = 0) => (query.mock.calls[n] as [string, unknown[]])[1];
+
+  it('defaults: limit 100, offset 0, no filters', async () => {
+    const page = await service.list({});
+    expect(params()).toEqual([null, null, null, null, 100, 0]);
+    expect(page).toEqual({ items: [], total: 0, limit: 100, offset: 0 });
+  });
+
+  it('comma-separated filters become arrays; blanks are dropped', async () => {
+    await service.list({
+      source: 'vps-01, web-01,,',
+      severity: 'WARNING,CRITICAL',
+      eventType: ' SYSLOG ',
+      limit: 20,
+      offset: 40,
+    });
+    expect(params()).toEqual([
+      ['vps-01', 'web-01'],
+      ['WARNING', 'CRITICAL'],
+      ['SYSLOG'],
+      null,
+      20,
+      40,
+    ]);
+  });
+
+  it('q is a literal substring: % _ and \\ are escaped for ILIKE', async () => {
+    await service.list({ q: '50%_off\\x' });
+    expect(params()[3]).toBe('%50\\%\\_off\\\\x%');
+    expect((query.mock.calls[0] as [string])[0]).toMatch(
+      /ILIKE \$4 ESCAPE '\\'/,
+    );
+  });
+
+  it('maps rows, total from COUNT OVER, bigint block number, explorer link', async () => {
+    delete process.env.BLOCKCHAIN_EXPLORER_TX_URL;
+    query.mockResolvedValueOnce([
+      {
+        id: 'l1',
+        created_at: '2026-10-15T09:39:58.004Z',
+        source: 'web-01',
+        source_ip: '198.51.100.9',
+        event_type: 'WEB_REQUEST',
+        severity: 'INFO',
+        message: 'm',
+        classification: 'INTERNAL',
+        cde_scope: false,
+        retention_days: 365,
+        raw_hash: 'h',
+        batch_id: 'b1',
+        batch_status: 'CONFIRMED',
+        tx_hash: '0xabc',
+        block_number: '28451107',
+        total: '37',
+      },
+      {
+        id: 'l2',
+        created_at: '2026-10-15T09:41:07.512Z',
+        source: 'vps-01',
+        source_ip: null,
+        event_type: 'SYSLOG',
+        severity: 'WARNING',
+        message: 'm2',
+        classification: 'INTERNAL',
+        cde_scope: false,
+        retention_days: 365,
+        raw_hash: 'h2',
+        batch_id: null,
+        batch_status: null,
+        tx_hash: null,
+        block_number: null,
+        total: '37',
+      },
+    ]);
+    const page = await service.list({ limit: 2 });
+    expect(page.total).toBe(37);
+    expect(page.items[0]).toMatchObject({
+      id: 'l1',
+      createdAt: new Date('2026-10-15T09:39:58.004Z'),
+      batchStatus: 'CONFIRMED',
+      blockNumber: 28451107,
+      polygonscanUrl: 'https://amoy.polygonscan.com/tx/0xabc',
+    });
+    expect(page.items[1]).toMatchObject({
+      batchId: null,
+      batchStatus: null,
+      txHash: null,
+      blockNumber: null,
+      polygonscanUrl: null,
+    });
+  });
+
+  it('an empty page past the end still reports the real total', async () => {
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ count: '12' }]);
+    const page = await service.list({ offset: 500, source: 'vps-01' });
+    expect(page.total).toBe(12);
+    expect((query.mock.calls[1] as [string, unknown[]])[1]).toEqual([
+      ['vps-01'],
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it('findOne → 404 when missing', async () => {
+    await expect(
+      service.findOne('11111111-1111-4111-8111-111111111111'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

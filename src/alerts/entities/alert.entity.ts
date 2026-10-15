@@ -33,6 +33,10 @@ export class Alert {
   @Index() @Column({ length: ALERT_COLUMN_LENGTH.severity }) severity: string;
 
   @Column({ length: ALERT_COLUMN_LENGTH.source }) source: string;
+
+  /** IP ของผู้กระทำ (จาก detection) — อยู่ใน dedup key: คนละ IP = คนละ alert */
+  @Column({ name: 'source_ip', type: 'inet', nullable: true })
+  sourceIp: string | null;
   @Column({ type: 'text' }) title: string;
   @Column({ type: 'jsonb', nullable: true }) detail: object | null;
   @Index() @Column({ default: 'OPEN' }) status: string;

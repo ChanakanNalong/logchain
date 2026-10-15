@@ -34,6 +34,7 @@ import { ErasureLog1790380800000 } from './database/migrations/1790380800000-Era
 import { ErasurePseudonymize1790467200000 } from './database/migrations/1790467200000-ErasurePseudonymize';
 import { AlertsSourceLength1790553600000 } from './database/migrations/1790553600000-AlertsSourceLength';
 import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000-BatchIsoForest';
+import { AlertLogs1790726400000 } from './database/migrations/1790726400000-AlertLogs';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000
             ErasurePseudonymize1790467200000,
             AlertsSourceLength1790553600000,
             BatchIsoForest1790640000000,
+            AlertLogs1790726400000,
           ],
           migrationsRun: true,
         };

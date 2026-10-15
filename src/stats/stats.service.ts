@@ -21,6 +21,8 @@ const BATCH_STATUSES = [
   'UNVERIFIED',
   'TAMPERED',
   'PENDING',
+  // anchor ไม่สำเร็จ (ไม่มี log ผูก) — เดิมไม่อยู่ในลิสต์ ทำให้ batch FAILED หายจาก byStatus
+  'FAILED',
 ] as const;
 
 export interface TrafficPoint {

@@ -663,12 +663,16 @@ grep -E '^(ANALYST|OPERATOR|AUDITOR|INGESTOR)_USER_PASSWORD=.' .env
 | Method | Path | Roles | คำอธิบาย |
 |---|---|---|---|
 | `POST` | `/api/v1/logs` | `ingestor`, `admin` | Ingest log (mask → hash) |
-| `GET` | `/api/v1/logs` | `analyst`, `operator`, `admin` | รายการ log ล่าสุด |
-| `GET` | `/api/v1/logs/:id` | `analyst`, `operator`, `admin` | log ตาม ID |
+| `GET` | `/api/v1/logs` | `analyst`, `operator`, `admin` | แบ่งหน้า + filter (`limit` `offset` `source` `severity` `eventType` `q`) + สถานะ batch → `{ items, total, limit, offset }` |
+| `GET` | `/api/v1/logs/:id` | `analyst`, `operator`, `admin` | log ตาม ID (404 ถ้าไม่มี · 400 ถ้าไม่ใช่ UUID) |
+| `GET` | `/api/v1/logs/:id/detail` | `analyst`, `operator`, `admin`, `auditor` | log + batch + proof + alert ที่เกี่ยวข้อง + เทียบ root บน chain สด |
 | `GET` | `/api/v1/logs/:id/proof` | `analyst`, `operator`, `admin` | Merkle proof ของ log |
+| `GET` | `/api/v1/alerts` | `analyst`, `operator`, `admin` | alert ทั้งหมด (array) |
+| `GET` | `/api/v1/alerts/:id` | `analyst`, `operator`, `admin` | alert + log ทุกตัวที่ผูกไว้ (`trigger` / `window` / `prior` / `repeat`) |
 | `GET` | `/health` | — | Health check |
 
 ทุก endpoint ของ logs/integrity ป้องกันด้วย `AuthGuard('jwt')` + `RolesGuard` (Bearer token).
+ตัวอย่าง JSON ของ logs / log detail / alert detail: [docs/api/logs-alerts.md](docs/api/logs-alerts.md)
 ระบบมี 5 roles: `admin` / `operator` / `ingestor` / `analyst` / `auditor` — หน้า Reports ผูกกับ role `auditor`.
 
 ---

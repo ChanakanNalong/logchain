@@ -258,3 +258,64 @@ describe('KafkaConsumerService — reconnect', () => {
     await svc.onModuleDestroy();
   });
 });
+
+describe('KafkaConsumerService — alert payload mapping', () => {
+  it('passes source_ip and the evidence log ids from detection to createOrDedup', async () => {
+    const createOrDedup = jest.fn(() => Promise.resolve({}));
+    const svc = new KafkaConsumerService(
+      { get: (_k: string, d?: unknown) => d ?? '' } as unknown as ConfigService,
+      { createOrDedup } as unknown as AlertsService,
+    );
+    const handle = (
+      svc as unknown as {
+        handleAlert: (topic: string, raw: string) => Promise<void>;
+      }
+    ).handleAlert.bind(svc);
+
+    await handle(
+      'alerts.raw',
+      JSON.stringify({
+        log_id: 'l5',
+        source: 'vps-01',
+        source_ip: '203.0.113.5',
+        alert_type: 'RULE_MATCH',
+        severity: 'WARNING',
+        title: 'Successful login after multiple failures',
+        detail: { rule_id: 5715 },
+        related_log_ids: ['l5'],
+        prior_log_ids: ['l1', 'l2'],
+      }),
+    );
+
+    expect(createOrDedup).toHaveBeenCalledWith(
+      {
+        logId: 'l5',
+        alertType: 'RULE_MATCH',
+        severity: 'WARNING',
+        source: 'vps-01',
+        sourceIp: '203.0.113.5',
+        title: 'Successful login after multiple failures',
+        detail: { rule_id: 5715 },
+      },
+      { relatedLogIds: ['l5'], priorLogIds: ['l1', 'l2'] },
+    );
+  });
+
+  it('an old detection payload without the new fields still maps (null / undefined)', async () => {
+    const createOrDedup = jest.fn(() => Promise.resolve({}));
+    const svc = new KafkaConsumerService(
+      { get: (_k: string, d?: unknown) => d ?? '' } as unknown as ConfigService,
+      { createOrDedup } as unknown as AlertsService,
+    );
+    await (
+      svc as unknown as {
+        handleAlert: (topic: string, raw: string) => Promise<void>;
+      }
+    ).handleAlert('alerts.raw', JSON.stringify({ log_id: 'l1', source: 's' }));
+
+    expect(createOrDedup).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceIp: null }),
+      { relatedLogIds: undefined, priorLogIds: undefined },
+    );
+  });
+});
