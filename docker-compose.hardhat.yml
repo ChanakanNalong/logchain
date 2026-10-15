@@ -1,0 +1,58 @@
+# environment hh — stack ทดสอบที่แยกจาก stack หลักทั้งหมด (project/volume/port/image tag ของตัวเอง
+# ไม่มี container_name · ไม่ mount infra/vault/.secrets หรือ kafka certs · Kafka/detection/อีเมลปิด)
+# ใช้ Keycloak ของ stack หลักออก token อย่างเดียว · วิธีใช้: README หัวข้อ "environment hh"
+#   alias hh='docker compose -p logchain-hh -f docker-compose.hardhat.yml --env-file .env.hardhat'
+#   chain: cd ~/Documents/logchain-contracts && npx hardhat node   (127.0.0.1:8545 · in-memory)
+name: logchain-hh
+services:
+  hh-postgres:
+    image: postgres:16-alpine
+    env_file: [.env.hardhat]
+    environment:
+      POSTGRES_USER: logchain
+      POSTGRES_DB: logchain
+    ports: ["127.0.0.1:15433:5432"]
+    volumes:
+      - hh_postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logchain -d logchain"]
+      interval: 3s
+      retries: 20
+
+  hh-vault:
+    image: hashicorp/vault:1.18
+    # dev mode = in-memory, already unsealed; restart → rerun hh-vault-init (delete approle.env first)
+    command: server -dev -dev-root-token-id=hh-root -dev-listen-address=0.0.0.0:8200
+    cap_add: [IPC_LOCK]
+    ports: ["127.0.0.1:18200:8200"]
+
+  hh-vault-init:
+    image: hashicorp/vault:1.18
+    depends_on: [hh-vault]
+    env_file: [.env.hardhat]
+    environment:
+      VAULT_ADDR: http://hh-vault:8200
+      HOST_UID: ${HOST_UID:-0}
+      HOST_GID: ${HOST_GID:-0}
+    volumes:
+      - ./infra/vault/init.sh:/vault/init.sh:ro
+      - ./infra/vault/policies:/vault/policies:ro
+      - ./.hardhat/vault-secrets:/vault/secrets
+    # Vault dev = in-memory → AppRole เดิมหายทุกครั้งที่ hh-vault restart: เขียน token ของ dev
+    # ให้ init.sh แล้วลบ approle.env เก่าทิ้งเสมอ (ไม่งั้น init.sh ใช้ secret_id เดิมที่ตายแล้ว)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - echo VAULT_ROOT_TOKEN=hh-root > /vault/secrets/init.env && rm -f /vault/secrets/approle.env && exec /bin/sh /vault/init.sh
+
+  hh-backend:
+    build: .
+    image: logchain-backend:hh
+    network_mode: host
+    env_file: [.env.hardhat, .hardhat/vault-secrets/approle.env]
+    depends_on:
+      hh-postgres: {condition: service_healthy}
+
+volumes:
+  hh_postgres_data:

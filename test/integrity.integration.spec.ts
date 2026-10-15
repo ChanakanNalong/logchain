@@ -182,32 +182,37 @@ describe('Integrity Integration', () => {
         );
       }
 
-      if (createdBatchIds.length > 0) {
-        // ลบตามลำดับ FK: mapping -> alerts -> batches
-        await dataSource.query(
-          'DELETE FROM log_batch_mapping WHERE batch_id = ANY($1)',
-          [createdBatchIds],
-        );
-        await dataSource.query('DELETE FROM alerts WHERE batch_id = ANY($1)', [
-          createdBatchIds,
-        ]);
-        await dataSource.query('DELETE FROM batches WHERE id = ANY($1)', [
-          createdBatchIds,
-        ]);
-      }
+      // ทุก DELETE อยู่ใน try เดียวกับ ENABLE TRIGGER — DELETE ไหนพังก็ต้องเปิด trigger คืนเสมอ
+      // (เดิม DELETE ของ mapping/alerts/batches อยู่นอก finally → พังแล้ว trigger ค้างปิด)
+      try {
+        if (createdBatchIds.length > 0) {
+          // ลบตามลำดับ FK: mapping -> alerts -> batches
+          await dataSource.query(
+            'DELETE FROM log_batch_mapping WHERE batch_id = ANY($1)',
+            [createdBatchIds],
+          );
+          await dataSource.query(
+            'DELETE FROM alerts WHERE batch_id = ANY($1)',
+            [createdBatchIds],
+          );
+          await dataSource.query('DELETE FROM batches WHERE id = ANY($1)', [
+            createdBatchIds,
+          ]);
+        }
 
-      if (logIds.length > 0) {
-        await dataSource.query('DELETE FROM alerts WHERE log_id = ANY($1)', [
-          logIds,
-        ]);
-      }
+        if (logIds.length > 0) {
+          await dataSource.query('DELETE FROM alerts WHERE log_id = ANY($1)', [
+            logIds,
+          ]);
+        }
 
-      if (triggerDisabled) {
-        try {
+        if (triggerDisabled) {
           await dataSource.query('DELETE FROM logs WHERE source = $1', [
             TEST_SOURCE,
           ]);
-        } finally {
+        }
+      } finally {
+        if (triggerDisabled) {
           await dataSource.query(
             'ALTER TABLE logs ENABLE TRIGGER trg_logs_no_delete',
           );

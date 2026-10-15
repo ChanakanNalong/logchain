@@ -1,0 +1,89 @@
+/**
+ * globalSetup ของ test/jest-e2e.json — กันไม่ให้ integration/e2e ยิง DB ผิดตัว
+ *
+ * เทสชุดนี้ boot AppModule จริงแล้วเขียน DB ตรง ๆ: seal log ค้าง, verify batch เดิม
+ * ทุกใบแล้ว UPDATE สถานะคืน, DISABLE TRIGGER แล้วลบ log ของเทส (ดู integrity /
+ * report-cases spec) — ถ้าเผลอชี้ไปที่ stack ที่มีข้อมูล demo จริง batch ที่ anchor
+ * ไว้แล้วจะถูกแตะ จึงบังคับให้คนรันประกาศ DB เป้าหมายเองทุกครั้ง
+ *
+ * ต้องตั้ง E2E_ALLOW_DB=<host>:<port> ให้ตรงกับ DB ที่เทสจะต่อจริง
+ * (DB_HOST/DB_PORT แบบเดียวกับ app.module.ts — default localhost:5433)
+ * และ BLOCKCHAIN_RPC_URL ต้องเป็น localhost/127.0.0.1 หรือไม่ตั้ง (ดู checkE2eChainTarget)
+ */
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { parse } from 'dotenv';
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1']);
+
+const normalizeHost = (h: string) =>
+  LOOPBACK.has(h.trim().toLowerCase()) ? 'localhost' : h.trim().toLowerCase();
+
+/** คืนข้อความ error ถ้าไม่ผ่าน · null = ผ่าน */
+export function checkE2eDbTarget(
+  env: NodeJS.ProcessEnv,
+  dotEnv: Record<string, string> = {},
+): string | null {
+  // ลำดับเดียวกับ ConfigModule: process.env ชนะ .env
+  const host = env.DB_HOST || dotEnv.DB_HOST || 'localhost';
+  const port = env.DB_PORT || dotEnv.DB_PORT || '5433';
+  const target = `${host}:${port}`;
+  const allow = env.E2E_ALLOW_DB?.trim();
+
+  const howTo =
+    `  เทสจะต่อ DB ที่ ${target} (database logchain) และเขียนข้อมูลลงไปจริง\n` +
+    `  ถ้าตั้งใจให้ต่อตัวนี้: E2E_ALLOW_DB=${target} npm run test:e2e\n` +
+    `  เครื่อง dev ควรรันกับ environment hh แยก (README หัวข้อ "รัน integration / e2e")\n` +
+    `  ไม่ใช่ stack หลักที่มี batch demo อยู่`;
+
+  if (!allow) return `✗ ไม่ได้ตั้ง E2E_ALLOW_DB\n${howTo}`;
+
+  const sep = allow.lastIndexOf(':');
+  const allowHost = sep > 0 ? allow.slice(0, sep) : '';
+  const allowPort = sep > 0 ? allow.slice(sep + 1) : '';
+  if (normalizeHost(allowHost) !== normalizeHost(host) || allowPort !== port) {
+    return `✗ E2E_ALLOW_DB=${allow} ไม่ตรงกับ DB ที่จะต่อ (${target})\n${howTo}`;
+  }
+  return null;
+}
+
+/**
+ * chain ต้องเป็น local (หรือไม่ตั้งเลย) — spec ที่ไม่ override BlockchainService และไม่หยุด cron
+ * (app.e2e / alerts / erasure) seal log ของเทสด้วย BlockchainService จริง ถ้า RPC ชี้ Amoy = ส่ง tx จริง
+ * ไม่ตั้ง BLOCKCHAIN_RPC_URL (เช่น CI) = BlockchainService ไม่ต่อ chain ผ่านได้
+ */
+export function checkE2eChainTarget(
+  env: NodeJS.ProcessEnv,
+  dotEnv: Record<string, string> = {},
+): string | null {
+  const rpc = (
+    env.BLOCKCHAIN_RPC_URL ??
+    dotEnv.BLOCKCHAIN_RPC_URL ??
+    ''
+  ).trim();
+  if (!rpc) return null;
+  let host: string;
+  try {
+    host = new URL(rpc).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return `✗ BLOCKCHAIN_RPC_URL อ่านไม่ออก: "${rpc}"`;
+  }
+  if (LOOPBACK.has(host.toLowerCase())) return null;
+  return (
+    `✗ BLOCKCHAIN_RPC_URL=${rpc} ไม่ใช่ chain ในเครื่อง\n` +
+    `  spec บางตัวใช้ BlockchainService จริงและ cron ยังเดิน — seal แล้วส่ง tx จริงได้\n` +
+    `  ใช้ Hardhat (http://127.0.0.1:8545) หรือไม่ตั้งเลย เช่นรันผ่าน .env.hardhat (README หัวข้อ "environment hh")`
+  );
+}
+
+export default function e2eDbGuard(): void {
+  const envPath = join(process.cwd(), '.env');
+  const dotEnv = existsSync(envPath) ? parse(readFileSync(envPath)) : {};
+  const err =
+    checkE2eDbTarget(process.env, dotEnv) ??
+    checkE2eChainTarget(process.env, dotEnv);
+  if (err) throw new Error(`\n[e2e-db-guard]\n${err}\n`);
+  console.log(
+    `[e2e-db-guard] OK — DB ${process.env.E2E_ALLOW_DB} (E2E_ALLOW_DB)`,
+  );
+}

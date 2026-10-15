@@ -17,10 +17,13 @@ rule engine + DeepLog) → alert · integrity ใช้ Merkle root ต่อ ba
   ไฟล์พวกนั้นรันเฉพาะตอน volume ว่าง DB ที่มีอยู่แล้วจะไม่ได้รับ
 - **ตาราง `logs` เป็น append-only** — trigger `trg_logs_no_update` บล็อก UPDATE/DELETE
 - **ก่อน commit ให้รัน `npm run lint:ci`** (มีเพดาน warning 667) ไม่ใช่ `npm run lint`
-  ชุดที่ CI รันจริง: `lint:ci` + `npm test` + `npm run build` + `npx jest --config test/jest-e2e.json`
+  ชุดที่ CI รันจริง: `lint:ci` + `npm test` + `npm run build` + `npx jest --config test/jest-e2e.json` (CI ตั้ง `E2E_ALLOW_DB=localhost:5433` เพราะ stack ของ CI เป็นของชั่วคราว)
   + ฝั่ง detection: `cd detection && python -m unittest discover -s tests -t . -v` (ต้องมี PyYAML)
-- **e2e ยิง DB จริงและทิ้ง batch UNVERIFIED ไว้** (`tx_hash` ขึ้นต้น `0xaaaa…`) ลบทุกครั้งหลังรัน
-- **ห้ามรัน integration test ในเครื่องขณะ backend ทำงานอยู่** — `docker compose stop backend` ก่อน แล้ว `start` คืนหลังรัน
+- **e2e/integration เขียน DB จริง** (verify + UPDATE batch เดิมทุกใบ · ลบ log ของเทส) → **รันกับ environment hh เท่านั้น**
+  (`docker-compose.hardhat.yml` · README หัวข้อ "environment hh") ไม่ใช่ stack หลัก · `test/e2e-db-guard.ts` บังคับ
+  `E2E_ALLOW_DB=<host>:<port>` ให้ตรง DB ที่จะต่อ ไม่ตั้ง/ไม่ตรง = ล้มทันที · `BLOCKCHAIN_RPC_URL` ต้องเป็น local หรือไม่ตั้ง
+  `( set -a; . ./.env.hardhat; . .hardhat/vault-secrets/approle.env; set +a; NODE_ENV=test E2E_ALLOW_DB=127.0.0.1:15433 npm run test:e2e )`
+- **ห้ามรัน integration test ขณะ backend ที่ต่อ DB เดียวกันทำงานอยู่** (hh: `hh-backend` · stack หลัก: `backend`) — หยุดก่อนแล้วเปิดคืนหลังรัน
   cron ของ backend seal log ของเทสต์ไปพร้อมกัน (คิว `sealBatch` กันได้แค่ใน process เดียว) → เทสต์ลบ log ทิ้งตอนจบ
   → batch ของ backend ไม่มี log เหลือ = TAMPERED/FAILED + alert CRITICAL + อีเมล + เสีย gas จริง (เกิดแล้ว 2026-10-04 · IM-12 ล้มด้วยเหตุนี้)
 - **`docker compose` ต้องมี `HOST_UID=$(id -u) HOST_GID=$(id -g)` เสมอ** ไม่งั้นไฟล์ของ Vault เป็นของ root

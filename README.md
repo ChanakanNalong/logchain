@@ -292,6 +292,36 @@ npm install && npm run start:dev
 > โดย **ไม่ recompute root** (ใช้ root เดิมที่ปิดไว้ตอน seal)
 > — ขั้นตอนเต็มอยู่หัวข้อถัดไป
 
+### environment hh — รัน integration / e2e (และทดสอบ chain บน Hardhat)
+
+`test:e2e` boot `AppModule` จริงแล้ว **เขียน DB ตรง ๆ** (seal log ที่ค้าง · verify batch เดิมทุกใบแล้ว UPDATE สถานะคืน ·
+DISABLE TRIGGER แล้วลบ log ของเทส) — ห้ามรันกับ stack หลักที่มี batch demo อยู่ · `test/e2e-db-guard.ts`
+จะไม่ยอมรันจนกว่าจะตั้ง `E2E_ALLOW_DB=<host>:<port>` ให้ตรงกับ DB ที่เทสจะต่อ (`DB_HOST`/`DB_PORT` · default `localhost:5433`)
+และล้มถ้า `BLOCKCHAIN_RPC_URL` ไม่ใช่ `localhost`/`127.0.0.1` (ไม่ตั้งได้) — spec บางตัวใช้ `BlockchainService` จริงและ cron ยังเดิน
+
+`docker-compose.hardhat.yml` (project `logchain-hh`) ยก Postgres + Vault (dev mode) ชุดแยก ไม่แตะ volume/secret ของ stack หลัก:
+
+```bash
+cp .env.hardhat.example .env.hardhat
+alias hh='docker compose -p logchain-hh -f docker-compose.hardhat.yml --env-file .env.hardhat'
+HOST_UID=$(id -u) HOST_GID=$(id -g) hh up -d hh-postgres hh-vault
+HOST_UID=$(id -u) HOST_GID=$(id -g) hh up hh-vault-init      # AppRole → .hardhat/vault-secrets/approle.env
+
+# รันเทส (subshell — env ของ hh ไม่รั่วออกมาที่ shell หลัก) · hh-backend ต้องไม่รันอยู่ (cron ชน log ของเทส)
+( set -a; . ./.env.hardhat; . .hardhat/vault-secrets/approle.env; set +a
+  NODE_ENV=test E2E_ALLOW_DB=127.0.0.1:15433 npm run test:e2e )
+```
+
+| พอร์ต hh | |
+|---|---|
+| 15433 | Postgres (`logchain-hh_hh_postgres_data`) |
+| 18200 | Vault dev (in-memory — restart แล้วรัน `hh up hh-vault-init` ใหม่) |
+| 8545 | Hardhat node (`npx hardhat node` ใน repo contracts · in-memory) |
+
+> hh ใช้ Keycloak ของ stack หลักออก token เท่านั้น (ไม่แก้ realm) · Kafka ชี้ `127.0.0.1:1` (log เข้าคิว `kafka_pending_logs`
+> ของ hh เอง ไม่หลุดเข้า detection ตัวจริง) · `DETECTION_URL` ว่าง · ไม่มีค่าอีเมล
+> ล้าง hh: `hh down && docker volume rm logchain-hh_hh_postgres_data` (เฉพาะ volume ของ hh — **อย่าใช้ `down -v` กับ stack หลัก**)
+
 ---
 
 ## ตั้ง blockchain เอง (Polygon Amoy · ไม่บังคับ)

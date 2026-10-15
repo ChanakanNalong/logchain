@@ -2,6 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
+  "globalSetup": "<rootDir>/e2e-db-guard.ts",
   "testRegex": "(\\.e2e-spec|\\.integration\\.spec)\\.ts$",
   "transform": {
     "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "<rootDir>/../tsconfig.json" }]
