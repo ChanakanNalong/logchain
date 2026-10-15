@@ -243,11 +243,16 @@ def follow_file(path: str, state: State, stop: threading.Event, on_line: Callabl
         f.close()
 
 
-def follow_journal(args: str, state: State, stop: threading.Event, on_payload: Callable[[dict], None]):
-    """journalctl <args> -f -o json ต่อจาก cursor ที่จำไว้ (ไม่มี = เริ่มจากตอนนี้ -n 0) · process ตาย = เปิดใหม่"""
+def follow_journal(args: str, state: State, stop: threading.Event, on_payload: Callable[[dict], None],
+                   journalctl: str = "journalctl"):
+    """
+    journalctl <args> -f -o json ต่อจาก cursor ที่จำไว้ (ไม่มี = เริ่มจากตอนนี้ -n 0) · process ตาย = เปิดใหม่
+    cursor ของบรรทัดที่ส่งเข้าคิว บันทึกทันที (ไม่งั้น restart แล้วส่งบรรทัดท้าย ๆ ซ้ำ — เจอจริงตอนเทส e2e)
+    บรรทัดที่ถูกข้าม (sshd log อื่น) บันทึกห่างกันอย่างน้อย 1 วิ ไม่ให้เขียนไฟล์ทุกบรรทัด
+    """
     while not stop.is_set():
         cursor = state.get("journal:cursor")
-        cmd = ["journalctl", *args.split(), "-f", "-o", "json", "--no-pager"]
+        cmd = [journalctl, *args.split(), "-f", "-o", "json", "--no-pager"]
         cmd += [f"--after-cursor={cursor}"] if cursor else ["-n", "0"]
         try:
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True, errors="replace")
@@ -259,17 +264,18 @@ def follow_journal(args: str, state: State, stop: threading.Event, on_payload: C
         for raw in proc.stdout:
             if stop.is_set():
                 break
+            payload = cur = None
             try:
                 payload, cur = parse_journal_json(raw)
                 if payload:
                     on_payload(payload)
             except Exception:  # noqa: BLE001
                 log.exception("journal line failed — skipped")
-                continue
-            if cur and time.monotonic() - last_save > 1:
+            if cur and (payload or time.monotonic() - last_save > 1):
                 state.set("journal:cursor", cur)
                 last_save = time.monotonic()
         proc.terminate()
+        proc.stdout.close()
         if not stop.is_set():
             log.warning("journalctl exited (%s) — restarting in 5s", proc.wait())
             stop.wait(5)

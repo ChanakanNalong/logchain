@@ -12,7 +12,7 @@ import unittest
 import urllib.error
 from pathlib import Path
 
-from logchain_forwarder.forwarder import ApiClient, Gate, Sender, State, follow_file, load_config
+from logchain_forwarder.forwarder import ApiClient, Gate, Sender, State, follow_file, follow_journal, load_config
 from logchain_forwarder.parsers import parse_access, parse_journal_json, parse_sshd
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -296,6 +296,46 @@ class FollowFileTest(unittest.TestCase):
         stop.set()
         t.join()
         self.assertEqual(got, ["fine"])
+
+
+class FollowJournalTest(unittest.TestCase):
+    """journalctl ปลอม — บันทึก cursor ของบรรทัดสุดท้ายที่ส่ง · รอบถัดไปต้องเรียกด้วย --after-cursor (ไม่ส่งซ้ำ)"""
+
+    def test_cursor_of_last_sent_line_is_saved_and_resumed(self):
+        d = tempfile.mkdtemp()
+        calls = os.path.join(d, "calls.txt")
+        fake = os.path.join(d, "journalctl")
+        lines = [
+            {"MESSAGE": "Invalid user x from 1.2.3.4 port 1", "__CURSOR": "c1"},
+            {"MESSAGE": "Server listening on :: port 22.", "__CURSOR": "c2"},
+            {"MESSAGE": "Connection closed by invalid user x 1.2.3.4 port 1 [preauth]", "__CURSOR": "c3"},
+        ]
+        with open(fake, "w") as f:
+            f.write("#!/bin/sh\n")
+            f.write(f'echo "$@" >> {calls}\n')
+            f.write('case "$*" in *--after-cursor*) exit 0;; esac\n')
+            for entry in lines:
+                f.write(f"echo '{json.dumps(entry)}'\n")
+        os.chmod(fake, 0o755)
+        state = State(os.path.join(d, "s.json"))
+        got = []
+        stop = threading.Event()
+        t = threading.Thread(target=follow_journal, args=("-u ssh", state, stop, got.append, fake))
+        t.start()
+        # รอบแรกจบ → forwarder รอ 5 วิแล้วเปิด journalctl ใหม่ด้วย cursor
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            if os.path.exists(calls) and len(open(calls).read().splitlines()) >= 2:
+                break
+            time.sleep(0.1)
+        stop.set()
+        t.join(timeout=10)
+        self.assertEqual([p["message"][:16] for p in got], ["Invalid user x f", "Connection close"])
+        self.assertEqual(state.get("journal:cursor"), "c3")
+        with open(calls) as f:
+            invocations = f.read().splitlines()
+        self.assertIn("-n 0", invocations[0])
+        self.assertTrue(any("--after-cursor=c3" in c for c in invocations[1:]))
 
 
 class DetectionRulesTest(unittest.TestCase):
