@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronRight, CircleCheck, CircleX, Search, ShieldCheck } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Button, Badge, Th, Td } from "@/components/ui";
 import { api } from "@/lib/api";
 import { mapLog, unwrapLogs } from "@/lib/logRows";
+import { QUERY_KEYS } from "@/lib/nav";
 
 /**
  * GET /logs/:id/proof ต้องการ UUID เต็ม (log_batch_mapping.log_id เป็น type uuid)
@@ -50,6 +52,9 @@ export default function Verify() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // ?proofLog=<id> — sent by "ดู proof บน tree" in the log drawer
+  const proofLog = useSearchParams().get(QUERY_KEYS.proofLog);
 
   const [overview, setOverview] = useState<any>(null);
   const [batches, setBatches] = useState<any[] | null>(null);
@@ -121,6 +126,14 @@ export default function Verify() {
       setLoading(false);
     }
   }
+
+  // มาจากปุ่ม "ดู proof บน tree" ใน log drawer — เติม ID แล้วตรวจ proof ให้เลย (ยังไม่วาด tree)
+  useEffect(() => {
+    if (!proofLog) return;
+    setLogId(proofLog);
+    void runVerify(proofLog);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proofLog]);
 
   /** กดจากลิสต์ log — เติมช่องให้เห็นว่าตรวจตัวไหน แล้วยิงด้วย id ตรงๆ ไม่รอ state */
   function verifyFromList(id: string) {

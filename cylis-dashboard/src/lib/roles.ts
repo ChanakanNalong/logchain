@@ -20,6 +20,15 @@ export const PAGE_ROLES: Record<string, readonly AppRole[]> = {
   settings: ['admin'],
 };
 
+// Action → roles that may perform it. Mirrors the backend @Roles on the
+// matching endpoint; hiding a control is only UX, the backend still enforces.
+export const ACTION_ROLES = {
+  // PATCH /alerts/:id/resolve
+  resolveAlert: ['operator', 'admin'],
+} as const satisfies Record<string, readonly AppRole[]>;
+
+export type AppAction = keyof typeof ACTION_ROLES;
+
 function isAppRole(role: unknown): role is AppRole {
   return typeof role === 'string' && (APP_ROLES as readonly string[]).includes(role);
 }
@@ -43,4 +52,9 @@ export function canAccessPage(id: string): boolean {
 
 export function visiblePages(): string[] {
   return Object.keys(PAGE_ROLES).filter(canAccessPage);
+}
+
+export function canDo(action: AppAction): boolean {
+  const roles = currentRoles();
+  return ACTION_ROLES[action].some((r) => roles.includes(r));
 }

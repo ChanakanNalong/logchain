@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import {
   LayoutDashboard,
   ScrollText,
@@ -19,6 +19,9 @@ import {
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
 import { keycloak, logout } from "@/lib/keycloak";
 import { canAccessPage } from "@/lib/roles";
+import { NavContext, useReplaceQuery } from "@/lib/nav";
+import { USE_MOCK } from "@/lib/endpoints";
+import { Badge } from "@/components/ui";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
@@ -61,6 +64,18 @@ export default function App() {
 
   const [activeId, setActiveId] = useState(() => firstAllowedId ?? "dashboard");
   const [mode, setMode] = useState("dark"); // "dark" | "light"
+  const replaceQuery = useReplaceQuery();
+
+  // Cross-page links (log drawer → Alerts / Verify). A page the roles don't
+  // allow is ignored; callers already hide links to those.
+  const navigate = useCallback(
+    (pageId: string, query?: Record<string, string | null | undefined>) => {
+      if (!canAccessPage(pageId)) return;
+      if (query) replaceQuery(query);
+      setActiveId(pageId);
+    },
+    [replaceQuery],
+  );
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -98,6 +113,7 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={theme}>
+      <NavContext.Provider value={navigate}>
       <div
         style={{
           height: "100vh",
@@ -221,6 +237,8 @@ export default function App() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* NEXT_PUBLIC_USE_MOCK=1 — Logs/Alerts are not real data */}
+                {USE_MOCK && <Badge tone="orange" title="NEXT_PUBLIC_USE_MOCK=1 — logs and alerts come from src/lib/mock">MOCK DATA</Badge>}
                 <Clock size={14} color={theme.muted} />
                 <span style={{ fontSize: 12, color: theme.muted, ...monoFont, letterSpacing: "0.02em" }}>
                   {clockLabel}
@@ -308,6 +326,7 @@ export default function App() {
           </main>
         </div>
       </div>
+      </NavContext.Provider>
     </ThemeContext.Provider>
   );
 }

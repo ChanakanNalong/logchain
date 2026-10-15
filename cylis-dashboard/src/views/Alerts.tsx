@@ -1,66 +1,48 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BellRing, CircleCheck, ChevronDown, ChevronRight, ShieldAlert, Search } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Badge, Button, Th, Td, FilterDropdown } from "@/components/ui";
-import { api } from "@/lib/api";
-
-/** Shape of GET /api/v1/alerts */
-interface AlertRow {
-  id: string;
-  logId: string | null;
-  batchId: string | null;
-  alertType: string;
-  severity: string;
-  source: string;
-  title: string;
-  detail: Record<string, unknown> | null;
-  status: string;
-  /** first occurrence */
-  createdAt: string;
-  /** times this alert fired while OPEN (1 = once). Optional: older backends don't send it */
-  occurrenceCount?: number;
-  /** most recent occurrence — the list is ordered by this */
-  lastSeenAt?: string;
-}
+import BatchStatusBadge from "@/components/BatchStatusBadge";
+import AlertRoleBadge from "@/components/AlertRoleBadge";
+import LogDrawer, { type LogDrawerSeed } from "@/components/LogDrawer";
+import { getAlert, getAlerts, resolveAlert as resolveAlertApi } from "@/lib/endpoints";
+import { alertTone } from "@/lib/logRows";
+import { fmtTime, shortId } from "@/lib/format";
+import { QUERY_KEYS, useReplaceQuery } from "@/lib/nav";
+import { canDo } from "@/lib/roles";
+import type { AlertDetail, AlertItem as AlertRow } from "@/types/api";
 
 const ALL_STATUSES = "All statuses";
 const ALL_SEVERITIES = "All severities";
 const ALL_TYPES = "All types";
 
-/** ใช้ชุดสีเดียวกับ severity ของ log (logRows.toTone) ให้ทั้งสองหน้าอ่านเหมือนกัน */
-function severityTone(sev: string) {
-  switch ((sev ?? "").toUpperCase()) {
-    case "CRITICAL":
-    case "ERROR":
-      return "danger";
-    case "HIGH":
-    case "WARNING":
-      return "warn";
-    case "MEDIUM":
-      return "cyan";
-    default:
-      return "neutral";
-  }
-}
-
-const fmtTime = (v: string) => (v ? new Date(v).toLocaleString("sv-SE") : "—");
+/** Related logs of one alert (GET /alerts/:id), loaded when its row is expanded */
+type DetailState = { status: "loading" } | { status: "error"; message: string } | { status: "ok"; data: AlertDetail };
 
 export default function Alerts() {
   const t = useTheme();
+  const searchParams = useSearchParams();
+  const replaceQuery = useReplaceQuery();
+  // hiding is UX only — PATCH /alerts/:id/resolve is @Roles('operator', 'admin')
+  const canResolve = canDo("resolveAlert");
   const [alerts, setAlerts] = useState<AlertRow[] | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState(ALL_STATUSES);
   const [severity, setSeverity] = useState(ALL_SEVERITIES);
   const [alertType, setAlertType] = useState(ALL_TYPES);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // ?alert=<id> (from the log drawer) opens that alert
+  const linkedAlert = searchParams.get(QUERY_KEYS.alert);
+  const [expanded, setExpanded] = useState<string | null>(() => linkedAlert);
+  const [details, setDetails] = useState<Record<string, DetailState>>({});
+  const [openLog, setOpenLog] = useState<{ id: string; seed: LogDrawerSeed } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
 
   function load() {
-    return api
-      .get<AlertRow[]>("/alerts")
-      .then((r) => { setAlerts(r.data ?? []); setError(""); })
+    return getAlerts()
+      .then((data) => { setAlerts(data); setError(""); })
       .catch((e) => {
         console.error("alerts fetch failed", e);
         setAlerts([]);
@@ -74,11 +56,40 @@ export default function Alerts() {
 
   useEffect(() => { void load(); }, []);
 
+  useEffect(() => {
+    if (linkedAlert) setExpanded(linkedAlert);
+  }, [linkedAlert]);
+
+  const loadDetail = useCallback((id: string) => {
+    setDetails((d) => ({ ...d, [id]: { status: "loading" } }));
+    getAlert(id)
+      .then((data) => setDetails((d) => ({ ...d, [id]: { status: "ok", data } })))
+      .catch((e) => {
+        console.error("alert detail fetch failed", e);
+        const code = e.response?.status;
+        const message = code === 404 ? "This alert no longer exists." : code === 403 ? "Not authorised to read this alert." : "Could not load the related logs.";
+        setDetails((d) => ({ ...d, [id]: { status: "error", message } }));
+      });
+  }, []);
+
+  // fetch the related logs the first time a row is opened
+  useEffect(() => {
+    if (expanded && !details[expanded]) loadDetail(expanded);
+  }, [expanded, details, loadDetail]);
+
+  function toggleRow(id: string) {
+    const next = expanded === id ? null : id;
+    setExpanded(next);
+    replaceQuery({ [QUERY_KEYS.alert]: next });
+  }
+
+  const closeDrawer = useCallback(() => setOpenLog(null), []);
+
   async function resolveAlert(id: string) {
     setResolving(id);
     setActionError("");
     try {
-      await api.patch(`/alerts/${id}/resolve`);
+      await resolveAlertApi(id);
       // อ่านกลับจาก server แทนการแก้ state ในมือ — สถานะจริงมาจาก DB เสมอ
       await load();
     } catch (e: any) {
@@ -104,11 +115,11 @@ export default function Alerts() {
     [rows],
   );
 
-  // กรองฝั่ง client เหมือนหน้า Logs — GET /alerts คืนทั้งชุดและปริมาณยังอยู่หลักสิบ
+  // กรองฝั่ง client — GET /alerts คืนทั้งชุด (ไม่มี limit/filter ฝั่ง server) และปริมาณยังอยู่หลักสิบ
   const filtered = useMemo(
     () =>
       rows.filter((a) => {
-        const haystack = [a.alertType, a.source, a.title, a.severity, a.status].join(" ").toLowerCase();
+        const haystack = [a.alertType, a.source, a.sourceIp, a.ruleId, a.title, a.severity, a.status].join(" ").toLowerCase();
         return (
           haystack.includes(query.toLowerCase()) &&
           (status === ALL_STATUSES || a.status === status) &&
@@ -163,7 +174,7 @@ export default function Alerts() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by type, source, title…"
+            placeholder="Search by type, source, IP, rule, title…"
             style={{
               width: "100%", background: t.surface2, border: `1px solid ${t.border}`,
               borderRadius: 10, padding: "10px 12px 10px 36px", color: t.text,
@@ -182,7 +193,7 @@ export default function Alerts() {
             : (
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr>{["", "Severity", "Type", "Title", "Source", "Last seen", "Status", ""].map((h, i) => (
+                  <tr>{["", "Severity", "Type", "Title", "Source", "Source IP", "Last seen", "Status", ""].map((h, i) => (
                     <Th key={h + i}>{h}</Th>
                   ))}</tr>
                 </thead>
@@ -196,17 +207,19 @@ export default function Alerts() {
                             {/* detail เป็น jsonb — tamper alert เก็บ root ที่คำนวณได้กับที่อยู่บน chain ไว้ตรงนี้ */}
                             <button
                               type="button"
-                              onClick={() => setExpanded(isOpen ? null : a.id)}
+                              onClick={() => toggleRow(a.id)}
+                              aria-expanded={isOpen}
                               aria-label={isOpen ? "Hide detail" : "Show detail"}
                               style={{ background: "transparent", border: "none", cursor: "pointer", color: t.muted, padding: 0 }}
                             >
                               {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button>
                           </Td>
-                          <Td><Badge tone={severityTone(a.severity)}>{a.severity}</Badge></Td>
+                          <Td><Badge tone={alertTone(a.severity)}>{a.severity}</Badge></Td>
                           <Td style={{ ...monoFont }}>{a.alertType}</Td>
                           <Td style={{ maxWidth: 320 }}>{a.title}</Td>
                           <Td style={{ ...monoFont, color: t.muted }}>{a.source}</Td>
+                          <Td style={{ ...monoFont, color: t.muted, whiteSpace: "nowrap" }}>{a.sourceIp ?? "—"}</Td>
                           <Td
                             style={{ color: t.muted, ...monoFont, whiteSpace: "nowrap" }}
                             title={`First seen ${fmtTime(a.createdAt)}`}
@@ -215,7 +228,7 @@ export default function Alerts() {
                             {/* repeats are folded into the OPEN alert — show how many, or they vanish */}
                             {(a.occurrenceCount ?? 1) > 1 && (
                               <span style={{ marginLeft: 6 }}>
-                                <Badge tone={severityTone(a.severity)}>×{a.occurrenceCount}</Badge>
+                                <Badge tone={alertTone(a.severity)}>×{a.occurrenceCount}</Badge>
                               </span>
                             )}
                           </Td>
@@ -223,7 +236,7 @@ export default function Alerts() {
                             <Badge tone={a.status === "OPEN" ? "warn" : "good"}>{a.status}</Badge>
                           </Td>
                           <Td style={{ textAlign: "right" }}>
-                            {a.status === "OPEN" && (
+                            {a.status === "OPEN" && canResolve && (
                               <Button
                                 variant="subtle"
                                 small
@@ -237,19 +250,29 @@ export default function Alerts() {
                         </tr>
                         {isOpen && (
                           <tr>
-                            <Td colSpan={8} style={{ background: t.surface2 }}>
-                              <div style={{ display: "grid", gap: 6, fontSize: 12, ...monoFont }}>
-                                <div style={{ color: t.muted }}>
+                            <Td colSpan={9} style={{ background: t.surface2 }}>
+                              <div style={{ display: "grid", gap: 10, fontSize: 12 }}>
+                                <div style={{ color: t.muted, ...monoFont }}>
                                   alert {a.id}
+                                  {a.ruleId ? ` · rule ${a.ruleId}` : ""}
+                                  {a.sourceIp ? ` · from ${a.sourceIp}` : ""}
                                   {a.batchId ? ` · batch ${a.batchId}` : ""}
-                                  {a.logId ? ` · log ${a.logId}` : ""}
                                   {(a.occurrenceCount ?? 1) > 1
                                     ? ` · fired ${a.occurrenceCount}× · first ${fmtTime(a.createdAt)}`
                                     : ""}
                                 </div>
-                                <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", color: t.text }}>
-                                  {a.detail ? JSON.stringify(a.detail, null, 2) : "no detail recorded"}
-                                </pre>
+                                <RelatedLogs
+                                  state={details[a.id]}
+                                  onRetry={() => loadDetail(a.id)}
+                                  onOpen={(l) => setOpenLog({ id: l.id, seed: { createdAt: l.createdAt, sourceIp: l.sourceIp, message: l.message } })}
+                                />
+                                {/* detail เป็น jsonb — tamper alert เก็บ root ที่คำนวณได้กับที่อยู่บน chain ไว้ตรงนี้ */}
+                                <details>
+                                  <summary style={{ cursor: "pointer", color: t.muted, ...sansFont }}>Raw detail</summary>
+                                  <pre style={{ margin: "6px 0 0", whiteSpace: "pre-wrap", wordBreak: "break-all", color: t.text, ...monoFont }}>
+                                    {a.detail ? JSON.stringify(a.detail, null, 2) : "no detail recorded"}
+                                  </pre>
+                                </details>
                               </div>
                             </Td>
                           </tr>
@@ -262,6 +285,62 @@ export default function Alerts() {
             )}
         </div>
       </Card>
+
+      <LogDrawer logId={openLog?.id ?? null} seed={openLog?.seed} onClose={closeDrawer} />
+    </div>
+  );
+}
+
+/** Logs behind one alert, grouped by role order as the API returns them; a click opens the log drawer */
+function RelatedLogs({
+  state,
+  onRetry,
+  onOpen,
+}: {
+  state: DetailState | undefined;
+  onRetry: () => void;
+  onOpen: (log: AlertDetail["logs"][number]) => void;
+}) {
+  const t = useTheme();
+  if (!state || state.status === "loading") return <div style={{ color: t.muted, ...sansFont }}>Loading related logs…</div>;
+  if (state.status === "error") {
+    return (
+      <div style={{ color: t.danger, display: "flex", gap: 10, alignItems: "center", ...sansFont }}>
+        {state.message}
+        <Button variant="ghost" small onClick={onRetry}>Retry</Button>
+      </div>
+    );
+  }
+  const logs = state.data.logs;
+  return (
+    <div>
+      <div style={{ color: t.muted, marginBottom: 6, ...sansFont }}>Related logs ({logs.length})</div>
+      {logs.length === 0 ? (
+        <div style={{ color: t.muted, ...sansFont }}>No logs are linked to this alert (e.g. a batch integrity alert).</div>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {logs.map((l) => (
+            <button
+              key={`${l.role}:${l.id}`}
+              type="button"
+              onClick={() => onOpen(l)}
+              title={`Open log ${l.id}`}
+              style={{
+                display: "flex", flexWrap: "wrap", gap: "6px 10px", alignItems: "center",
+                textAlign: "left", width: "100%", padding: "8px 10px", borderRadius: 9, cursor: "pointer",
+                background: t.surface, border: `1px solid ${t.border}`, color: t.text, fontSize: 12,
+              }}
+            >
+              <AlertRoleBadge role={l.role} />
+              <span style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{fmtTime(l.createdAt)}</span>
+              <span style={{ flex: "1 1 260px", minWidth: 0, overflowWrap: "anywhere", ...monoFont }}>
+                <span style={{ color: t.blue2 }}>{shortId(l.id)}</span> {l.sourceIp ? `· ${l.sourceIp} · ` : "· "}{l.message}
+              </span>
+              <BatchStatusBadge status={l.batchStatus} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

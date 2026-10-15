@@ -1,4 +1,19 @@
 /** Shared shaping of `GET /logs` rows into what LogTable renders. */
+import type { BatchStatus, LogItem } from "@/types/api";
+
+/** One LogTable row */
+export interface LogRow {
+  id: string;
+  ts: string;
+  source: string;
+  ip: string;
+  event: string;
+  attackType: string;
+  severity: string;
+  sev: string;
+  batchStatus: BatchStatus | null;
+  polygonscanUrl: string | null;
+}
 
 /**
  * Map a backend severity to a Badge colour.
@@ -21,7 +36,26 @@ export function toTone(sev: string): string {
   }
 }
 
-export function mapLog(l: any) {
+/**
+ * Badge colour for an alert severity. Alerts carry more levels than logs
+ * (detection also emits HIGH / MEDIUM), so this is not toTone.
+ */
+export function alertTone(sev: string): string {
+  switch ((sev ?? "").toUpperCase()) {
+    case "CRITICAL":
+    case "ERROR":
+      return "danger";
+    case "HIGH":
+    case "WARNING":
+      return "warn";
+    case "MEDIUM":
+      return "cyan";
+    default:
+      return "neutral";
+  }
+}
+
+export function mapLog(l: Partial<LogItem>): LogRow {
   return {
     // full UUID — LogTable truncates for display so the value stays copyable
     // and can be pasted straight into Verify (GET /logs/:id/proof needs it whole)
@@ -32,12 +66,19 @@ export function mapLog(l: any) {
     event: l.message ?? "—",
     attackType: l.eventType ?? "—",
     severity: l.severity ?? "—",
-    sev: toTone(l.severity),
+    sev: toTone(l.severity ?? ""),
+    // older backends (bare array) have no batch columns → shown as not sealed
+    batchStatus: l.batchStatus ?? null,
+    polygonscanUrl: l.polygonscanUrl ?? null,
   };
 }
 
-/** `GET /logs` returns `{ items, total, limit, offset }`; a bare array (older backend) still works. */
-export function unwrapLogs(payload: any): any[] {
+/**
+ * `GET /logs` returns `{ items, total, limit, offset }` (docs/api/logs-alerts.md §1).
+ * A bare array (older backend) and `{ data }` still work, so Dashboard/Verify
+ * don't go blank if the envelope changes again.
+ */
+export function unwrapLogs(payload: any): Partial<LogItem>[] {
   if (Array.isArray(payload)) return payload;
   return payload?.items ?? payload?.data ?? [];
 }

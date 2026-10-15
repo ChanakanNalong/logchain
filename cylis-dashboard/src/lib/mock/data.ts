@@ -1,0 +1,314 @@
+/**
+ * Mock dataset for NEXT_PUBLIC_USE_MOCK=1 — shaped like docs/api/logs-alerts.md.
+ * Covers the states that are hard to produce on a real stack: every batch
+ * status, every chainCheck outcome, and alerts holding all four log roles.
+ * Fixed values only (no Math.random) so every reload shows the same rows.
+ */
+import type { AlertItem, AlertLogRole, BatchInfo, BatchStatus, ChainCheck, LogItem, LogProof } from "@/types/api";
+
+const EXPLORER = "https://amoy.polygonscan.com/tx/";
+const BASE_TIME = Date.parse("2026-10-15T10:00:00.000Z");
+
+/** Deterministic hex of the given length, seeded by a string */
+function hex(seed: string, len = 64): string {
+  let h = 2166136261;
+  let out = "";
+  while (out.length < len) {
+    for (let i = 0; i < seed.length; i++) {
+      h ^= seed.charCodeAt(i) + out.length;
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    out += h.toString(16).padStart(8, "0");
+  }
+  return out.slice(0, len);
+}
+
+/** Deterministic v4-looking UUID */
+function uuid(seed: string): string {
+  const x = hex(`uuid:${seed}`, 32);
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-4${x.slice(13, 16)}-8${x.slice(17, 20)}-${x.slice(20, 32)}`;
+}
+
+function at(minutesAgo: number, seconds = 0): string {
+  return new Date(BASE_TIME - minutesAgo * 60_000 + seconds * 1000).toISOString();
+}
+
+const ZERO_ROOT = "0x" + "0".repeat(64);
+
+interface MockBatch {
+  info: BatchInfo;
+  /** what GET /logs/:id/detail returns for every log of this batch */
+  chainCheck: Omit<Extract<ChainCheck, { match: boolean }>, "checkedAt"> | { error: string };
+  proofVerified: boolean;
+}
+
+function batch(
+  key: string,
+  status: BatchStatus,
+  minutesAgo: number,
+  opts: { anchored: boolean; chain: "match" | "mismatch" | "zero" | "error"; proofVerified?: boolean },
+): MockBatch {
+  const merkleRoot = hex(`root:${key}`);
+  const txHash = opts.anchored ? "0x" + hex(`tx:${key}`) : null;
+  const dbRoot = "0x" + merkleRoot;
+  const chainCheck =
+    opts.chain === "error"
+      ? { error: "could not read root from chain: request timed out after 5000ms" }
+      : {
+          dbRoot,
+          chainRoot: opts.chain === "match" ? dbRoot : opts.chain === "zero" ? ZERO_ROOT : "0x" + hex(`chain:${key}`),
+          match: opts.chain === "match",
+        };
+  return {
+    info: {
+      id: uuid(`batch:${key}`),
+      status,
+      merkleRoot,
+      txHash,
+      blockNumber: opts.anchored ? 28451000 + minutesAgo * 7 : null,
+      polygonscanUrl: txHash ? EXPLORER + txHash : null,
+      sealedAt: at(minutesAgo),
+      confirmedAt: status === "CONFIRMED" || status === "TAMPERED" ? at(minutesAgo, 6) : null,
+    },
+    chainCheck,
+    proofVerified: opts.proofVerified ?? true,
+  };
+}
+
+/** One batch per state the UI has to draw */
+export const MOCK_BATCHES = {
+  confirmed: batch("confirmed", "CONFIRMED", 50, { anchored: true, chain: "match" }),
+  // 3c: sealed and anchored, but the RPC is down right now
+  confirmedRpcDown: batch("confirmed-rpc-down", "CONFIRMED", 40, { anchored: true, chain: "error" }),
+  // root in the DB was rewritten after anchoring → does not match the chain
+  tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "mismatch", proofVerified: false }),
+  // tx sent, receipt not confirmed yet
+  unverified: batch("unverified", "UNVERIFIED", 20, { anchored: true, chain: "match" }),
+  // sealed without anchoring → chain still holds 0x000… for this batch
+  sealed: batch("sealed", "SEALED", 15, { anchored: false, chain: "zero" }),
+  // anchoring gave up
+  failed: batch("failed", "FAILED", 10, { anchored: false, chain: "zero" }),
+  pending: batch("pending", "PENDING", 5, { anchored: false, chain: "zero" }),
+} satisfies Record<string, MockBatch>;
+
+type BatchKey = keyof typeof MOCK_BATCHES;
+
+interface Seed {
+  key: string;
+  minutesAgo: number;
+  seconds?: number;
+  source: string;
+  sourceIp: string | null;
+  eventType: string;
+  severity: string;
+  message: string;
+  batch: BatchKey | null;
+  cdeScope?: boolean;
+}
+
+const BRUTE_IP = "203.0.113.5";
+const SCAN_IP = "198.51.100.9";
+
+const SEEDS: Seed[] = [
+  // brute force on sshd → alert 5710 (trigger + window + repeat) and 5715 (prior)
+  ...[0, 1, 2, 3].map((i): Seed => ({
+    key: `brute-window-${i}`, minutesAgo: 51, seconds: i * 1.3, source: "vps-sshd", sourceIp: BRUTE_IP,
+    eventType: "SSH_AUTH", severity: "WARNING",
+    message: `Failed password for root from 203.0.113.xxx port ${52314 + i} ssh2`, batch: "confirmed",
+  })),
+  {
+    key: "brute-trigger", minutesAgo: 51, seconds: 6, source: "vps-sshd", sourceIp: BRUTE_IP,
+    eventType: "SSH_AUTH", severity: "WARNING",
+    message: "Failed password for root from 203.0.113.xxx port 52318 ssh2", batch: "confirmed",
+  },
+  {
+    key: "brute-success", minutesAgo: 49, source: "vps-sshd", sourceIp: BRUTE_IP,
+    eventType: "SSH_AUTH", severity: "INFO",
+    message: "Accepted password for root from 203.0.113.xxx port 52401 ssh2", batch: "confirmed",
+  },
+  {
+    key: "brute-repeat", minutesAgo: 2, source: "vps-sshd", sourceIp: BRUTE_IP,
+    eventType: "SSH_AUTH", severity: "WARNING",
+    message: "Failed password for root from 203.0.113.xxx port 52519 ssh2", batch: null,
+  },
+  // web scanner on nginx
+  {
+    key: "scan-env", minutesAgo: 41, source: "vps-nginx", sourceIp: SCAN_IP,
+    eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /.env 404 "zgrab/0.x"', batch: "confirmedRpcDown",
+  },
+  {
+    key: "scan-git", minutesAgo: 41, seconds: 2, source: "vps-nginx", sourceIp: SCAN_IP,
+    eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /.git/config 404 "zgrab/0.x"', batch: "confirmedRpcDown",
+  },
+  {
+    key: "scan-sqli", minutesAgo: 36, source: "vps-nginx", sourceIp: SCAN_IP,
+    eventType: "HTTP_ACCESS", severity: "WARNING",
+    message: "GET /item?id=1%20UNION%20SELECT%20password%20FROM%20users 400 \"sqlmap/1.8\"", batch: "tampered",
+  },
+  // app traffic spread over the other batches
+  {
+    key: "priv-esc", minutesAgo: 35, source: "auth-service", sourceIp: "10.0.4.21",
+    eventType: "PRIV_ESC", severity: "CRITICAL", message: "user jdoe added to group sudo by uid 1001", batch: "tampered",
+  },
+  {
+    key: "card", minutesAgo: 34, source: "app-svc-1", sourceIp: "10.0.4.30",
+    eventType: "CARD_ACCESS", severity: "ERROR", message: "bulk read of card_holders by svc-report (2,400 rows)",
+    batch: "tampered", cdeScope: true,
+  },
+  ...Array.from({ length: 8 }, (_, i): Seed => ({
+    key: `web-${i}`, minutesAgo: 30 - i, source: "app-web-1", sourceIp: `192.0.2.${10 + i}`,
+    eventType: "WEB_REQUEST", severity: i % 4 === 3 ? "ERROR" : "INFO",
+    message: i % 4 === 3 ? `POST /api/orders 500 upstream timeout (req ${1000 + i})` : `GET /api/products?page=${i} 200`,
+    batch: i < 3 ? "unverified" : i < 6 ? "sealed" : "failed",
+  })),
+  ...Array.from({ length: 6 }, (_, i): Seed => ({
+    key: `auth-${i}`, minutesAgo: 22 - i * 2, source: "auth-service", sourceIp: `10.0.5.${40 + i}`,
+    eventType: i % 3 === 0 ? "AUTH_FAILURE" : "AUTH_SUCCESS", severity: i % 3 === 0 ? "WARNING" : "INFO",
+    message: i % 3 === 0 ? `login failed for user user${i}: bad password` : `login ok for user user${i}`,
+    batch: i < 2 ? "unverified" : i < 4 ? "sealed" : "failed",
+  })),
+  ...Array.from({ length: 6 }, (_, i): Seed => ({
+    key: `db-${i}`, minutesAgo: 9 - i, source: "app-svc-1", sourceIp: null,
+    eventType: "DB_QUERY", severity: i === 0 ? "DEBUG" : "INFO",
+    message: `query orders_by_customer took ${120 + i * 15}ms`,
+    batch: i < 3 ? "pending" : null,
+  })),
+  {
+    key: "ssh-invalid", minutesAgo: 1, source: "vps-sshd", sourceIp: "2001:db8::1",
+    eventType: "SSH_AUTH", severity: "WARNING", message: "Invalid user oracle from 2001:db8::1 port 40022", batch: null,
+  },
+  {
+    key: "nginx-wp", minutesAgo: 0, seconds: -20, source: "vps-nginx", sourceIp: "198.51.100.77",
+    eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /wp-login.php 404 "Mozilla/5.0"', batch: null,
+  },
+];
+
+export interface MockLog {
+  item: LogItem;
+  batch: MockBatch | null;
+  proof: LogProof | null;
+}
+
+function buildLog(s: Seed): MockLog {
+  const b = s.batch ? MOCK_BATCHES[s.batch] : null;
+  const item: LogItem = {
+    id: uuid(`log:${s.key}`),
+    createdAt: at(s.minutesAgo, s.seconds ?? 0),
+    source: s.source,
+    sourceIp: s.sourceIp,
+    eventType: s.eventType,
+    severity: s.severity,
+    message: s.message,
+    classification: s.cdeScope ? "CONFIDENTIAL" : "INTERNAL",
+    cdeScope: s.cdeScope ?? false,
+    retentionDays: s.cdeScope ? 365 * 7 : 365,
+    rawHash: hex(`raw:${s.key}`),
+    batchId: b?.info.id ?? null,
+    batchStatus: b?.info.status ?? null,
+    txHash: b?.info.txHash ?? null,
+    blockNumber: b?.info.blockNumber ?? null,
+    polygonscanUrl: b?.info.polygonscanUrl ?? null,
+  };
+  const proof: LogProof | null = b
+    ? {
+        verified: b.proofVerified,
+        path: [0, 1, 2].map((i) => ({ position: i % 2 ? "left" : "right", data: "0x" + hex(`proof:${s.key}:${i}`) })),
+      }
+    : null;
+  return { item, batch: b, proof };
+}
+
+/** Newest first, like the backend */
+export const MOCK_LOGS: MockLog[] = SEEDS.map(buildLog).sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt));
+
+const logId = (key: string) => uuid(`log:${key}`);
+
+export interface MockAlert {
+  alert: AlertItem;
+  links: { logId: string; role: AlertLogRole }[];
+}
+
+function mockAlert(key: string, a: Omit<AlertItem, "id">, links: MockAlert["links"]): MockAlert {
+  return { alert: { id: uuid(`alert:${key}`), ...a }, links };
+}
+
+export const MOCK_ALERTS: MockAlert[] = [
+  mockAlert(
+    "brute",
+    {
+      logId: logId("brute-trigger"), batchId: null, alertType: "RULE_MATCH", ruleId: "5710", severity: "CRITICAL",
+      source: "vps-sshd", sourceIp: BRUTE_IP, title: "Multiple authentication failures (brute force)",
+      detail: {
+        rule_id: 5710, reason: "Multiple authentication failures (brute force)", confidence: null,
+        log_message: "Failed password for root from 203.0.113.xxx port 52318 ssh2", event_type: "SSH_AUTH",
+        ip_intel: { ip: BRUTE_IP, reputation: { available: false } },
+      },
+      status: "OPEN", occurrenceCount: 2, createdAt: at(51, 7), lastSeenAt: at(2, 1), lastNotifiedAt: at(51, 7),
+    },
+    [
+      { logId: logId("brute-trigger"), role: "trigger" },
+      ...[0, 1, 2, 3].map((i) => ({ logId: logId(`brute-window-${i}`), role: "window" as const })),
+      { logId: logId("brute-repeat"), role: "repeat" },
+    ],
+  ),
+  mockAlert(
+    "brute-success",
+    {
+      logId: logId("brute-success"), batchId: null, alertType: "RULE_MATCH", ruleId: "5715", severity: "CRITICAL",
+      source: "vps-sshd", sourceIp: BRUTE_IP, title: "Successful login after multiple failures",
+      detail: { rule_id: 5715, reason: "Authentication success after brute force", event_type: "SSH_AUTH" },
+      status: "OPEN", occurrenceCount: 1, createdAt: at(49, 1), lastSeenAt: at(49, 1), lastNotifiedAt: at(49, 1),
+    },
+    [
+      { logId: logId("brute-success"), role: "trigger" },
+      { logId: logId("brute-trigger"), role: "prior" },
+      ...[0, 1, 2, 3].map((i) => ({ logId: logId(`brute-window-${i}`), role: "prior" as const })),
+    ],
+  ),
+  mockAlert(
+    "scanner",
+    {
+      logId: logId("scan-git"), batchId: null, alertType: "RULE_MATCH", ruleId: "31151", severity: "WARNING",
+      source: "vps-nginx", sourceIp: SCAN_IP, title: "Web scanner probing sensitive paths",
+      detail: { rule_id: 31151, reason: "Requests for /.env and /.git from one IP", event_type: "HTTP_ACCESS" },
+      status: "RESOLVED", occurrenceCount: 1, createdAt: at(41, 3), lastSeenAt: at(41, 3), lastNotifiedAt: at(41, 3),
+    },
+    [
+      { logId: logId("scan-git"), role: "trigger" },
+      { logId: logId("scan-env"), role: "window" },
+    ],
+  ),
+  mockAlert(
+    "sqli",
+    {
+      logId: logId("scan-sqli"), batchId: null, alertType: "RULE_MATCH", ruleId: "31103", severity: "HIGH",
+      source: "vps-nginx", sourceIp: SCAN_IP, title: "SQL injection attempt",
+      detail: { rule_id: 31103, reason: "UNION SELECT in query string", event_type: "HTTP_ACCESS" },
+      status: "OPEN", occurrenceCount: 1, createdAt: at(36, 1), lastSeenAt: at(36, 1), lastNotifiedAt: at(36, 1),
+    },
+    [{ logId: logId("scan-sqli"), role: "trigger" }],
+  ),
+  mockAlert(
+    "tamper",
+    {
+      logId: null, batchId: MOCK_BATCHES.tampered.info.id, alertType: "INTEGRITY_TAMPERED", ruleId: null,
+      severity: "CRITICAL", source: "integrity", sourceIp: null, title: "Batch root does not match the on-chain root",
+      detail: {
+        dbRoot: "0x" + MOCK_BATCHES.tampered.info.merkleRoot,
+        chainRoot: (MOCK_BATCHES.tampered.chainCheck as { chainRoot: string }).chainRoot,
+      },
+      status: "OPEN", occurrenceCount: 1, createdAt: at(12), lastSeenAt: at(12), lastNotifiedAt: at(12),
+    },
+    [],
+  ),
+  mockAlert(
+    "ml",
+    {
+      logId: logId("priv-esc"), batchId: null, alertType: "ML_ANOMALY", ruleId: null, severity: "MEDIUM",
+      source: "auth-service", sourceIp: "10.0.4.21", title: "DeepLog: unexpected log key sequence",
+      detail: { confidence: 0.87, sequence_length: 10 },
+      status: "OPEN", occurrenceCount: 1, createdAt: at(35, 2), lastSeenAt: at(35, 2), lastNotifiedAt: null,
+    },
+    [{ logId: logId("priv-esc"), role: "trigger" }],
+  ),
+];
