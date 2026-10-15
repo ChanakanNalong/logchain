@@ -38,6 +38,10 @@ export default function Alerts() {
   // ?alert=<id> (from the log drawer) opens that alert
   const linkedAlert = searchParams.get(QUERY_KEYS.alert);
   const [expanded, setExpanded] = useState<string | null>(() => linkedAlert);
+  // row to bring into view once it is rendered (opened from ?alert= or "ล้างตัวกรองและแสดง")
+  const [scrollTo, setScrollTo] = useState<string | null>(() => linkedAlert);
+  // the user's own expand/collapse also writes ?alert= — that one must not scroll
+  const selfToggled = useRef(false);
   const [details, setDetails] = useState<Record<string, DetailState>>({});
   const [openLog, setOpenLog] = useState<{ id: string; seed: LogDrawerSeed } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
@@ -60,7 +64,10 @@ export default function Alerts() {
   useEffect(() => { void load(); }, []);
 
   useEffect(() => {
-    if (linkedAlert) setExpanded(linkedAlert);
+    if (!linkedAlert) return;
+    setExpanded(linkedAlert);
+    if (selfToggled.current) selfToggled.current = false;
+    else setScrollTo(linkedAlert);
   }, [linkedAlert]);
 
   const loadDetail = useCallback((id: string) => {
@@ -68,8 +75,9 @@ export default function Alerts() {
     getAlert(id)
       .then((data) => setDetails((d) => ({ ...d, [id]: { status: "ok", data } })))
       .catch((e) => {
-        console.error("alert detail fetch failed", e);
         const code = e.response?.status;
+        // 404 is handled on screen ("no longer exists") — not worth a console error
+        if (code !== 404) console.error("alert detail fetch failed", e);
         const message = code === 404 ? "This alert no longer exists." : code === 403 ? "Not authorised to read this alert." : "Could not load the related logs.";
         setDetails((d) => ({ ...d, [id]: { status: "error", message } }));
       });
@@ -91,6 +99,7 @@ export default function Alerts() {
 
   function toggleRow(id: string) {
     const next = expanded === id ? null : id;
+    if (next) selfToggled.current = true;
     setExpanded(next);
     replaceQuery({ [QUERY_KEYS.alert]: next });
   }
@@ -141,6 +150,32 @@ export default function Alerts() {
       }),
     [rows, query, status, severity, alertType],
   );
+
+  // ?alert=<id> that the list cannot show: hidden by the filters, or gone.
+  // Say so instead of silently clearing the filters (or silently showing nothing).
+  const linkedState =
+    !linkedAlert || alerts === null || error ? null
+    : !rows.some((a) => a.id === linkedAlert) ? "missing"
+    : !filtered.some((a) => a.id === linkedAlert) ? "hidden"
+    : null;
+
+  // waits until the row exists (list still loading, or hidden by the filters)
+  useEffect(() => {
+    if (!scrollTo) return;
+    const row = document.getElementById(`alert-row-${scrollTo}`);
+    if (!row) return;
+    row.scrollIntoView({ block: "start", behavior: "smooth" });
+    setScrollTo(null);
+  }, [scrollTo, filtered]);
+
+  function clearFiltersAndShow(id: string) {
+    setQuery("");
+    setStatus(ALL_STATUSES);
+    setSeverity(ALL_SEVERITIES);
+    setAlertType(ALL_TYPES);
+    setExpanded(id);
+    setScrollTo(id); // runs after the re-render that brings the row back
+  }
 
   const openCount = rows.filter((a) => a.status === "OPEN").length;
   const criticalOpen = rows.filter((a) => a.status === "OPEN" && a.severity === "CRITICAL").length;
@@ -198,6 +233,24 @@ export default function Alerts() {
         </div>
 
         {error && <div style={{ marginTop: 12, color: t.danger, fontSize: 13 }}>{error}</div>}
+        {linkedState && (
+          <div
+            role="status"
+            style={{
+              marginTop: 12, padding: "8px 12px", borderRadius: 9, fontSize: 13, display: "flex",
+              alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
+              color: t.warn, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.4)",
+            }}
+          >
+            <span>
+              {linkedState === "hidden" ? "alert ที่เลือกถูกตัวกรองซ่อนอยู่" : "ไม่พบ alert นี้"}
+              <span style={{ marginLeft: 8, color: t.muted, ...monoFont }}>{shortId(linkedAlert)}</span>
+            </span>
+            {linkedState === "hidden" && linkedAlert && (
+              <Button variant="subtle" small onClick={() => clearFiltersAndShow(linkedAlert)}>ล้างตัวกรองและแสดง</Button>
+            )}
+          </div>
+        )}
         {actionError && <div style={{ marginTop: 12, color: t.danger, fontSize: 13 }}>{actionError}</div>}
 
         <div ref={tableBoxRef} style={{ marginTop: 12, overflowX: "auto" }}>
@@ -216,7 +269,8 @@ export default function Alerts() {
                     const isOpen = expanded === a.id;
                     return (
                       <Fragment key={a.id}>
-                        <tr>
+                        {/* scroll-margin: leave ~16px above the row so its top edge is not cut off */}
+                        <tr id={`alert-row-${a.id}`} style={{ scrollMarginTop: 16 }}>
                           <Td style={{ width: 24 }}>
                             {/* detail เป็น jsonb — tamper alert เก็บ root ที่คำนวณได้กับที่อยู่บน chain ไว้ตรงนี้ */}
                             <button
