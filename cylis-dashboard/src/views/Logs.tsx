@@ -28,7 +28,7 @@ export default function Logs() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/logs")
+    api.get("/logs", { params: { limit: 100 } })
       .then((r) => setLogs(unwrapLogs(r.data).map(mapLog)))
       .catch((e) => { console.error("logs fetch failed", e); setLogs([]); })
       .finally(() => setLoading(false));

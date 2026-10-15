@@ -36,7 +36,8 @@ export function mapLog(l: any) {
   };
 }
 
-/** `GET /logs` may return a bare array or a paginated `{ data: [...] }`. */
+/** `GET /logs` returns `{ items, total, limit, offset }`; a bare array (older backend) still works. */
 export function unwrapLogs(payload: any): any[] {
-  return Array.isArray(payload) ? payload : (payload?.data ?? []);
+  if (Array.isArray(payload)) return payload;
+  return payload?.items ?? payload?.data ?? [];
 }
