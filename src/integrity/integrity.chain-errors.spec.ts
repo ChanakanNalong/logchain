@@ -68,13 +68,17 @@ describe('IntegrityService — chain write errors', () => {
     onChain = new Map();
 
     // default: anchor สำเร็จตามปกติ — แต่ละ test override ได้
-    storeRootImpl = async (batchId, root) => {
+    storeRootImpl = (batchId, root) => {
       onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
-      return { txHash: '0xtx', blockNumber: 1, confirmed: true };
+      return Promise.resolve({
+        txHash: '0xtx',
+        blockNumber: 1,
+        confirmed: true,
+      });
     };
 
     const logsRepo = {
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         let rows = [...logsStore];
         const idOp = opts.where?.id;
         // sealBatch ใช้ Not(In(mappedIds)) เพื่อกัน log ที่ seal ไปแล้ว
@@ -89,47 +93,50 @@ describe('IntegrityService — chain write errors', () => {
           rows = rows.filter((r) => !excluded.includes(r.id));
         }
         if (opts.take) rows = rows.slice(0, opts.take);
-        return rows;
+        return Promise.resolve(rows);
       }),
-      findOneBy: jest.fn(
-        async ({ id }: any) => logsStore.find((l) => l.id === id) ?? null,
+      findOneBy: jest.fn(({ id }: any) =>
+        Promise.resolve(logsStore.find((l) => l.id === id) ?? null),
       ),
     };
 
     const mappingRepo = {
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         const bid = opts.where?.batchId;
-        return bid
-          ? mappingStore.filter((m) => m.batchId === bid)
-          : [...mappingStore];
+        return Promise.resolve(
+          bid
+            ? mappingStore.filter((m) => m.batchId === bid)
+            : [...mappingStore],
+        );
       }),
-      findOneBy: jest.fn(
-        async ({ logId }: any) =>
-          mappingStore.find((m) => m.logId === logId) ?? null,
+      findOneBy: jest.fn(({ logId }: any) =>
+        Promise.resolve(mappingStore.find((m) => m.logId === logId) ?? null),
       ),
       create: jest.fn((dto: any) => ({ ...dto })),
-      save: jest.fn(async (val: any) => {
+      save: jest.fn((val: any) => {
         for (const m of Array.isArray(val) ? val : [val]) mappingStore.push(m);
-        return val;
+        return Promise.resolve(val);
       }),
     };
 
     let batchSeq = 0;
     const batchesRepo = {
       create: jest.fn((dto: any) => ({ ...dto })),
-      save: jest.fn(async (batch: any) => {
+      save: jest.fn((batch: any) => {
         if (!batch.id) batch.id = `batch-${batchSeq++}`;
         if (!batchStore.includes(batch)) batchStore.push(batch);
-        return batch;
+        return Promise.resolve(batch);
       }),
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         const clauses = Array.isArray(opts.where) ? opts.where : [opts.where];
-        return batchStore.filter((b) =>
-          clauses.some((c: any) => !c?.status || c.status === b.status),
+        return Promise.resolve(
+          batchStore.filter((b) =>
+            clauses.some((c: any) => !c?.status || c.status === b.status),
+          ),
         );
       }),
-      findOneBy: jest.fn(
-        async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
+      findOneBy: jest.fn(({ id }: any) =>
+        Promise.resolve(batchStore.find((b) => b.id === id) ?? null),
       ),
     };
     // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
@@ -141,10 +148,10 @@ describe('IntegrityService — chain write errors', () => {
     });
 
     const alertsRepo = {
-      findOne: jest.fn(async () => null),
+      findOne: jest.fn(() => Promise.resolve(null)),
       create: jest.fn((dto: any) => dto),
-      save: jest.fn(async (dto: any) => dto),
-      update: jest.fn(async () => ({ affected: 0 })),
+      save: jest.fn((dto: any) => Promise.resolve(dto)),
+      update: jest.fn(() => Promise.resolve({ affected: 0 })),
     };
 
     const blockchain = {
@@ -153,16 +160,17 @@ describe('IntegrityService — chain write errors', () => {
         storeRootImpl(batchId, root),
       ),
       getTxGas: jest.fn((txHash: string) => txGasImpl(txHash)),
-      checkRoot: jest.fn(async (batchId: string, root: string) => {
+      checkRoot: jest.fn((batchId: string, root: string) => {
         const stored = onChain.get(batchId);
         const expected = (
           root.startsWith('0x') ? root : '0x' + root
         ).toLowerCase();
-        if (!stored) return { result: 'MISSING', onChainRoot: '0x0' };
-        return {
+        if (!stored)
+          return Promise.resolve({ result: 'MISSING', onChainRoot: '0x0' });
+        return Promise.resolve({
           result: stored.toLowerCase() === expected ? 'MATCH' : 'MISMATCH',
           onChainRoot: stored,
-        };
+        });
       }),
     };
 
@@ -272,10 +280,14 @@ describe('IntegrityService — chain write errors', () => {
   describe('sealBatch — tx sent but not confirmed in time', () => {
     // public RPC (publicnode) ช้ากว่า Hardhat มาก — tx.wait() มี timeout แล้ว
     // ครบเวลาแล้วยังไม่ confirm ต้องไม่ทิ้ง batch ไว้ที่ PENDING และต้องไม่ตั้ง FAILED
-    const unconfirmed = async (batchId: string, root: string) => {
+    const unconfirmed = (batchId: string, root: string) => {
       // tx ขึ้น chain จริง แค่ยังไม่ถูก mine ตอน wait() หมดเวลา
       onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
-      return { txHash: '0xslowtx', blockNumber: null, confirmed: false };
+      return Promise.resolve({
+        txHash: '0xslowtx',
+        blockNumber: null,
+        confirmed: false,
+      });
     };
 
     it('parks the batch at UNVERIFIED — never PENDING, never FAILED', async () => {
@@ -319,11 +331,12 @@ describe('IntegrityService — chain write errors', () => {
     });
 
     it('stays UNVERIFIED — not TAMPERED — while the tx is still missing', async () => {
-      storeRootImpl = async () => ({
-        txHash: '0xslowtx',
-        blockNumber: null,
-        confirmed: false,
-      });
+      storeRootImpl = () =>
+        Promise.resolve({
+          txHash: '0xslowtx',
+          blockNumber: null,
+          confirmed: false,
+        });
 
       const batch = await service.sealBatch();
       await service.verifyAllBatches();

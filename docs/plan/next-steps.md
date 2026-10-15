@@ -136,7 +136,7 @@ python3 scripts/check-rbac-live.py     # token จริงของ analyst/ope
 ### ชุดตรวจก่อน commit (ตรงกับที่ CI รัน)
 
 ```bash
-npm run lint:ci   # ← สำคัญ: มีเพดาน warning 667 · `npm run lint` ไม่เช็คเพดาน
+npm run lint:ci   # ← สำคัญ: มีเพดาน warning 585 · `npm run lint` ไม่เช็คเพดาน
 npm test
 npm run build
 # integration/e2e: รันกับ environment hh (README หัวข้อ "environment hh") ไม่ใช่ stack หลัก
@@ -334,7 +334,7 @@ PARTIAL / FAIL / N/A) · บั๊ก PDPA erasure (A1) แก้แล้ว ·
 | อาการ | ที่จริงคือ |
 |---|---|
 | Docker ไม่ขึ้นหลัง boot · `docker ps` ต่อ daemon ไม่ได้ · `/srv/lcsecure` ว่าง | ยังไม่ได้ปลดล็อกไฟล์ LUKS (พลาดช่องใส่ PIN ตอน boot) — Docker รอ mount โดยตั้งใจ · `sudo systemctl start systemd-cryptsetup@lcsecure.service` → `sudo mount /srv/lcsecure` → `sudo systemctl start docker` (runbook "ใช้งานประจำวัน") |
-| lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 667`) |
+| lint ผ่านในเครื่องแต่ CI แดง | `npm run lint` มี `--fix` และไม่ดูเพดาน — ต้องรัน **`npm run lint:ci`** (`--max-warnings 585`) |
 | เครื่องอื่นใน LAN เข้า service ไม่ได้ (log source ข้ามเครื่อง ฯลฯ) | ตั้งใจ — port bind `127.0.0.1` · ตั้ง `PUBLISH_ADDR=0.0.0.0` ใน `.env` แล้ว `docker compose up -d` (เปิดทุก port) |
 | ยิง log ได้ 201 แต่ไม่มี alert แถวใหม่ | (1) `select count(*) from kafka_pending_logs` — ค้างคิวเพราะ Kafka ล่มไหม (2) มี alert OPEN ของ rule + host เดียวกันอยู่ไหม — ถูกนับเป็น `occurrence_count` ของตัวเดิม (ตั้งใจ) |
 | rule แบบ threshold ไม่เด้งทั้งที่ยิง log ครบ | rule นับหน้าต่างเวลาจาก **`createdAt` ของ event** ไม่ใช่เวลาที่รับ — ยิงห่างกันเกิน 60 วิ ก็ไม่เข้าเกณฑ์ (ตั้งใจ ดู `detection/app/rules.py::_event_time`) |

@@ -104,8 +104,8 @@ describe('KeycloakAdminService', () => {
 
   it('re-authenticates once the cached token has expired', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-08-09T00:00:00Z'));
-    fetchMock.mockImplementation(async (url: string) =>
-      url === TOKEN_URL ? tokenRes('t', 60) : jsonRes([]),
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(url === TOKEN_URL ? tokenRes('t', 60) : jsonRes([])),
     );
 
     await service.listUsers();
@@ -123,8 +123,8 @@ describe('KeycloakAdminService', () => {
   });
 
   it('shares one token request between calls that race on a cold cache', async () => {
-    fetchMock.mockImplementation(async (url: string) =>
-      url === TOKEN_URL ? tokenRes('t1', 300) : jsonRes([]),
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(url === TOKEN_URL ? tokenRes('t1', 300) : jsonRes([])),
     );
 
     await Promise.all([
@@ -229,11 +229,11 @@ describe('KeycloakAdminService', () => {
   });
 
   it('caches the role representation instead of re-fetching it per mutation', async () => {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url === TOKEN_URL) return tokenRes('t1', 300);
+    fetchMock.mockImplementation((url: string) => {
+      if (url === TOKEN_URL) return Promise.resolve(tokenRes('t1', 300));
       if (url.endsWith('/roles/auditor'))
-        return jsonRes({ id: 'role-uuid', name: 'auditor' });
-      return emptyRes();
+        return Promise.resolve(jsonRes({ id: 'role-uuid', name: 'auditor' }));
+      return Promise.resolve(emptyRes());
     });
 
     await service.assignRealmRole('user-1', 'auditor');
