@@ -20,6 +20,20 @@
 	}
 }
 
+# access log ต่อ request (JSON) → ./logs/https-proxy/access.log บน host (forwarder อ่าน · source web-proxy)
+# request.client_ip = IP จริงหลัง trusted_proxies + Cf-Connecting-IP · remote_ip = cloudflared (172.18.0.1)
+# Caddy ตัด Authorization / Cookie ออกจาก log ให้เอง · dir บน host = 65534:adm 2750 → ไฟล์ 0640 กลุ่ม adm อ่านได้
+(access_log) {
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 5
+			mode 0640
+		}
+		format json
+	}
+}
+
 (upstream) {
 	reverse_proxy {args[0]} {
 		# backend ตั้ง `trust proxy` 1 ชั้น (Caddy) → ตัวท้ายของ X-Forwarded-For ต้องเป็น IP ผู้ใช้
@@ -32,20 +46,24 @@
 
 # dashboard (Next.js) — NEXT_PUBLIC_* ตอน build ชี้ API_HOST / AUTH_HOST
 http://{$DASHBOARD_HOST} {
+	import access_log
 	import upstream cylis-dashboard:3000
 }
 
 # backend API — NEXT_PUBLIC_API_URL = https://{API_HOST}/api/v1
 http://{$API_HOST} {
+	import access_log
 	import upstream backend:3000
 }
 
 # Keycloak — KEYCLOAK_URL ใน .env ต้องเป็น https://{AUTH_HOST} (issuer ของ token)
 http://{$AUTH_HOST} {
+	import access_log
 	import upstream keycloak:8080
 }
 
 # ชื่ออื่น / เข้าด้วย IP ตรง — ไม่ตอบอะไร
 :8080 {
+	import access_log
 	respond 404
 }

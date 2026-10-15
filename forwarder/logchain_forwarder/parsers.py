@@ -11,7 +11,7 @@ from typing import Optional
 from urllib.parse import unquote_plus
 
 SSH_SOURCE = "vps-sshd"
-HTTP_SOURCE = "vps-nginx"
+HTTP_SOURCE = "web-proxy"
 MAX_MESSAGE = 2000  # API รับได้ 10,000 — เกินนี้ไม่ใช่ log ปกติ ตัดไว้กันบรรทัดยักษ์
 
 # ---------------------------------------------------------------- sshd
@@ -100,6 +100,22 @@ PROBE_PATH = re.compile(
 )
 
 
+# ไม่ส่ง: IP ภายใน (เราเอง / container / health check จาก docker) — ไม่ใช่ผู้โจมตีจาก internet
+INTERNAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8", "::1/128")]
+# health check — path ตรงตัว (ไม่สน query) ไม่ส่งไม่ว่าจะมาจากไหน
+HEALTH_PATHS = {"/health", "/api/v1/health", "/healthz"}
+
+
+def _internal(ip: Optional[str]) -> bool:
+    if not ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in INTERNAL_NETS)
+
+
 def _suspicious(path: str, ua: str, status: int) -> Optional[str]:
     """เหตุผลที่ส่ง (ไว้ log/เทส) · None = request ปกติ → ทิ้ง"""
     decoded = unquote_plus(path)
@@ -121,13 +137,15 @@ def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip) -> Optional[dic
         code = int(status)
     except (TypeError, ValueError):
         return None
+    client = (_ip(cf_ip) if (trust_cf and cf_ip) else None) or _ip(ip)
+    if _internal(client) or (path or "").split("?", 1)[0] in HEALTH_PATHS:
+        return None
     if not _suspicious(path, ua or "", code):
         return None
-    client = _ip(cf_ip) if (trust_cf and cf_ip) else None
     message = f'{method} {path} {code} "{ua or "-"}"'
     return {
         "source": HTTP_SOURCE,
-        "sourceIp": client or _ip(ip),
+        "sourceIp": client,
         "eventType": "HTTP_ACCESS",
         "severity": "WARNING",
         "message": message[:MAX_MESSAGE],
@@ -140,6 +158,7 @@ def parse_access(line: str, trust_cf: bool = False) -> Optional[dict]:
     """
     nginx combined (ถ้า log_format ต่อท้ายด้วย "<CF-Connecting-IP>" ให้เปิด trust_cf)
     หรือ Caddy JSON (`log { format json }`) — แยกจากตัวอักษรแรก
+    Caddy: ใช้ request.client_ip (IP จริงหลัง trusted_proxies ของ Caddy) — https-proxy บน CT141 ใช้แบบนี้ (trust_cf=False)
     """
     if not line:
         return None

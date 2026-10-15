@@ -315,3 +315,17 @@ log หนึ่งตัวมี role เดียวต่อ alert (ตั�
 - `GET /logs/:id/detail` ช้ากว่า endpoint อื่น (อ่าน chain สด ≤ 5 วิ) — ควรมี loading state แยกของ `chainCheck`
 - `alerts` ใน detail ไม่แบ่งหน้า (log หนึ่งตัวผูกกับ alert ไม่กี่ใบ) · `logs` ใน `GET /alerts/:id` ไม่แบ่งหน้าเช่นกัน
   (threshold window ≤ 100 แถว + repeat)
+
+---
+
+## หมายเหตุสำหรับ frontend: log จริงจาก VPS (forwarder/)
+
+ค่า `source` ที่ forwarder ส่ง (ใช้ทำ filter / ปุ่ม "Real logs" — `GET /logs?source=vps-sshd,web-proxy`):
+
+| source | eventType | คืออะไร |
+|---|---|---|
+| `vps-sshd` | `SSH_AUTH` | sshd ของเครื่อง (Invalid user / Failed password / Accepted … / Connection closed …) — Accepted = `INFO` นอกนั้น `WARNING` |
+| `web-proxy` | `HTTP_ACCESS` | access log ของ https-proxy (Caddy) เฉพาะ request น่าสงสัย · `message` = `METHOD PATH STATUS "UA"` · `sourceIp` = IP จริงของผู้ใช้ |
+
+(เดิมในร่างใช้ `vps-nginx` — เปลี่ยนเป็น `web-proxy` แล้ว ไม่มี log ที่ใช้ชื่อเดิม)
+

@@ -143,6 +143,15 @@ login dashboard จะได้ 400 → เพิ่มเองใน `https://
 - `X-Forwarded-Proto` ถูกตั้งเป็น `https` เสมอ (ผู้ใช้เข้ามาทาง https ที่ Cloudflare) — Keycloak (`KC_PROXY_HEADERS=xforwarded`) ใช้สร้าง redirect
 - Host อื่น / เข้าด้วย IP ตรง → 404
 
+### E2. access log ของ https-proxy (2026-10-16)
+
+- `Caddyfile.cloud` `(access_log)` ทุก site block → JSON ที่ `logs/https-proxy/access.log` (roll 50 MiB × 5) · `request.client_ip` = IP จริง
+  (หลัง `trusted_proxies 172.18.0.1/32` + `Cf-Connecting-IP`) · Caddy ตัด Authorization / Cookie ออกเอง
+- dir ต้องมีก่อน `up` (Caddy รันเป็น uid 65534 เขียน dir ของ root ไม่ได้):
+  `install -d -o 65534 -g adm -m 2750 /home/logchain/logchain/logs/https-proxy` → ไฟล์ `65534:adm 0640` (forwarder อ่านผ่านกลุ่ม adm)
+- เส้นทางยืนยันแล้ว: Cloudflare → cloudflared (container `cloudflare` บน CT141) → `172.17.0.1:80` → https-proxy · ไม่มี proxy อื่นคั่น
+  (https-proxy bind แค่ `172.17.0.1:80` — เครื่องอื่นต่อตรงไม่ได้)
+
 ## F. blockchain (wallet ใหม่ของ cloud)
 
 ทำตาม README หัวข้อ **"ตั้ง blockchain เอง"** บนเครื่องนี้ทั้งหมด — wallet ใหม่ · ขอ POL จาก faucet · deploy contract ใหม่

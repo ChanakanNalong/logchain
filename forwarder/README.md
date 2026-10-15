@@ -10,9 +10,10 @@ Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip
 | source | eventType | อ่านจาก | ส่งเมื่อ | severity |
 |---|---|---|---|---|
 | `vps-sshd` | `SSH_AUTH` | `journalctl -u ssh -f -o json` (หรือ tail `/var/log/auth.log`) | `Invalid user` · `Failed password` · `Accepted password/publickey/keyboard-interactive` · `Connection closed by invalid/authenticating user` · `Disconnected from authenticating user` | WARNING (Accepted = INFO) |
-| `vps-nginx` | `HTTP_ACCESS` | access log ของ nginx (combined) / Caddy (json) | scanner UA · `../` (รวม `%2e%2e`) · SQL keyword (รวม URL-encode) · shell metachar · 4xx/5xx บน `/.env` `/.git/` `/wp-admin` `/wp-login.php` ฯลฯ | WARNING |
+| `web-proxy` | `HTTP_ACCESS` | access log ของ reverse proxy — Caddy (json) ของ https-proxy บน CT141 หรือ nginx (combined) | scanner UA · `../` (รวม `%2e%2e`) · SQL keyword (รวม URL-encode) · shell metachar · 4xx/5xx บน `/.env` `/.git/` `/wp-admin` `/wp-login.php` ฯลฯ | WARNING |
 
 - ไม่ส่ง `pam_unix(sshd:auth)` — ซ้ำกับ `Failed password` ของ connection เดียวกัน
+- ไม่ส่ง request จาก IP ภายใน (`10.0.0.0/8` `172.16.0.0/12` `127.0.0.0/8` `::1`) และ health check (`/health` `/api/v1/health` `/healthz`)
 - `message` = ข้อความหลัง `sshd[pid]: ` / `METHOD PATH STATUS "UA"` · `sourceIp` = IP ผู้กระทำ (`from <ip>` / `user <name> <ip> port`
   / client IP · `CF-Connecting-IP` เมื่อเปิด `TRUST_CF_CONNECTING_IP`) — rule ของ detection นับแยกตาม IP นี้
 - `classification: INTERNAL` · `cdeScope: false` · request ปกติถูกทิ้งที่ forwarder ไม่เข้า API
@@ -25,6 +26,15 @@ Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip
 - บรรทัดเสีย / JSON เสีย = ข้าม · `journalctl` ตาย = เปิดใหม่ · ไฟล์ถูก rotate (ย้าย / copytruncate) = เปิดไฟล์ใหม่
 - token แบบ client_credentials cache ไว้ ต่ออายุก่อนหมด 60 วิ · 401 = ขอใหม่แล้วส่งซ้ำครั้งเดียว
 - cursor ของ journald / offset ของไฟล์จำไว้ใน `STATE_FILE` — restart แล้วอ่านต่อ (ครั้งแรกเริ่มที่ "ตอนนี้" ไม่ส่งของเก่า)
+
+## CT141 (NB-Lab) โดยเฉพาะ
+
+- เส้นทางจริง: Cloudflare → cloudflared (container บน CT141) → `172.17.0.1:80` → https-proxy (Caddy) — ไม่มี proxy อื่นคั่น
+- access log: `infra/caddy/Caddyfile.cloud` `(access_log)` → `/home/logchain/logchain/logs/https-proxy/access.log`
+  (dir `65534:adm 2750` เพราะ Caddy รันเป็น uid 65534 · ไฟล์ `0640` กลุ่ม adm) · `ACCESS_LOGS` ชี้ไฟล์นี้ · `TRUST_CF_CONNECTING_IP=false`
+  (Caddy เชื่อ `Cf-Connecting-IP` จาก `172.18.0.1/32` เท่านั้นแล้วเขียน `request.client_ip` ให้ — forwarder ใช้ค่านั้น)
+- sshd ของ CT141 เข้าได้เฉพาะผ่าน VPN → ส่วนใหญ่เป็น `Accepted publickey` ของผู้ดูแลเอง (เก็บไว้เป็น audit)
+- token/API ใช้ภายในเครื่อง: `LOGCHAIN_API_URL=http://127.0.0.1:3000/api/v1` · `LOGCHAIN_TOKEN_URL=http://127.0.0.1:8080/realms/logchain/protocol/openid-connect/token`
 
 ## ติดตั้งบน VPS
 

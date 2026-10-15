@@ -21,3 +21,6 @@ services:
     volumes: !override
       # ไม่มี cert ในเครื่อง — Cloudflare ถือ HTTPS
       - ./infra/caddy/Caddyfile.cloud:/etc/caddy/Caddyfile:ro
+      # access log (Caddyfile.cloud `(access_log)`) — forwarder อ่านจาก host (forwarder/README.md)
+      # สร้าง dir ก่อน up: install -d -o 65534 -g adm -m 2750 logs/https-proxy (Caddy รันเป็น 65534)
+      - ./logs/https-proxy:/var/log/caddy
