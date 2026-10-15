@@ -8,6 +8,7 @@
  *
  * ต้องตั้ง E2E_ALLOW_DB=<host>:<port> ให้ตรงกับ DB ที่เทสจะต่อจริง
  * (DB_HOST/DB_PORT แบบเดียวกับ app.module.ts — default localhost:5433)
+ * และ BLOCKCHAIN_RPC_URL ต้องเป็น localhost/127.0.0.1 หรือไม่ตั้ง (ดู checkE2eChainTarget)
  */
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -46,10 +47,41 @@ export function checkE2eDbTarget(
   return null;
 }
 
+/**
+ * chain ต้องเป็น local (หรือไม่ตั้งเลย) — spec ที่ไม่ override BlockchainService และไม่หยุด cron
+ * (app.e2e / alerts / erasure) seal log ของเทสด้วย BlockchainService จริง ถ้า RPC ชี้ Amoy = ส่ง tx จริง
+ * ไม่ตั้ง BLOCKCHAIN_RPC_URL (เช่น CI) = BlockchainService ไม่ต่อ chain ผ่านได้
+ */
+export function checkE2eChainTarget(
+  env: NodeJS.ProcessEnv,
+  dotEnv: Record<string, string> = {},
+): string | null {
+  const rpc = (
+    env.BLOCKCHAIN_RPC_URL ??
+    dotEnv.BLOCKCHAIN_RPC_URL ??
+    ''
+  ).trim();
+  if (!rpc) return null;
+  let host: string;
+  try {
+    host = new URL(rpc).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return `✗ BLOCKCHAIN_RPC_URL อ่านไม่ออก: "${rpc}"`;
+  }
+  if (LOOPBACK.has(host.toLowerCase())) return null;
+  return (
+    `✗ BLOCKCHAIN_RPC_URL=${rpc} ไม่ใช่ chain ในเครื่อง\n` +
+    `  spec บางตัวใช้ BlockchainService จริงและ cron ยังเดิน — seal แล้วส่ง tx จริงได้\n` +
+    `  ใช้ Hardhat (http://127.0.0.1:8545) หรือไม่ตั้งเลย เช่นรันผ่าน .env.hardhat (README หัวข้อ "environment hh")`
+  );
+}
+
 export default function e2eDbGuard(): void {
   const envPath = join(process.cwd(), '.env');
   const dotEnv = existsSync(envPath) ? parse(readFileSync(envPath)) : {};
-  const err = checkE2eDbTarget(process.env, dotEnv);
+  const err =
+    checkE2eDbTarget(process.env, dotEnv) ??
+    checkE2eChainTarget(process.env, dotEnv);
   if (err) throw new Error(`\n[e2e-db-guard]\n${err}\n`);
   console.log(
     `[e2e-db-guard] OK — DB ${process.env.E2E_ALLOW_DB} (E2E_ALLOW_DB)`,

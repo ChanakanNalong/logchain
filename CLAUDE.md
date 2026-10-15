@@ -21,7 +21,7 @@ rule engine + DeepLog) → alert · integrity ใช้ Merkle root ต่อ ba
   + ฝั่ง detection: `cd detection && python -m unittest discover -s tests -t . -v` (ต้องมี PyYAML)
 - **e2e/integration เขียน DB จริง** (verify + UPDATE batch เดิมทุกใบ · ลบ log ของเทส) → **รันกับ environment hh เท่านั้น**
   (`docker-compose.hardhat.yml` · README หัวข้อ "environment hh") ไม่ใช่ stack หลัก · `test/e2e-db-guard.ts` บังคับ
-  `E2E_ALLOW_DB=<host>:<port>` ให้ตรง DB ที่จะต่อ ไม่ตั้ง/ไม่ตรง = ล้มทันที
+  `E2E_ALLOW_DB=<host>:<port>` ให้ตรง DB ที่จะต่อ ไม่ตั้ง/ไม่ตรง = ล้มทันที · `BLOCKCHAIN_RPC_URL` ต้องเป็น local หรือไม่ตั้ง
   `( set -a; . ./.env.hardhat; . .hardhat/vault-secrets/approle.env; set +a; NODE_ENV=test E2E_ALLOW_DB=127.0.0.1:15433 npm run test:e2e )`
 - **ห้ามรัน integration test ขณะ backend ที่ต่อ DB เดียวกันทำงานอยู่** (hh: `hh-backend` · stack หลัก: `backend`) — หยุดก่อนแล้วเปิดคืนหลังรัน
   cron ของ backend seal log ของเทสต์ไปพร้อมกัน (คิว `sealBatch` กันได้แค่ใน process เดียว) → เทสต์ลบ log ทิ้งตอนจบ

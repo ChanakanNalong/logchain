@@ -297,6 +297,7 @@ npm install && npm run start:dev
 `test:e2e` boot `AppModule` จริงแล้ว **เขียน DB ตรง ๆ** (seal log ที่ค้าง · verify batch เดิมทุกใบแล้ว UPDATE สถานะคืน ·
 DISABLE TRIGGER แล้วลบ log ของเทส) — ห้ามรันกับ stack หลักที่มี batch demo อยู่ · `test/e2e-db-guard.ts`
 จะไม่ยอมรันจนกว่าจะตั้ง `E2E_ALLOW_DB=<host>:<port>` ให้ตรงกับ DB ที่เทสจะต่อ (`DB_HOST`/`DB_PORT` · default `localhost:5433`)
+และล้มถ้า `BLOCKCHAIN_RPC_URL` ไม่ใช่ `localhost`/`127.0.0.1` (ไม่ตั้งได้) — spec บางตัวใช้ `BlockchainService` จริงและ cron ยังเดิน
 
 `docker-compose.hardhat.yml` (project `logchain-hh`) ยก Postgres + Vault (dev mode) ชุดแยก ไม่แตะ volume/secret ของ stack หลัก:
 
