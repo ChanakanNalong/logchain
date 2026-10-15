@@ -29,26 +29,26 @@ function normalizeRoot(root: string): string {
 const fakeBlockchain = {
   ready: true,
 
-  async storeRoot(batchId: string, merkleRoot: string) {
+  storeRoot(batchId: string, merkleRoot: string) {
     chainMap.set(batchId.toLowerCase(), normalizeRoot(merkleRoot));
     blockCounter += 1;
-    return {
+    return Promise.resolve({
       txHash: '0x' + blockCounter.toString(16).padStart(64, 'a'),
       blockNumber: blockCounter,
-    };
+    });
   },
 
-  async getRoot(batchId: string) {
-    return {
+  getRoot(batchId: string) {
+    return Promise.resolve({
       root: chainMap.get(batchId.toLowerCase()) ?? ZERO_ROOT,
       timestamp: 0,
-    };
+    });
   },
 
-  async verifyRoot(batchId: string, merkleRoot: string) {
-    return (
+  verifyRoot(batchId: string, merkleRoot: string) {
+    return Promise.resolve(
       (chainMap.get(batchId.toLowerCase()) ?? ZERO_ROOT) ===
-      normalizeRoot(merkleRoot)
+        normalizeRoot(merkleRoot),
     );
   },
 

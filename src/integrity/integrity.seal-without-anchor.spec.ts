@@ -71,7 +71,7 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     onChain = new Map();
 
     const logsRepo = {
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         let rows = [...logsStore];
         const idOp = opts.where?.id;
         if (idOp && typeof idOp === 'object' && idOp.type === 'in') {
@@ -79,48 +79,49 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
         }
         rows = applyOrder(rows, opts.order);
         if (opts.take) rows = rows.slice(0, opts.take);
-        return rows;
+        return Promise.resolve(rows);
       }),
-      findOneBy: jest.fn(
-        async ({ id }: any) => logsStore.find((l) => l.id === id) ?? null,
+      findOneBy: jest.fn(({ id }: any) =>
+        Promise.resolve(logsStore.find((l) => l.id === id) ?? null),
       ),
     };
 
     const mappingRepo = {
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         let rows = [...mappingStore];
         if (opts.where?.batchId)
           rows = rows.filter((m) => m.batchId === opts.where.batchId);
-        return rows;
+        return Promise.resolve(rows);
       }),
-      findOneBy: jest.fn(
-        async ({ logId }: any) =>
-          mappingStore.find((m) => m.logId === logId) ?? null,
+      findOneBy: jest.fn(({ logId }: any) =>
+        Promise.resolve(mappingStore.find((m) => m.logId === logId) ?? null),
       ),
       create: jest.fn((dto: any) => ({ ...dto })),
-      save: jest.fn(async (val: any) => {
+      save: jest.fn((val: any) => {
         const arr = Array.isArray(val) ? val : [val];
         mappingStore.push(...arr.map((m: any) => ({ ...m })));
-        return val;
+        return Promise.resolve(val);
       }),
     };
 
     let batchSeq = 0;
     const batchesRepo = {
       create: jest.fn((dto: any) => ({ ...dto })),
-      save: jest.fn(async (batch: any) => {
+      save: jest.fn((batch: any) => {
         if (!batch.id) batch.id = `batch-${batchSeq++}`;
         if (!batchStore.includes(batch)) batchStore.push(batch);
-        return batch;
+        return Promise.resolve(batch);
       }),
-      find: jest.fn(async (opts: any = {}) => {
+      find: jest.fn((opts: any = {}) => {
         const clauses = Array.isArray(opts.where) ? opts.where : [opts.where];
-        return batchStore.filter((b) =>
-          clauses.some((c: any) => !c?.status || c.status === b.status),
+        return Promise.resolve(
+          batchStore.filter((b) =>
+            clauses.some((c: any) => !c?.status || c.status === b.status),
+          ),
         );
       }),
-      findOneBy: jest.fn(
-        async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
+      findOneBy: jest.fn(({ id }: any) =>
+        Promise.resolve(batchStore.find((b) => b.id === id) ?? null),
       ),
     };
     // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
@@ -134,21 +135,22 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     });
 
     const alertsRepo = {
-      findOne: jest.fn(
-        async ({ where }: any) =>
+      findOne: jest.fn(({ where }: any) =>
+        Promise.resolve(
           alertSaves.find(
             (a: any) =>
               a.batchId === where.batchId &&
               a.alertType === where.alertType &&
               (where.status === undefined || a.status === where.status),
           ) ?? null,
+        ),
       ),
       create: jest.fn((dto: any) => dto),
-      save: jest.fn(async (dto: any) => {
+      save: jest.fn((dto: any) => {
         alertSaves.push(dto);
-        return dto;
+        return Promise.resolve(dto);
       }),
-      update: jest.fn(async (where: any, patch: any) => {
+      update: jest.fn((where: any, patch: any) => {
         const hit = alertSaves.filter(
           (a: any) =>
             a.batchId === where.batchId &&
@@ -156,27 +158,32 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
             (where.status === undefined || a.status === where.status),
         );
         hit.forEach((a: any) => Object.assign(a, patch));
-        return { affected: hit.length };
+        return Promise.resolve({ affected: hit.length });
       }),
     };
 
     // เริ่มต้น "ไม่มี blockchain" — สภาพเดียวกับคนที่เพิ่ง clone repo มารัน
     blockchain = {
       ready: false,
-      storeRoot: jest.fn(async (batchId: string, root: string) => {
+      storeRoot: jest.fn((batchId: string, root: string) => {
         onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
-        return { txHash: '0xtx', blockNumber: 42, confirmed: true };
+        return Promise.resolve({
+          txHash: '0xtx',
+          blockNumber: 42,
+          confirmed: true,
+        });
       }),
-      checkRoot: jest.fn(async (batchId: string, root: string) => {
+      checkRoot: jest.fn((batchId: string, root: string) => {
         const stored = onChain.get(batchId);
         const expected = (
           root.startsWith('0x') ? root : '0x' + root
         ).toLowerCase();
-        if (!stored) return { result: 'MISSING', onChainRoot: '0x0' };
-        return {
+        if (!stored)
+          return Promise.resolve({ result: 'MISSING', onChainRoot: '0x0' });
+        return Promise.resolve({
           result: stored.toLowerCase() === expected ? 'MATCH' : 'MISMATCH',
           onChainRoot: stored,
-        };
+        });
       }),
     };
 

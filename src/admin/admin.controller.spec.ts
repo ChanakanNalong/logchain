@@ -63,8 +63,8 @@ describe('AdminController', () => {
 
   /** ให้ /roles/:name/users ตอบตาม role ที่ถูกถาม */
   function withRoleMembers(members: Record<string, KeycloakUser[]>) {
-    keycloak.getRoleUsers.mockImplementation(
-      async (role: string) => members[role] ?? [],
+    keycloak.getRoleUsers.mockImplementation((role: string) =>
+      Promise.resolve(members[role] ?? []),
     );
   }
 
