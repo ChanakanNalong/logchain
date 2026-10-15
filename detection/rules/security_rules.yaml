@@ -8,6 +8,7 @@
 #   match_patterns: list ของ regex/keyword ที่ match กับ message
 #   event_types: ถ้ามี - จำกัด rule นี้ให้ match แค่ event_type ที่ ระบุ
 #   threshold: optional - match X ครั้งใน Y วินาที (frequency rule)
+#     distinct_by: optional regex (1 group) - นับ 1 ครั้งต่อค่าที่ไม่ซ้ำในหน้าต่าง (ไม่เจอ = นับทุกบรรทัด)
 #   cde_scope_only: ถ้า true -> match เฉพาะ log ที่อยู่ใน CDE (cdeScope=true)
 #   url_decode: ถ้า true -> ลอง match กับสำเนาที่ URL-decode แล้วด้วย (message ที่เก็บไม่เปลี่ยน)
 #
@@ -31,6 +32,10 @@ rules:
     threshold:
       count: 5
       window_seconds: 60
+      # sshd เขียน "Invalid user X from IP port P" + "Failed password for invalid user X from IP port P"
+      # ต่อการเดา 1 ครั้ง — นับ 1 ครั้งต่อ (sourceIp, port) ไม่ให้กลายเป็น 2
+      # ข้อแลก: เดาหลายรหัสใน connection เดียว (MaxAuthTries) ก็นับเป็น 1
+      distinct_by: "\\bport (\\d+)\\b"
 
   - id: 5715
     description: "Successful login after multiple failures"

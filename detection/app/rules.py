@@ -38,8 +38,11 @@ class RuleEngine:
         # compile regex ครั้งเดียวเพื่อ performance
         for r in self.rules:
             r["_compiled"] = [re.compile(p) for p in r.get("match_patterns", [])]
+            distinct = r.get("threshold", {}).get("distinct_by")
+            r["_distinct"] = re.compile(distinct) if distinct else None
 
-        # state สำหรับ frequency rule: { (rule_id, actor): deque of (ts, log_id) }
+        # state สำหรับ frequency rule: { (rule_id, actor): deque of (ts, log_id, attempt) }
+        # attempt = ค่าจาก distinct_by (เช่น port ของ sshd) · None = นับทุกบรรทัด
         self._event_history: dict = defaultdict(lambda: deque(maxlen=100))
 
         # state สำหรับ requires_prior_rule: { (rule_id, actor): (last_match_ts, log_ids ของ match นั้น) }
@@ -108,14 +111,21 @@ class RuleEngine:
             if "threshold" in rule:
                 key = (rule["id"], actor)
                 history = self._event_history[key]
-                history.append((now, log_id))
+                attempt = None
+                if rule["_distinct"]:
+                    found = rule["_distinct"].search(message)
+                    attempt = found.group(1) if found else None
+                history.append((now, log_id, attempt))
                 window = rule["threshold"]["window_seconds"]
                 count = rule["threshold"]["count"]
-                # นับ event ในช่วง window — log_id ของชุดนี้คือหลักฐานของ alert
-                in_window = [lid for ts, lid in history if now - ts <= window]
-                if len(in_window) < count:
+                # นับ event ในช่วง window — log_id ของชุดนี้คือหลักฐานของ alert (รวมบรรทัดที่นับซ้ำไม่ได้)
+                in_window = [(lid, att) for ts, lid, att in history if now - ts <= window]
+                attempts = len({att for _, att in in_window if att is not None}) + sum(
+                    1 for _, att in in_window if att is None
+                )
+                if attempts < count:
                     continue
-                related_log_ids = [lid for lid in in_window if lid]
+                related_log_ids = [lid for lid, _ in in_window if lid]
 
             # requires_prior_rule (chained rule): match เฉพาะเมื่อ rule ก่อนหน้า
             # เคยจับ source เดียวกันได้ภายใน window_seconds

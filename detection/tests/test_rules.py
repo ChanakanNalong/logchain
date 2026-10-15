@@ -63,21 +63,50 @@ class StillNineRulesTest(unittest.TestCase):
 class SshdBruteForceTest(RuleTestCase):
     """phase0 ข้อ 5 #1-#4 — เดิมไม่โดน rule ไหนเลย"""
 
+    # {port} = source port ของแต่ละ connection — sshd เปิด port ใหม่ทุกครั้งที่เดา
     SSHD_FAILURES = [
-        "Failed password for root from 203.0.113.5 port 52314 ssh2",
-        "Failed password for invalid user admin from 203.0.113.5 port 52314 ssh2",
-        "Invalid user admin from 203.0.113.5 port 52314",
+        "Failed password for root from 203.0.113.5 port {port} ssh2",
+        "Failed password for invalid user admin from 203.0.113.5 port {port} ssh2",
+        "Invalid user admin from 203.0.113.5 port {port}",
         # forwarder ส่ง message หลัง masking — IP ใน message กลายเป็น .xxx ผลต้องเหมือนกัน
-        "Failed password for root from 203.0.113.xxx port 52314 ssh2",
-        "sshd[1234]: Invalid user oracle from 203.0.113.xxx port 40022",
+        "Failed password for root from 203.0.113.xxx port {port} ssh2",
+        "sshd[1234]: Invalid user oracle from 203.0.113.xxx port {port}",
     ]
+
+    def fail(self, i, template=None):
+        return self.ev((template or self.SSHD_FAILURES[0]).format(port=52300 + i))
 
     def test_each_sshd_failure_line_triggers_5710_on_the_fifth(self):
         for line in self.SSHD_FAILURES:
             with self.subTest(line=line):
                 self.setUp()
-                results = [self.rule_of(self.ev(line)) for _ in range(5)]
+                results = [self.rule_of(self.fail(i, line)) for i in range(5)]
                 self.assertEqual(results, [None, None, None, None, 5710])
+
+    def test_invalid_user_and_its_failed_password_line_count_as_one_attempt(self):
+        # การเดา 1 ครั้งกับ user ที่ไม่มีจริง = 2 บรรทัด port เดียวกัน
+        results = []
+        events = []
+        for i in range(5):
+            for line in (self.SSHD_FAILURES[2], self.SSHD_FAILURES[1]):
+                events.append(self.fail(i, line))
+                results.append(self.rule_of(events[-1]))
+        # 4 ครั้งแรก (8 บรรทัด) ยังไม่ถึง 5 · ครั้งที่ 5 เด้งที่บรรทัดแรกของมัน
+        self.assertEqual(results[:8], [None] * 8)
+        self.assertEqual(results[8], 5710)
+        # หลักฐานรวมทุกบรรทัดในหน้าต่าง ไม่ใช่แค่บรรทัดละ attempt
+        self.engine = RuleEngine(RULES)
+        matches = [self.engine.evaluate(e) for e in events[:9]]
+        self.assertEqual(matches[-1]["related_log_ids"], [e["id"] for e in events[:9]])
+
+    def test_same_connection_counts_once(self):
+        # ข้อแลกของการนับต่อ port: เดาหลายรหัสใน connection เดียวนับเป็น 1
+        line = self.SSHD_FAILURES[0].format(port=52314)
+        self.assertEqual([self.rule_of(self.ev(line)) for _ in range(6)], [None] * 6)
+
+    def test_lines_without_a_port_still_count_each(self):
+        line = "pam_unix(sshd:auth): authentication failure; rhost=203.0.113.5 user=root"
+        self.assertEqual([self.rule_of(self.ev(line)) for _ in range(5)], [None] * 4 + [5710])
 
     def test_lines_that_are_not_failed_attempts_do_not_count(self):
         for line in [
@@ -89,7 +118,7 @@ class SshdBruteForceTest(RuleTestCase):
                 self.assertEqual([self.rule_of(self.ev(line)) for _ in range(6)], [None] * 6)
 
     def test_5710_alert_carries_ip_and_the_window_logs(self):
-        events = [self.ev(self.SSHD_FAILURES[0]) for _ in range(5)]
+        events = [self.fail(i) for i in range(5)]
         matches = [self.engine.evaluate(e) for e in events]
         m = matches[-1]
         self.assertEqual(m["rule_id"], 5710)
@@ -98,7 +127,7 @@ class SshdBruteForceTest(RuleTestCase):
         self.assertNotIn("prior_log_ids", m)
 
     def test_accepted_publickey_after_5710_from_same_ip_is_5715(self):
-        failures = [self.ev(self.SSHD_FAILURES[0]) for _ in range(5)]
+        failures = [self.fail(i) for i in range(5)]
         for e in failures:
             self.engine.evaluate(e)
         ok = self.ev("Accepted publickey for kan from 203.0.113.5 port 52320 ssh2: ED25519 SHA256:xxxx")
@@ -115,8 +144,8 @@ class SshdBruteForceTest(RuleTestCase):
         ]:
             with self.subTest(line=line):
                 self.setUp()
-                for _ in range(5):
-                    self.engine.evaluate(self.ev(self.SSHD_FAILURES[0]))
+                for i in range(5):
+                    self.engine.evaluate(self.fail(i))
                 self.assertEqual(self.rule_of(self.ev(line)), 5715)
 
     def test_accepted_without_prior_failures_is_nothing(self):
@@ -125,7 +154,12 @@ class SshdBruteForceTest(RuleTestCase):
 
 
 class PerIpGroupingTest(RuleTestCase):
-    FAIL = "Failed password for root from 203.0.113.xxx port 52314 ssh2"
+    FAIL_T = "Failed password for root from 203.0.113.xxx port {port} ssh2"
+
+    @property
+    def FAIL(self):
+        # port ใหม่ทุกครั้ง = การเดาคนละครั้ง
+        return self.FAIL_T.format(port=50000 + self._seq)
 
     def test_five_from_a_and_five_from_b_are_two_separate_5710_alerts(self):
         matches = []

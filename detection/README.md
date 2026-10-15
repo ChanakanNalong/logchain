@@ -28,7 +28,13 @@ logs.raw ──▶ consumer ──▶ Drain3 parse ──▶ buffer ต่อ so
 - threshold (5710: 5 ครั้งใน 60 วิ) และ chain (5715: ต้องมี 5710 ภายใน 300 วิ) **นับแยกตาม `sourceIp`**
   ไม่มี `sourceIp` = นับตาม `source` · forwarder ที่ส่งทุก log เป็น source เดียวจึงไม่ทำให้หลาย IP รวมกันเป็น brute force
 - sshd: `Failed password for …` และ `Invalid user … from …` นับเข้า 5710 · `Accepted password|publickey|keyboard-interactive` เข้า 5715
-  ⚠️ sshd เขียนทั้ง `Invalid user` และ `Failed password for invalid user` ต่อการเดา 1 ครั้ง (user ที่ไม่มีจริง) — นับเป็น 2
+  นับ 1 ครั้งต่อ (sourceIp, port) ในหน้าต่าง (`threshold.distinct_by`) — sshd เขียนทั้ง `Invalid user` และ
+  `Failed password for invalid user` ต่อการเดา 1 ครั้ง จึงไม่นับเป็น 2 · บรรทัดที่ไม่มี `port N` นับทุกบรรทัดเหมือนเดิม
+
+**ข้อจำกัดที่รู้อยู่**
+- เดาหลายรหัสใน connection เดียว (`MaxAuthTries`) นับเป็น 1 ครั้ง เพราะ port เดียวกัน
+- 60001 จับ `/wp-admin` / `/wp-login.php` เป็น scanner — เว็บที่เป็น WordPress จริงจะ false positive (VPS ของโปรเจกต์ไม่ใช่ WordPress)
+- 31100 decode URL ชั้นเดียว (`%2520` ยังไม่ถูกถอด) · 60002 ยังไม่ decode (`%2e%2e%2f` หลุด)
 - payload ที่ส่งเข้า Kafka (ดู `app/alert_payload.py`): ฟิลด์เดิมครบ + `source_ip`, `related_log_ids` (log ทั้งหน้าต่างของ threshold
   หรือ log ตัวที่ match), `prior_log_ids` (5715 = log ของ 5710 ที่เป็นเงื่อนไข) — backend ปัจจุบันเก็บแค่ `log_id` + `detail`
 - เทส: `tests/test_rules.py` (log จริงจาก VPS + ข้อความของ `scripts/demo-all-rules.sh`)
