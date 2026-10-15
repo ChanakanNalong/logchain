@@ -88,6 +88,8 @@ describe('Integrity Integration', () => {
     status: string;
     tx_hash: string | null;
     block_number: string | null;
+    gas_used: string | null;
+    effective_gas_price: string | null;
   }> = [];
 
   const prevAutoReanchor = process.env.INTEGRITY_AUTO_REANCHOR;
@@ -143,7 +145,8 @@ describe('Integrity Integration', () => {
     // จำสถานะ batch เดิมไว้ แล้ว seed root ลง fake chain
     // (เทสนี้ verify ทุก batch ใน DB — ไม่ seed จะทำให้ของเดิมกลายเป็น UNVERIFIED)
     preExistingBatches = await dataSource.query(
-      'SELECT id, status, tx_hash, block_number FROM batches',
+      // gas ด้วย: เทส chain reset re-anchor batch เดิมทุกใบผ่าน chain ปลอม (ไม่มี gas) → ทับเป็น NULL
+      'SELECT id, status, tx_hash, block_number, gas_used, effective_gas_price FROM batches',
     );
     const roots: Array<{ id: string; merkle_root: string }> =
       await dataSource.query(
@@ -166,8 +169,15 @@ describe('Integrity Integration', () => {
       // คืนสถานะ batch เดิมที่ถูก verify/re-anchor ระหว่างเทส
       for (const b of preExistingBatches) {
         await dataSource.query(
-          'UPDATE batches SET status = $2, tx_hash = $3, block_number = $4 WHERE id = $1',
-          [b.id, b.status, b.tx_hash, b.block_number],
+          'UPDATE batches SET status = $2, tx_hash = $3, block_number = $4, gas_used = $5, effective_gas_price = $6 WHERE id = $1',
+          [
+            b.id,
+            b.status,
+            b.tx_hash,
+            b.block_number,
+            b.gas_used,
+            b.effective_gas_price,
+          ],
         );
       }
 

@@ -1000,7 +1000,10 @@ export class IntegrityService {
       proof,
       '0x' + batch.merkleRoot,
     );
+    // ตำแหน่งใน tree (= leaves[].index ของ GET /batches/:id/tree) · raw_hash ไม่ซ้ำกันเพราะ id อยู่ใน hash
+    const leafIndex = leaves.indexOf(log.rawHash);
+    const leafHash = this.merkle.leafHash(log.rawHash);
 
-    return { log, batch, proof, verified };
+    return { log, batch, proof, verified, leafIndex, leafHash };
   }
 }

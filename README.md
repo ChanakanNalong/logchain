@@ -667,15 +667,16 @@ grep -E '^(ANALYST|OPERATOR|AUDITOR|INGESTOR)_USER_PASSWORD=.' .env
 | `GET` | `/api/v1/logs` | `analyst`, `operator`, `admin` | แบ่งหน้า + filter (`limit` `offset` `source` `severity` `eventType` `q`) + สถานะ batch → `{ items, total, limit, offset }` |
 | `GET` | `/api/v1/logs/:id` | `analyst`, `operator`, `admin` | log ตาม ID (404 ถ้าไม่มี · 400 ถ้าไม่ใช่ UUID) |
 | `GET` | `/api/v1/logs/:id/detail` | `analyst`, `operator`, `admin`, `auditor` | log + batch + proof + alert ที่เกี่ยวข้อง + เทียบ root บน chain สด |
-| `GET` | `/api/v1/logs/:id/proof` | `analyst`, `operator`, `admin` | Merkle proof ของ log |
+| `GET` | `/api/v1/logs/:id/proof` | `analyst`, `operator`, `admin` | Merkle proof ของ log (+ `leafIndex`, `leafHash`) |
 | `GET` | `/api/v1/alerts` | `analyst`, `operator`, `admin` | alert ทั้งหมด (array) |
 | `GET` | `/api/v1/alerts/:id` | `analyst`, `operator`, `admin` | alert + log ทุกตัวที่ผูกไว้ (`trigger` / `window` / `prior` / `repeat`) |
 | `GET` | `/api/v1/batches` | `analyst`, `operator`, `auditor`, `admin` | แบ่งหน้า + filter `status` → `{ items, total, limit, offset }` · `hasSnapshot` |
+| `GET` | `/api/v1/batches/:id/tree` | `analyst`, `operator`, `auditor`, `admin` | Merkle tree ทุกชั้น (leaves / layers / promoted) + root DB/chain + ค่าใช้จ่าย (POL/ETH/THB) |
 | `GET` | `/api/v1/batches/:id/diff` | `admin`, `auditor` | log ตำแหน่งไหนถูกแก้ / ลบ / แทรก เทียบ snapshot ตอน seal (พิสูจน์ snapshot กับ root บน chain ก่อน) |
 | `GET` | `/health` | — | Health check |
 
 ทุก endpoint ของ logs/integrity ป้องกันด้วย `AuthGuard('jwt')` + `RolesGuard` (Bearer token).
-ตัวอย่าง JSON ของ logs / log detail / alert detail: [docs/api/logs-alerts.md](docs/api/logs-alerts.md) · batches / diff: [docs/api/batches-diff.md](docs/api/batches-diff.md)
+ตัวอย่าง JSON ของ logs / log detail / alert detail: [docs/api/logs-alerts.md](docs/api/logs-alerts.md) · batches / diff: [docs/api/batches-diff.md](docs/api/batches-diff.md) · tree / cost: [docs/api/merkle-tree.md](docs/api/merkle-tree.md)
 ระบบมี 5 roles: `admin` / `operator` / `ingestor` / `analyst` / `auditor` — หน้า Reports ผูกกับ role `auditor`.
 
 ---

@@ -88,6 +88,8 @@ interface BatchRow {
   status: string;
   tx_hash: string | null;
   block_number: string | null;
+  gas_used: string | null;
+  effective_gas_price: string | null;
 }
 interface CountRow {
   c: number;
@@ -186,7 +188,7 @@ describe('Report test cases (chapter 4)', () => {
     }
 
     preExisting = await sql<BatchRow>(
-      'SELECT id, status, tx_hash, block_number FROM batches',
+      'SELECT id, status, tx_hash, block_number, gas_used, effective_gas_price FROM batches',
     );
     for (const b of await sql<{ id: string; merkle_root: string }>(
       "SELECT id, merkle_root FROM batches WHERE status NOT IN ('FAILED','PENDING')",
@@ -205,8 +207,15 @@ describe('Report test cases (chapter 4)', () => {
     try {
       for (const b of preExisting) {
         await ds.query(
-          'UPDATE batches SET status=$2, tx_hash=$3, block_number=$4 WHERE id=$1',
-          [b.id, b.status, b.tx_hash, b.block_number],
+          'UPDATE batches SET status=$2, tx_hash=$3, block_number=$4, gas_used=$5, effective_gas_price=$6 WHERE id=$1',
+          [
+            b.id,
+            b.status,
+            b.tx_hash,
+            b.block_number,
+            b.gas_used,
+            b.effective_gas_price,
+          ],
         );
       }
       await ds.query('ALTER TABLE logs DISABLE TRIGGER trg_logs_no_delete');

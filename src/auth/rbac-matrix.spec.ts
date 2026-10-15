@@ -22,6 +22,7 @@ import { ErasureService } from '../erasure/erasure.service';
 import { HealthController } from '../health/health.controller';
 import { BatchesController } from '../integrity/batches.controller';
 import { BatchDiffService } from '../integrity/batch-diff.service';
+import { BatchTreeService } from '../integrity/batch-tree.service';
 import { IntegrityController } from '../integrity/integrity.controller';
 import { IntegrityService } from '../integrity/integrity.service';
 import { KafkaConsumerService } from '../kafka/kafka-consumer.service';
@@ -116,6 +117,12 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: 'get',
+    path: `/api/v1/batches/${UUID}/tree`,
+    ok: 200,
+    allowed: [...READERS, 'auditor'],
+  },
+  {
+    method: 'get',
     path: `/api/v1/batches/${UUID}/diff`,
     ok: 200,
     allowed: ['admin', 'auditor'],
@@ -189,6 +196,7 @@ const mocks = {
     findOne: jest.fn().mockResolvedValue({ id: UUID }),
   },
   batchDiff: { diff: jest.fn().mockResolvedValue({ batchId: UUID }) },
+  batchTree: { tree: jest.fn().mockResolvedValue({ batchId: UUID }) },
   logDetail: {
     getDetail: jest.fn().mockResolvedValue({ log: { id: UUID } }),
   },
@@ -261,6 +269,7 @@ describe('RBAC matrix (role × endpoint)', () => {
         { provide: LogService, useValue: mocks.logs },
         { provide: LogDetailService, useValue: mocks.logDetail },
         { provide: BatchDiffService, useValue: mocks.batchDiff },
+        { provide: BatchTreeService, useValue: mocks.batchTree },
         { provide: AlertsService, useValue: mocks.alerts },
         { provide: IntegrityService, useValue: mocks.integrity },
         { provide: StatsService, useValue: mocks.stats },
