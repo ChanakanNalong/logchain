@@ -306,6 +306,12 @@ alias hh='docker compose -p logchain-hh -f docker-compose.hardhat.yml --env-file
 HOST_UID=$(id -u) HOST_GID=$(id -g) hh up -d hh-postgres hh-vault
 HOST_UID=$(id -u) HOST_GID=$(id -g) hh up hh-vault-init      # AppRole → .hardhat/vault-secrets/approle.env
 
+# chain + backend ของ hh (ไม่จำเป็นสำหรับ test:e2e — เทสใช้ chain ปลอม)
+(cd ../logchain-contracts && npx hardhat node)                 # อีก terminal · 127.0.0.1:8545
+ENV_FILE=.env.hardhat node scripts/deploy-contract.mjs         # เขียน CONTRACT_ADDRESS ลง .env.hardhat
+hh up -d --build hh-backend                                     # http://127.0.0.1:13000 (image logchain-backend:hh)
+#   restart hardhat node = contract หาย → ลบ volume ของ hh แล้วเริ่มใหม่ทั้งชุด (batch เดิมจะ verify ไม่ผ่าน)
+
 # รันเทส (subshell — env ของ hh ไม่รั่วออกมาที่ shell หลัก) · hh-backend ต้องไม่รันอยู่ (cron ชน log ของเทส)
 ( set -a; . ./.env.hardhat; . .hardhat/vault-secrets/approle.env; set +a
   NODE_ENV=test E2E_ALLOW_DB=127.0.0.1:15433 npm run test:e2e )
@@ -343,9 +349,11 @@ cd logchain
 read -rs PK && sed -i "s|^BLOCKCHAIN_PRIVATE_KEY=.*|BLOCKCHAIN_PRIVATE_KEY=$PK|" .env && unset PK
 
 # 4. deploy — ใช้ artifact ที่ compile แล้วใน repo logchain-contracts (ไม่ต้องลง Hardhat / compile เอง)
-#    script เขียน CONTRACT_ADDRESS ใหม่ลง .env ให้เอง
+#    script เขียน CONTRACT_ADDRESS ใหม่ลง .env ให้เอง · พิมพ์ RPC/chainId/signer ก่อน deploy เสมอ
+#    chain ที่ไม่ใช่ Hardhat (31337) ต้องยืนยันด้วย CONFIRM_REAL_CHAIN=1 (เสีย gas จริง)
 git clone https://github.com/ChanakanNalong/logchain-contracts ../logchain-contracts
 npm ci
+CONFIRM_REAL_CHAIN=1 \
 CONTRACT_ARTIFACT="$PWD/../logchain-contracts/ignition/deployments/chain-80002/artifacts/LogIntegrityModule#LogIntegrity.json" \
   npm run deploy:contract
 grep ^CONTRACT_ADDRESS .env          # ต้องไม่ใช่ 0x000…0
@@ -364,6 +372,24 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 - **ทำ key หาย / เปลี่ยน key = deploy contract ใหม่** แล้วทำขั้น 3–6 ซ้ำ root เดิมถูก anchor ซ้ำลง contract ใหม่ให้เอง
   (รายละเอียด `docs/Key-Rotation-Policy.md`)
 - `Blockchain init failed (attempt N)` = RPC ต่อไม่ได้ · backend ลองใหม่เองทุก ≤5 นาที · RPC สาธารณะช้าได้ ลองเปลี่ยน `BLOCKCHAIN_RPC_URL`
+
+### รอบ seal และ guard ค่า gas (`SEAL_*`)
+
+1 batch = 1 tx `storeRoot` (~78k gas ไม่ขึ้นกับจำนวน log) · ค่า default = พฤติกรรมเดิม (ทุก 1 นาที ทีละ ≤100 log)
+
+| ตัวแปร | default | ความหมาย |
+|---|---|---|
+| `SEAL_CRON` | `0 */1 * * * *` | cron ของรอบ seal (มีช่องวินาที) · ทุกรอบปิด log ที่ค้าง**จนหมด** ทีละ `SEAL_BATCH_SIZE` |
+| `SEAL_BATCH_SIZE` | `100` | log ต่อ batch · ใหญ่ขึ้น = tx น้อยลง (gas ต่อ log ถูกลง) |
+| `SEAL_MIN_BALANCE_TX` | `0` (ปิด) | ยอด wallet ต้องพอจ่าย storeRoot อย่างน้อยกี่ครั้ง · ไม่พอ = **ไม่สร้าง batch** (log ค้าง pending) + alert `WALLET_LOW_BALANCE` |
+| `SEAL_LOW_BALANCE_ALERT_MINUTES` | `60` | alert ยอดต่ำซ้ำได้ถี่สุด · ยอดกลับมาพอ = seal ต่อเองและปิด alert ให้ |
+| `SEAL_FAILURE_BACKOFF_AFTER` | `3` | seal ล้ม (`FAILED`) ติดกันกี่ครั้งถึงเริ่มข้ามรอบ 1, 2, 4, … · `0` = ปิด |
+| `SEAL_BACKOFF_MAX_TICKS` | `60` | ข้ามได้มากสุดกี่รอบต่อครั้ง · seal สำเร็จครั้งเดียว = reset |
+
+- ค่าต่อ storeRoot ประมาณจาก `estimateGas` × `maxFeePerGas` (หลังกดเพดาน `BLOCKCHAIN_MAX_PRIORITY_FEE_GWEI`) — เป็น call อ่านอย่างเดียว
+  · อ่านยอดไม่ได้ (RPC พัง) = seal ต่อ แล้วให้ backoff รับช่วงถ้า tx ล้มจริง · ไม่มี chain (`SEALED`) = ไม่เช็คยอด
+- `POST /logs/seal-now` ยังปิดทีละ 1 batch และไม่ติด backoff (admin สั่งเอง) แต่ติด guard ยอดเงิน → `503` พร้อมเหตุผล
+- ก่อนหน้านี้ RPC/wallet พังแล้วระบบสร้าง batch `FAILED` ใหม่ทุกนาที (log ชุดเดิมไม่ถูก map จึงถูกหยิบซ้ำ) — backoff ตัดเหลือราว 1 ใบ/ชม. เมื่อพังยาว
 
 ---
 
