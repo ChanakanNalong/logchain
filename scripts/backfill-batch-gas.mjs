@@ -105,7 +105,7 @@ async function main() {
   for (const { row, rc, error } of results) {
     const id8 = row.id.slice(0, 8);
     if (error) { skipped.push(`${id8} receipt error: ${error}`); continue; }
-    if (!rc) { skipped.push(`${id8} no receipt (tx dropped / other chain)`); continue; }
+    if (!rc) { skipped.push(`${id8} no receipt from this RPC (tx dropped, other chain, or node without tx history — check RootStored with eth_getLogs)`); continue; }
     if (rc.status !== 1) { skipped.push(`${id8} tx reverted (status ${rc.status})`); continue; }
     if (contract && (rc.to || '').toLowerCase() !== contract) {
       skipped.push(`${id8} tx to ${rc.to} ≠ CONTRACT_ADDRESS`); continue;
