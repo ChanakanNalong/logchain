@@ -14,6 +14,7 @@ from app.dedup import SeenIds
 from app.log_keys import UNKNOWN_KEY, LogKeyMatcher, mask
 from app.enrichment import enrich_ip
 from app.rules import RuleEngine
+from app.alert_payload import build_alert
 from app.vault import get_vault
 from prometheus_client import Counter, Histogram, start_http_server
 from dotenv import load_dotenv
@@ -122,29 +123,8 @@ def push_alert(log_event: dict, detection_source: str, detection: dict, ip_intel
 
     return: True ถ้า broker ack แล้วจริง / False ถ้า publish ไม่สำเร็จ (log ระดับ ERROR ไปแล้ว)
     """
-    is_cde_alert = detection.get("cde_alert", False) or log_event.get("cdeScope", False)
-
-    # CDE routing: เลือก topic ตาม CDE scope
-    target_topic = "alerts.cde" if is_cde_alert else "alerts.raw"
-
-    alert = {
-        "log_id":       log_event.get("id"),
-        "source":       log_event.get("source"),
-        "source_ip":    log_event.get("sourceIp"),
-        "alert_type":   detection_source, # "RULE_MATCH" หรือ "ML_ANOMALY"
-        "severity":     detection.get("severity", "WARNING"),
-        "cde_scope":    log_event.get("cdeScope", False),
-        "title":        detection.get("description") or f"DeepLog detect anomaly from {log_event.get('source')}",
-        "detail": {
-            "rule_id":          detection.get("rule_id"),
-            "reason":           detection.get("reason") or detection.get("description"),
-            "confidence":       detection.get("confidence"),
-            "sequence_length":  detection.get("sequence_length"),
-            "log_message":      log_event.get("message"),
-            "event_type":       log_event.get("eventType"),
-            "ip_intel":         ip_intel,
-        },
-    }
+    target_topic, alert = build_alert(log_event, detection_source, detection, ip_intel)
+    is_cde_alert = target_topic == "alerts.cde"
     cde_tag = "🔒 CDE " if is_cde_alert else ""
     reason = detection.get("reason") or detection.get("description")
     what = f"{cde_tag}[{detection_source}]: {log_event.get('source')} - {reason}"

@@ -9,6 +9,10 @@
 #   event_types: ถ้ามี - จำกัด rule นี้ให้ match แค่ event_type ที่ ระบุ
 #   threshold: optional - match X ครั้งใน Y วินาที (frequency rule)
 #   cde_scope_only: ถ้า true -> match เฉพาะ log ที่อยู่ใน CDE (cdeScope=true)
+#   url_decode: ถ้า true -> ลอง match กับสำเนาที่ URL-decode แล้วด้วย (message ที่เก็บไม่เปลี่ยน)
+#
+# threshold / requires_prior_rule นับแยกตาม sourceIp (ไม่มี sourceIp = นับตาม source)
+# — forwarder ตัวเดียวส่งทุก log เป็น source เดียว ถ้านับตาม source ผู้โจมตีทุก IP จะถูกรวมเป็นก้อนเดียว
 
 rules:
   # ---- Authentication attacks ----
@@ -19,6 +23,11 @@ rules:
       - "(?i)authentication.{0,20}fail"
       - "(?i)login.{0,20}(fail|denied|invalid)"
       - "(?i)wrong password"
+      # sshd: "Failed password for root from …" / "Failed password for invalid user admin from …"
+      - "(?i)failed password for "
+      # sshd: "Invalid user admin from …" — ตัวพิมพ์ใหญ่ตรงตัว ไม่ให้นับ "… for invalid user …" ซ้ำ
+      # หรือ "Connection closed by invalid user …" (บรรทัดปิด connection ไม่ใช่การเดารหัส)
+      - "\\bInvalid user \\S+ from\\b"
     threshold:
       count: 5
       window_seconds: 60
@@ -28,7 +37,9 @@ rules:
     severity: WARNING
     match_patterns:
       - "(?i)login.{0,20}success"
-    requires_prior_rule: 5710
+      # sshd: "Accepted publickey for kan from …" / "Accepted keyboard-interactive/pam for …"
+      - "(?i)\\baccepted (password|publickey|keyboard-interactive(/\\S+)?) for\\b"
+    requires_prior_rule: 5710   # ต้องเป็น 5710 ของ IP เดียวกัน
     window_seconds: 300
 
   # ---- Privilege escalation ----
@@ -49,6 +60,8 @@ rules:
       - "(?i)(union\\s+select|or\\s+1\\s*=\\s*1|';\\s*drop\\s+table)"
       - "(?i)(--\\s*$|/\\*.*\\*/)"
       - "(?i)0x[0-9a-f]{8,}"
+    # web log ส่ง query string แบบ encode มา (id=1%20UNION%20SELECT / 1+UNION+SELECT)
+    url_decode: true
 
   - id: 31151
     description: "Command injection attempt"
@@ -56,14 +69,17 @@ rules:
     match_patterns:
       - "(?i)(;\\s*(rm|cat|wget|curl|nc)\\s)"
       - "(?i)(\\$\\(.*\\)|`.*`)"
-      - "(?i)(\\.\\./){2,}"
+      # "../../" ย้ายไปเป็นของ 60002 (path traversal) — เดิมอยู่ที่นี่และ 31151 มาก่อนในไฟล์
+      # /../../etc/passwd จึงถูกรายงานเป็น command injection
 
   # --- PCI / CDE-specific (highest priorty) ----
   - id: 90001
     description: "Card data access from non-CDE context"
     severity: CRITICAL
     match_patterns: 
-    - "(?i)(card|pan|cvv|cardholder)"
+    # ต้องเป็นคำ — เดิมไม่มี \b: "company", "panel", "expand", "Japan" โดนหมด
+    # "[PAN]" (เลขบัตรที่ masking แทนไว้) ยังโดนเพราะ [ ] ไม่ใช่ตัวอักษร
+    - "(?i)\\b(cards?|pans?|cvv|cardholders?)\\b"
     cde_scope_only: false # match เฉพาะ log ที่ cde_scope=false
                           # แต่ message พูดถึง card -> ผิดปกติ
     cde_alert: true       # -> ส่ง alert ไป channel CDE
@@ -82,6 +98,10 @@ rules:
     match_patterns:
       - "(?i)(sqlmap|nikto|nmap|burp|metasploit|hydra)"
       - "(?i)(bot|crawler|spider).{0,20}admin"
+      # scanner ที่เจอจริงบน VPS
+      - "(?i)\\b(zgrab|masscan|zmap|nuclei|gobuster|dirbuster|feroxbuster|ffuf|wpscan|acunetix|netsparker|openvas)\\b"
+      # path ที่ scanner ไล่หา (ไฟล์ความลับ / repo / WordPress)
+      - "(?i)(/\\.env\\b|/\\.git/|/wp-admin\\b|/wp-login\\.php)"
 
   - id: 60002
     description: "Path traversal attempt"

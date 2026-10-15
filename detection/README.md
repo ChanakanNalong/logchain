@@ -21,6 +21,18 @@ logs.raw ──▶ consumer ──▶ Drain3 parse ──▶ buffer ต่อ so
                                                                        alerts.cde
 ```
 
+### rule engine — นับยังไง ส่งอะไรออก
+
+- **first match wins** ตามลำดับในไฟล์ YAML (9 rule) · match กับ `message` ที่ผ่าน masking แล้ว
+  rule ที่ตั้ง `url_decode: true` (31100) ลอง match กับสำเนาที่ URL-decode ด้วย (`%20` / `+` → ช่องว่าง) โดยไม่แก้ message
+- threshold (5710: 5 ครั้งใน 60 วิ) และ chain (5715: ต้องมี 5710 ภายใน 300 วิ) **นับแยกตาม `sourceIp`**
+  ไม่มี `sourceIp` = นับตาม `source` · forwarder ที่ส่งทุก log เป็น source เดียวจึงไม่ทำให้หลาย IP รวมกันเป็น brute force
+- sshd: `Failed password for …` และ `Invalid user … from …` นับเข้า 5710 · `Accepted password|publickey|keyboard-interactive` เข้า 5715
+  ⚠️ sshd เขียนทั้ง `Invalid user` และ `Failed password for invalid user` ต่อการเดา 1 ครั้ง (user ที่ไม่มีจริง) — นับเป็น 2
+- payload ที่ส่งเข้า Kafka (ดู `app/alert_payload.py`): ฟิลด์เดิมครบ + `source_ip`, `related_log_ids` (log ทั้งหน้าต่างของ threshold
+  หรือ log ตัวที่ match), `prior_log_ids` (5715 = log ของ 5710 ที่เป็นเงื่อนไข) — backend ปัจจุบันเก็บแค่ `log_id` + `detail`
+- เทส: `tests/test_rules.py` (log จริงจาก VPS + ข้อความของ `scripts/demo-all-rules.sh`)
+
 ## รัน
 
 ### โหมด docker compose (ปกติ)
