@@ -30,6 +30,9 @@ Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip
 ## CT141 (NB-Lab) โดยเฉพาะ
 
 - เส้นทางจริง: Cloudflare → cloudflared (container บน CT141) → `172.17.0.1:80` → https-proxy (Caddy) — ไม่มี proxy อื่นคั่น
+- `EXCLUDE_IPS=49.48.73.182` (IP ขาออกของ CT141 เอง — request ที่เรายิงจากในเครื่องวนกลับเข้ามาทาง Cloudflare)
+- `/home/logchain` เป็น 750 → drop-in `logchain-forwarder.ct141.conf` bind dir log แบบ read-only ไปที่ `/var/log/https-proxy`
+  แล้วตั้ง `ACCESS_LOGS=/var/log/https-proxy/access.log`
 - access log: `infra/caddy/Caddyfile.cloud` `(access_log)` → `/home/logchain/logchain/logs/https-proxy/access.log`
   (dir `65534:adm 2750` เพราะ Caddy รันเป็น uid 65534 · ไฟล์ `0640` กลุ่ม adm) · `ACCESS_LOGS` ชี้ไฟล์นี้ · `TRUST_CF_CONNECTING_IP=false`
   (Caddy เชื่อ `Cf-Connecting-IP` จาก `172.18.0.1/32` เท่านั้นแล้วเขียน `request.client_ip` ให้ — forwarder ใช้ค่านั้น)
