@@ -95,6 +95,7 @@ describe('StatsService', () => {
       UNVERIFIED: 0,
       TAMPERED: 0,
       PENDING: 0,
+      FAILED: 0,
     });
   });
 
@@ -144,6 +145,7 @@ describe('StatsService', () => {
       UNVERIFIED: 0,
       TAMPERED: 1,
       PENDING: 2,
+      FAILED: 0,
     });
     expect(result.sealedLogs).toBe(950);
     expect(result.integrityRate).toBe(70); // 7/10

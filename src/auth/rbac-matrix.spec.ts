@@ -26,6 +26,7 @@ import { IntegrityService } from '../integrity/integrity.service';
 import { KafkaConsumerService } from '../kafka/kafka-consumer.service';
 import { LogsController } from '../logs/logs.controller';
 import { LogService } from '../logs/logs.service';
+import { LogDetailService } from '../logs/log-detail.service';
 import { StatsController } from '../stats/stats.controller';
 import { StatsService } from '../stats/stats.service';
 
@@ -65,6 +66,12 @@ const ENDPOINTS: Endpoint[] = [
   },
   { method: 'get', path: '/api/v1/logs', ok: 200, allowed: READERS },
   { method: 'get', path: `/api/v1/logs/${UUID}`, ok: 200, allowed: READERS },
+  {
+    method: 'get',
+    path: `/api/v1/logs/${UUID}/detail`,
+    ok: 200,
+    allowed: [...READERS, 'auditor'],
+  },
   // alerts
   {
     method: 'post',
@@ -74,6 +81,7 @@ const ENDPOINTS: Endpoint[] = [
     allowed: ['admin'],
   },
   { method: 'get', path: '/api/v1/alerts', ok: 200, allowed: READERS },
+  { method: 'get', path: `/api/v1/alerts/${UUID}`, ok: 200, allowed: READERS },
   {
     method: 'patch',
     path: `/api/v1/alerts/${UUID}/resolve`,
@@ -168,12 +176,20 @@ class HeaderRolesAuthGuard implements CanActivate {
 const mocks = {
   logs: {
     ingest: jest.fn().mockResolvedValue({ id: UUID }),
-    findRecent: jest.fn().mockResolvedValue([]),
+    list: jest
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 }),
     findOne: jest.fn().mockResolvedValue({ id: UUID }),
+  },
+  logDetail: {
+    getDetail: jest.fn().mockResolvedValue({ log: { id: UUID } }),
   },
   alerts: {
     createOrDedup: jest.fn().mockResolvedValue({ id: UUID }),
     findAll: jest.fn().mockResolvedValue([]),
+    findOneWithLogs: jest
+      .fn()
+      .mockResolvedValue({ alert: { id: UUID }, logs: [] }),
     resolve: jest.fn().mockResolvedValue({ id: UUID, status: 'RESOLVED' }),
   },
   integrity: {
@@ -233,6 +249,7 @@ describe('RBAC matrix (role × endpoint)', () => {
       providers: [
         AppService,
         { provide: LogService, useValue: mocks.logs },
+        { provide: LogDetailService, useValue: mocks.logDetail },
         { provide: AlertsService, useValue: mocks.alerts },
         { provide: IntegrityService, useValue: mocks.integrity },
         { provide: StatsService, useValue: mocks.stats },

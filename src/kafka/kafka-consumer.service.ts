@@ -238,14 +238,22 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
       const alert = JSON.parse(raw);
 
       // map Python consumer's alert format → Alert entity DTO
-      await this.alertsService.createOrDedup({
-        logId: alert.log_id ?? null,
-        alertType: alert.alert_type ?? 'UNKNOWN',
-        severity: alert.severity ?? 'WARNING',
-        source: alert.source ?? 'unknown',
-        title: alert.title ?? 'Alert',
-        detail: alert.detail ?? {},
-      });
+      // source_ip / related_log_ids / prior_log_ids: detection/app/alert_payload.py
+      await this.alertsService.createOrDedup(
+        {
+          logId: alert.log_id ?? null,
+          alertType: alert.alert_type ?? 'UNKNOWN',
+          severity: alert.severity ?? 'WARNING',
+          source: alert.source ?? 'unknown',
+          sourceIp: alert.source_ip ?? null,
+          title: alert.title ?? 'Alert',
+          detail: alert.detail ?? {},
+        },
+        {
+          relatedLogIds: alert.related_log_ids,
+          priorLogIds: alert.prior_log_ids,
+        },
+      );
 
       this.logger.debug(
         `Persisted alert from ${topic}: ${alert.alert_type} / ${alert.source}`,

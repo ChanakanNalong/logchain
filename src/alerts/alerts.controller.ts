@@ -44,6 +44,24 @@ export class AlertsController {
     return this.alertsService.findAll();
   }
 
+  @Get(':id')
+  @Roles('analyst', 'operator', 'admin')
+  @ApiOperation({
+    summary: 'Alert with every linked log (trigger / window / prior / repeat)',
+  })
+  findOne(
+    @Param(
+      'id',
+      new ParseUUIDPipe({
+        exceptionFactory: () =>
+          new BadRequestException('Alert ID must be a UUID'),
+      }),
+    )
+    id: string,
+  ) {
+    return this.alertsService.findOneWithLogs(id);
+  }
+
   /** ปิด alert = การกระทำเชิง triage ไม่ใช่การอ่าน — analyst จึงไม่อยู่ในลิสต์ */
   @Patch(':id/resolve')
   @Roles('operator', 'admin')
