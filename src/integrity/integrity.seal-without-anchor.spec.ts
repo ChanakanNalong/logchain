@@ -2,6 +2,9 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
+import { fakeSealManager } from './fake-seal-transaction';
+import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
+import type { RawHashCanonical } from '../logs/services/log-hash';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
@@ -54,8 +57,12 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
   let alertSaves: any[];
   let onChain: Map<string, string>;
   let blockchain: any;
+  let snapshots: Array<Partial<BatchLogSnapshot>>;
+  let failSnapshot: boolean;
 
   beforeEach(async () => {
+    snapshots = [];
+    failSnapshot = false;
     const t = new Date('2026-09-22T00:00:00.000Z');
     logsStore = [makeLog('a', t), makeLog('b', t), makeLog('c', t)];
     mappingStore = [];
@@ -116,6 +123,15 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
         async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
       ),
     };
+    // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
+    Object.assign(mappingRepo, {
+      manager: fakeSealManager({
+        batches: () => batchesRepo,
+        mapping: () => mappingRepo,
+        snapshots,
+        failSnapshot: () => failSnapshot,
+      }),
+    });
 
     const alertsRepo = {
       findOne: jest.fn(
@@ -278,5 +294,45 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     // batch ใบนี้มี mapping ครบและ verify แบบ local ได้ปกติ — ตั้ง FAILED
     // จะทำให้ stats ตัดออกจากตัวหารทั้งที่ไม่มีอะไรผิด
     expect(batch!.status).toBe('SEALED');
+  });
+  describe('snapshot ตอน seal (batch_log_snapshot)', () => {
+    it('เขียน snapshot ทุก log ตามลำดับ leaf — hash ใหม่จาก snapshot ได้ raw_hash เดิม', async () => {
+      const batch = await service.sealBatch();
+      const ordered = applyOrder(logsStore as Array<{ id: string }>, {
+        createdAt: 'ASC',
+        id: 'ASC',
+      });
+
+      expect(snapshots.map((s) => [s.position, s.logId])).toEqual(
+        ordered.map((l, i) => [i, l.id]),
+      );
+      for (const s of snapshots) {
+        expect(s.batchId).toBe(batch!.id);
+        // jsonb ไม่เก็บลำดับ key — ต้อง hash ผ่าน computeRawHash เสมอ
+        const c = s.snapshot as RawHashCanonical;
+        expect(computeRawHash({ ...c, createdAt: new Date(c.createdAt) })).toBe(
+          s.rawHash,
+        );
+        expect(Object.keys(c)).toEqual([
+          'v',
+          'id',
+          'source',
+          'sourceIp',
+          'eventType',
+          'severity',
+          'message',
+          'classification',
+          'cdeScope',
+          'createdAt',
+        ]);
+      }
+    });
+
+    it('เขียน snapshot ไม่ได้ = seal ล้ม (ไม่คืน batch SEALED)', async () => {
+      failSnapshot = true;
+      await expect(service.sealBatch()).rejects.toThrow(
+        'snapshot insert failed',
+      );
+    });
   });
 });

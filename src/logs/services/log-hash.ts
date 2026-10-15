@@ -49,9 +49,29 @@ export function normalizeIp(ip: string | null | undefined): string | null {
   }
 }
 
-export function computeRawHash(input: RawHashInput): string {
-  // object literal — JSON.stringify คง key order ตามที่เขียนไว้ (ไม่มี key ที่เป็นตัวเลข)
-  const canonical = JSON.stringify({
+/** สิ่งที่ถูก hash จริง — snapshot ของ batch (batch_log_snapshot.snapshot) เก็บค่านี้ */
+export interface RawHashCanonical {
+  v: number;
+  id: string;
+  source: string;
+  sourceIp: string | null;
+  eventType: string;
+  severity: string;
+  message: string;
+  classification: string;
+  cdeScope: boolean;
+  /** ISO-8601 ความละเอียด ms */
+  createdAt: string;
+}
+
+/**
+ * input ของ hash ตามลำดับ key ที่ hash จริง
+ * object literal — JSON.stringify คง key order ตามที่เขียนไว้ (ไม่มี key ที่เป็นตัวเลข)
+ * ⚠️ jsonb ของ Postgres ไม่เก็บลำดับ key — hash ใหม่จาก snapshot ต้องผ่าน computeRawHash
+ *    (ซึ่งเรียงให้ใหม่) ห้าม hash JSON ที่อ่านกลับมาจาก DB ตรง ๆ
+ */
+export function rawHashCanonical(input: RawHashInput): RawHashCanonical {
+  return {
     v: RAW_HASH_VERSION,
     id: input.id,
     source: input.source,
@@ -62,8 +82,11 @@ export function computeRawHash(input: RawHashInput): string {
     classification: input.classification,
     cdeScope: input.cdeScope,
     createdAt: input.createdAt.toISOString(),
-  });
+  };
+}
 
+export function computeRawHash(input: RawHashInput): string {
+  const canonical = JSON.stringify(rawHashCanonical(input));
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 

@@ -9,6 +9,7 @@ import {
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
+import { deleteSnapshotsOf } from './snapshot-cleanup';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { AuthGuard } from '@nestjs/passport';
 import { randomBytes, randomUUID } from 'crypto';
@@ -202,6 +203,7 @@ describe('Log on-chain status + alert_logs (integration)', () => {
           await ds.query('DELETE FROM alerts WHERE batch_id = ANY($1)', [
             createdBatchIds,
           ]);
+          await deleteSnapshotsOf(ds, createdBatchIds);
           await ds.query('DELETE FROM batches WHERE id = ANY($1)', [
             createdBatchIds,
           ]);

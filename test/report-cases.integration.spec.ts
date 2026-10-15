@@ -7,6 +7,7 @@ import {
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
+import { deleteSnapshotsOf } from './snapshot-cleanup';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { writeFileSync } from 'fs';
@@ -224,6 +225,7 @@ describe('Report test cases (chapter 4)', () => {
             [ids],
           );
           await ds.query('DELETE FROM alerts WHERE batch_id = ANY($1)', [ids]);
+          await deleteSnapshotsOf(ds, ids);
           await ds.query('DELETE FROM batches WHERE id = ANY($1)', [ids]);
         }
         await ds.query('DELETE FROM alerts WHERE log_id = ANY($1)', [logIds]);

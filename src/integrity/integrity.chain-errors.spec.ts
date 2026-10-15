@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
+import { fakeSealManager } from './fake-seal-transaction';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
@@ -127,6 +128,13 @@ describe('IntegrityService — chain write errors', () => {
         async ({ id }: any) => batchStore.find((b) => b.id === id) ?? null,
       ),
     };
+    // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
+    Object.assign(mappingRepo, {
+      manager: fakeSealManager({
+        batches: () => batchesRepo,
+        mapping: () => mappingRepo,
+      }),
+    });
 
     const alertsRepo = {
       findOne: jest.fn(async () => null),

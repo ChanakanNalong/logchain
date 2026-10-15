@@ -69,7 +69,9 @@ export default function Verify() {
     ]).then(([overviewRes, batchesRes, logsRes]) => {
       if (cancelled) return;
       if (overviewRes.status === "fulfilled") setOverview(overviewRes.value.data);
-      setBatches(batchesRes.status === "fulfilled" ? (batchesRes.value.data ?? []) : []);
+      // GET /batches คืน { items, total, limit, offset } แล้ว (docs/api/batches-diff.md) — array เดิมยังรับได้
+      const batchData = batchesRes.status === "fulfilled" ? batchesRes.value.data : null;
+      setBatches(Array.isArray(batchData) ? batchData : (batchData?.items ?? []));
       if (logsRes.status === "fulfilled") setRecentLogs(unwrapLogs(logsRes.value.data).slice(0, 6).map(mapLog));
 
       const failed = [overviewRes, batchesRes, logsRes].find((r) => r.status === "rejected");

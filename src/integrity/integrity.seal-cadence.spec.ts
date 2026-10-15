@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CronExpression } from '@nestjs/schedule';
 import { IntegrityService, LOW_BALANCE_ALERT_TYPE } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
+import { fakeSealManager } from './fake-seal-transaction';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
@@ -157,6 +158,13 @@ describe('IntegrityService — seal cadence / drain / guards', () => {
         return Promise.resolve(b);
       }),
     };
+    // writeMappingAndSnapshot: สถานะ + mapping + snapshot ใน transaction เดียว
+    Object.assign(mappingRepo, {
+      manager: fakeSealManager({
+        batches: () => batchesRepo,
+        mapping: () => mappingRepo,
+      }),
+    });
     const sameAlert = (a: AlertRow, w: AlertWhere['where']) =>
       a.alertType === w.alertType && a.status === w.status;
     const alertsRepo = {

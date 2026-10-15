@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { deleteSnapshotsOf } from './snapshot-cleanup';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { AppModule } from '../src/app.module';
 import { AuthGuard } from '@nestjs/passport';
@@ -195,6 +196,7 @@ describe('Integrity Integration', () => {
             'DELETE FROM alerts WHERE batch_id = ANY($1)',
             [createdBatchIds],
           );
+          await deleteSnapshotsOf(dataSource, createdBatchIds);
           await dataSource.query('DELETE FROM batches WHERE id = ANY($1)', [
             createdBatchIds,
           ]);
@@ -403,8 +405,10 @@ describe('Integrity Integration', () => {
       .get('/api/v1/batches')
       .expect(200);
 
-    expect(Array.isArray(res.body)).toBe(true);
-    const sealed = res.body.find((b: any) => b.id === batchId);
+    // แบ่งหน้าแล้ว (docs/api/batches-diff.md ข้อ 1) — batch ของเทสเป็นใบล่าสุด อยู่หน้าแรกเสมอ
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(typeof res.body.total).toBe('number');
+    const sealed = res.body.items.find((b: any) => b.id === batchId);
     expect(sealed).toBeDefined();
     expect(sealed.merkleRoot).toBe(sealedMerkleRoot);
     expect(sealed.status).toBe('CONFIRMED');
