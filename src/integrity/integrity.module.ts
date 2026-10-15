@@ -7,6 +7,7 @@ import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
 import { MerkleService } from './service/merkle.service';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { BatchDiffService } from './batch-diff.service';
+import { BatchTreeService } from './batch-tree.service';
 import { IntegrityService } from './integrity.service';
 import { DetectionService } from './detection.service';
 import { IntegritySchedule } from './integrity.scheduler';
@@ -33,6 +34,7 @@ import { AuthModule } from '../auth/auth.module';
     DetectionService,
     IntegritySchedule,
     BatchDiffService,
+    BatchTreeService,
   ],
   controllers: [IntegrityController, BatchesController],
   exports: [IntegrityService],

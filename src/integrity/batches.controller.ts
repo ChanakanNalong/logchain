@@ -13,6 +13,12 @@ import { IntegrityService } from './integrity.service';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 import { ListBatchesDto } from './dto/list-batches.dto';
 import { BatchDiffService } from './batch-diff.service';
+import { BatchTreeService } from './batch-tree.service';
+
+const batchIdPipe = () =>
+  new ParseUUIDPipe({
+    exceptionFactory: () => new BadRequestException('Batch ID must be a UUID'),
+  });
 
 @ApiTags('integrity')
 @ApiBearerAuth()
@@ -22,6 +28,7 @@ export class BatchesController {
   constructor(
     private readonly integrity: IntegrityService,
     private readonly diffService: BatchDiffService,
+    private readonly treeService: BatchTreeService,
   ) {}
 
   /**
@@ -37,6 +44,19 @@ export class BatchesController {
   }
 
   /**
+   * GET /api/v1/batches/:id/tree — Merkle tree ทุกชั้น + root (DB / chain) + ค่าใช้จ่าย
+   * สัญญา JSON: docs/api/merkle-tree.md · ทุกคำขอลง audit_access
+   */
+  @Get(':id/tree')
+  @Roles('analyst', 'operator', 'auditor', 'admin')
+  @ApiOperation({
+    summary: 'Merkle tree layers, roots and anchoring cost of a batch',
+  })
+  tree(@Param('id', batchIdPipe()) id: string) {
+    return this.treeService.tree(id);
+  }
+
+  /**
    * GET /api/v1/batches/:id/diff — log ตำแหน่งไหนถูกแก้ / ลบ / แทรก เทียบกับ snapshot ตอน seal
    * admin + auditor (ผู้ตรวจ) · ทุกคำขอลง audit_access · สัญญา JSON: docs/api/batches-diff.md ข้อ 2
    */
@@ -46,16 +66,7 @@ export class BatchesController {
     summary:
       'Per-position tamper diff of a batch against its seal-time snapshot',
   })
-  diff(
-    @Param(
-      'id',
-      new ParseUUIDPipe({
-        exceptionFactory: () =>
-          new BadRequestException('Batch ID must be a UUID'),
-      }),
-    )
-    id: string,
-  ) {
+  diff(@Param('id', batchIdPipe()) id: string) {
     return this.diffService.diff(id);
   }
 }

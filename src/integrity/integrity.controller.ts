@@ -97,6 +97,9 @@ export class IntegrityController {
     return {
       logId: result.log.id,
       rawHash: result.log.rawHash,
+      // 0-based ตำแหน่ง leaf · leafHash = sha256(rawHash) — docs/api/merkle-tree.md ข้อ 2
+      leafIndex: result.leafIndex,
+      leafHash: result.leafHash,
       batch: {
         id: result.batch.id,
         merkleRoot: result.batch.merkleRoot,
