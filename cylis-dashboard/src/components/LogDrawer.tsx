@@ -54,11 +54,19 @@ function errorText(e: any): string {
 }
 
 /** The five states of the live root check. `error` is never a tamper verdict. */
-function chainCheckView(c: ChainCheck | null): { tone: string; label: string; note: string } {
+function chainCheckView(c: ChainCheck | null, batchStatus: string | undefined): { tone: string; label: string; note: string } {
   if (c === null) return { tone: "neutral", label: "รอ seal รอบถัดไป", note: "log นี้ยังไม่อยู่ใน batch จึงยังไม่มี root ให้เทียบ" };
   if ("error" in c) return { tone: "neutral", label: "ติดต่อเชนไม่ได้ตอนนี้", note: "อ่าน root จากเชนไม่ได้ (RPC ล่มหรือ timeout) — ไม่ได้แปลว่าข้อมูลถูกแก้ ลองใหม่ภายหลัง" };
-  if (c.match) return { tone: "good", label: "root ใน DB ตรงกับบนเชน", note: "root ที่เก็บใน DB ตรงกับ root ที่ตรึงไว้บนเชน (เทียบ root ไม่ได้เทียบทีละ row)" };
-  if (isZeroRoot(c.chainRoot)) return { tone: "orange", label: "ยังไม่ถูกตรึงบนเชน", note: "บนเชนยังไม่มี root ของ batch นี้ (seal แล้วแต่ยังไม่ได้ anchor หรือ anchor ไม่สำเร็จ)" };
+  // a tampered batch never gets green, even though its stored root still matches (demo: no green on edited logs)
+  if (c.match) return { tone: batchStatus === "TAMPERED" ? "blue" : "good", label: "root ใน DB ตรงกับบนเชน", note: "root ที่เก็บใน DB ตรงกับ root ที่ตรึงไว้บนเชน (เทียบ root ไม่ได้เทียบทีละ row)" };
+  if (isZeroRoot(c.chainRoot)) {
+    // not sent yet vs sent (or tried) but missing — told apart by the batch status
+    return batchStatus === "SEALED" || batchStatus === "PENDING"
+      ? { tone: "slate", label: "ยังไม่ได้ส่ง root ขึ้นเชน (รอ anchor)", note: "batch นี้ seal แล้วแต่ยังไม่ได้ส่ง root ขึ้นเชน" }
+      : batchStatus === "FAILED"
+        ? { tone: "orange", label: "ส่ง root ขึ้นเชนไม่สำเร็จ", note: "anchor ไม่สำเร็จ บนเชนจึงไม่มี root ของ batch นี้ — ไม่ได้แปลว่าข้อมูลถูกแก้" }
+        : { tone: "orange", label: "ไม่พบ root บนเชน", note: "ส่ง root ขึ้นเชนแล้ว แต่ไม่พบ root ของ batch นี้บนเชน — ไม่ได้แปลว่าข้อมูลถูกแก้" };
+  }
   return { tone: "danger", label: "root ใน DB ไม่ตรงกับบนเชน", note: "root ใน DB ต่างจาก root บนเชน — ข้อมูลใน batch นี้อาจถูกแก้หลัง anchor" };
 }
 
@@ -184,7 +192,7 @@ export default function LogDrawer({
   const shown = { ...seed, ...log };
   const canSeeAlerts = canAccessPage("alerts");
   const canSeeVerify = canAccessPage("verify");
-  const check = detail ? chainCheckView(detail.chainCheck) : null;
+  const check = detail ? chainCheckView(detail.chainCheck, detail.batch?.status) : null;
   const note = detail?.batch ? statusNote(detail.batch.status, detail.chainCheck) : null;
   const tampered = detail?.batch?.status === "TAMPERED";
   const chainMatch = detail?.chainCheck && !("error" in detail.chainCheck) ? detail.chainCheck : null;

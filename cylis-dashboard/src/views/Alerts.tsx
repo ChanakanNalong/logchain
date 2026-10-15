@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useSearchParams } from "next/navigation";
 import { BellRing, CircleCheck, ChevronDown, ChevronRight, ShieldAlert, Search } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
@@ -28,10 +28,13 @@ export default function Alerts() {
   const canResolve = canDo("resolveAlert");
   const [alerts, setAlerts] = useState<AlertRow[] | null>(null);
   const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState(ALL_STATUSES);
-  const [severity, setSeverity] = useState(ALL_SEVERITIES);
-  const [alertType, setAlertType] = useState(ALL_TYPES);
+  // filters live in the query string like Logs, so F5 keeps them (keys: lib/nav.tsx PAGE_QUERY_KEYS.alerts)
+  const [query, setQuery] = useState(() => searchParams.get("a_q") ?? "");
+  const [status, setStatus] = useState(() => searchParams.get("a_status") ?? ALL_STATUSES);
+  const [severity, setSeverity] = useState(() => searchParams.get("a_sev") ?? ALL_SEVERITIES);
+  const [alertType, setAlertType] = useState(() => searchParams.get("a_type") ?? ALL_TYPES);
+  const tableBoxRef = useRef<HTMLDivElement>(null);
+  const tableBoxWidth = useElementWidth(tableBoxRef);
   // ?alert=<id> (from the log drawer) opens that alert
   const linkedAlert = searchParams.get(QUERY_KEYS.alert);
   const [expanded, setExpanded] = useState<string | null>(() => linkedAlert);
@@ -76,6 +79,15 @@ export default function Alerts() {
   useEffect(() => {
     if (expanded && !details[expanded]) loadDetail(expanded);
   }, [expanded, details, loadDetail]);
+
+  useEffect(() => {
+    replaceQuery({
+      a_q: query || null,
+      a_status: status !== ALL_STATUSES ? status : null,
+      a_sev: severity !== ALL_SEVERITIES ? severity : null,
+      a_type: alertType !== ALL_TYPES ? alertType : null,
+    });
+  }, [query, status, severity, alertType, replaceQuery]);
 
   function toggleRow(id: string) {
     const next = expanded === id ? null : id;
@@ -188,7 +200,7 @@ export default function Alerts() {
         {error && <div style={{ marginTop: 12, color: t.danger, fontSize: 13 }}>{error}</div>}
         {actionError && <div style={{ marginTop: 12, color: t.danger, fontSize: 13 }}>{actionError}</div>}
 
-        <div style={{ marginTop: 12, overflowX: "auto" }}>
+        <div ref={tableBoxRef} style={{ marginTop: 12, overflowX: "auto" }}>
           {alerts === null ? placeholder("Loading alerts…")
             : rows.length === 0 && !error ? placeholder("No alerts raised yet")
             : filtered.length === 0 ? placeholder("No alerts match these filters")
@@ -253,8 +265,15 @@ export default function Alerts() {
                         {isOpen && (
                           <tr>
                             <Td colSpan={9} style={{ background: t.surface2 }}>
-                              {/* width 0 + min-width 100%: fills the cell without pushing the table wider */}
-                              <div style={{ display: "grid", gap: 10, fontSize: 12, width: 0, minWidth: "100%" }}>
+                              {/* as wide as the visible part of the scroll box, pinned to its left edge:
+                                  the panel never pushes the table wider and stays in view when the
+                                  table is scrolled sideways (20 = the cell's padding) */}
+                              <div
+                                style={{
+                                  display: "grid", gap: 10, fontSize: 12, position: "sticky", left: 10,
+                                  ...(tableBoxWidth ? { width: tableBoxWidth - 20 } : { width: 0, minWidth: "100%" }),
+                                }}
+                              >
                                 <div style={{ color: t.muted, overflowWrap: "anywhere", ...monoFont }}>
                                   alert {a.id}
                                   {a.ruleId ? ` · rule ${a.ruleId}` : ""}
@@ -338,16 +357,36 @@ function RelatedLogs({
                 background: t.surface, border: `1px solid ${t.border}`, color: t.text, fontSize: 12,
               }}
             >
+              {/* role · ID · On-chain · time · message — the message goes last and takes what is left */}
               <span style={{ flexShrink: 0 }}><AlertRoleBadge role={l.role} /></span>
-              <span style={{ color: t.muted, whiteSpace: "nowrap", flexShrink: 0, ...monoFont }}>{fmtTime(l.createdAt)}</span>
-              <span title={l.message} style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...monoFont }}>
-                <span style={{ color: t.blue2 }}>{shortId(l.id)}</span> {l.sourceIp ? `· ${l.sourceIp} · ` : "· "}{l.message}
-              </span>
+              <span style={{ color: t.blue2, flexShrink: 0, ...monoFont }}>{shortId(l.id)}</span>
               <span style={{ flexShrink: 0 }}><BatchStatusBadge status={l.batchStatus} /></span>
+              <span style={{ color: t.muted, whiteSpace: "nowrap", flexShrink: 0, ...monoFont }}>{fmtTime(l.createdAt)}</span>
+              <span
+                title={l.sourceIp ? `${l.sourceIp} · ${l.message}` : l.message}
+                style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...monoFont }}
+              >
+                {l.sourceIp ? `${l.sourceIp} · ` : ""}{l.message}
+              </span>
             </button>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+/** Rendered width of an element, kept current with a ResizeObserver (0 until measured) */
+function useElementWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
 }

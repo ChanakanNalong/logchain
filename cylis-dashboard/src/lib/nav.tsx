@@ -25,7 +25,9 @@ export const QUERY_KEYS = {
  */
 export const PAGE_QUERY_KEYS: Record<string, readonly string[]> = {
   logs: ["q", "source", "severity", "eventType", "limit", "offset"],
-  alerts: [QUERY_KEYS.alert],
+  // a_ prefix: every key belongs to exactly one page, or leaving a page would
+  // carry its filters into another one that reads the same name
+  alerts: [QUERY_KEYS.alert, "a_q", "a_status", "a_sev", "a_type"],
   verify: [QUERY_KEYS.proofLog],
 };
 
