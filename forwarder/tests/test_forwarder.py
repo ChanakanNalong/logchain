@@ -169,6 +169,15 @@ class WebProxyFilterTest(unittest.TestCase):
             with self.subTest(uri):
                 self.assertIsNone(parse_access(self.caddy("203.0.113.5", uri, status=503, ua="sqlmap/1.7")))
 
+    def test_exclude_ips_from_config(self):
+        from logchain_forwarder.parsers import parse_networks
+        ex = parse_networks("49.48.73.182, 198.51.100.0/24, not-an-ip, 2001:db8::/32")
+        self.assertEqual(len(ex), 3)
+        self.assertIsNone(parse_access(self.caddy("49.48.73.182", "/.env"), exclude=ex))
+        self.assertIsNone(parse_access(self.caddy("198.51.100.77", "/.env"), exclude=ex))
+        self.assertIsNone(parse_access(self.caddy("2001:db8::9", "/.env"), exclude=ex))
+        self.assertIsNotNone(parse_access(self.caddy("49.48.73.183", "/.env"), exclude=ex))
+
     def test_nginx_internal_ip_dropped_too(self):
         self.assertIsNone(parse_access(NGINX["scanner"].replace("203.0.113.5", "10.0.0.7")))
 

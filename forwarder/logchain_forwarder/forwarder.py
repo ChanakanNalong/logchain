@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 from typing import Callable, Optional
 
-from .parsers import parse_access, parse_journal_json, parse_sshd
+from .parsers import parse_access, parse_journal_json, parse_networks, parse_sshd
 
 log = logging.getLogger("logchain-forwarder")
 
@@ -43,6 +43,8 @@ DEFAULTS = {
     "SSH_AUTH_LOG": "/var/log/auth.log",
     "ACCESS_LOGS": "",  # comma-separated paths
     "TRUST_CF_CONNECTING_IP": "false",
+    # IP/CIDR ของเราเอง (เช่น IP ขาออกของเครื่อง) ที่ไม่ส่งจาก access log · IP ภายในตัดให้เสมออยู่แล้ว
+    "EXCLUDE_IPS": "",
     "RATE_PER_HOUR": "300",
     "DEDUP_SECONDS": "10",
     "SUMMARY_SECONDS": "600",
@@ -373,9 +375,10 @@ def main(argv=None) -> int:
         else:
             threads.append(threading.Thread(target=follow_journal, args=(cfg["SSH_JOURNAL_ARGS"], state, stop, sender.offer), daemon=True))
     trust_cf = truthy(cfg["TRUST_CF_CONNECTING_IP"])
+    exclude = parse_networks(cfg["EXCLUDE_IPS"])
     for path in filter(None, (p.strip() for p in cfg["ACCESS_LOGS"].split(","))):
-        def on_http(line, _cf=trust_cf):
-            p = parse_access(line, _cf)
+        def on_http(line, _cf=trust_cf, _ex=exclude):
+            p = parse_access(line, _cf, _ex)
             if p:
                 sender.offer(p)
         threads.append(threading.Thread(target=follow_file, args=(path, state, stop, on_http), daemon=True))

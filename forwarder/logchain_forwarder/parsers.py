@@ -106,14 +106,27 @@ INTERNAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12"
 HEALTH_PATHS = {"/health", "/api/v1/health", "/healthz"}
 
 
-def _internal(ip: Optional[str]) -> bool:
+def parse_networks(raw: str) -> list:
+    """EXCLUDE_IPS="49.48.73.182, 198.51.100.0/24" → networks · ค่าที่อ่านไม่ออกถูกข้าม"""
+    nets = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if part:
+            try:
+                nets.append(ipaddress.ip_network(part, strict=False))
+            except ValueError:
+                pass
+    return nets
+
+
+def _internal(ip: Optional[str], extra=()) -> bool:
     if not ip:
         return False
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    return any(addr in net for net in INTERNAL_NETS)
+    return any(addr in net for net in (*INTERNAL_NETS, *extra) if addr.version == net.version)
 
 
 def _suspicious(path: str, ua: str, status: int) -> Optional[str]:
@@ -132,13 +145,13 @@ def _suspicious(path: str, ua: str, status: int) -> Optional[str]:
     return None
 
 
-def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip) -> Optional[dict]:
+def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip, exclude=()) -> Optional[dict]:
     try:
         code = int(status)
     except (TypeError, ValueError):
         return None
     client = (_ip(cf_ip) if (trust_cf and cf_ip) else None) or _ip(ip)
-    if _internal(client) or (path or "").split("?", 1)[0] in HEALTH_PATHS:
+    if _internal(client, exclude) or (path or "").split("?", 1)[0] in HEALTH_PATHS:
         return None
     if not _suspicious(path, ua or "", code):
         return None
@@ -154,7 +167,7 @@ def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip) -> Optional[dic
     }
 
 
-def parse_access(line: str, trust_cf: bool = False) -> Optional[dict]:
+def parse_access(line: str, trust_cf: bool = False, exclude=()) -> Optional[dict]:
     """
     nginx combined (ถ้า log_format ต่อท้ายด้วย "<CF-Connecting-IP>" ให้เปิด trust_cf)
     หรือ Caddy JSON (`log { format json }`) — แยกจากตัวอักษรแรก
@@ -164,7 +177,7 @@ def parse_access(line: str, trust_cf: bool = False) -> Optional[dict]:
         return None
     line = line.strip()
     if line.startswith("{"):
-        return _parse_caddy(line, trust_cf)
+        return _parse_caddy(line, trust_cf, exclude)
     m = COMBINED.match(line)
     if not m:
         return None
@@ -173,10 +186,10 @@ def parse_access(line: str, trust_cf: bool = False) -> Optional[dict]:
         extra = re.findall(r'"([^"]*)"', m.group("rest") or "")
         cf_ip = extra[-1] if extra else None
     return _http_payload(m.group("ip"), m.group("method"), m.group("path"), m.group("status"),
-                         m.group("ua"), trust_cf, cf_ip)
+                         m.group("ua"), trust_cf, cf_ip, exclude)
 
 
-def _parse_caddy(line: str, trust_cf: bool) -> Optional[dict]:
+def _parse_caddy(line: str, trust_cf: bool, exclude=()) -> Optional[dict]:
     try:
         e = json.loads(line)
         req = e.get("request") or {}
@@ -184,6 +197,6 @@ def _parse_caddy(line: str, trust_cf: bool) -> Optional[dict]:
         first = lambda k: (headers.get(k) or [None])[0]  # noqa: E731 — header ของ Caddy เป็น list
         ip = req.get("client_ip") or req.get("remote_ip")
         return _http_payload(ip, req.get("method"), req.get("uri") or "/", e.get("status"),
-                             first("User-Agent"), trust_cf, first("Cf-Connecting-Ip"))
+                             first("User-Agent"), trust_cf, first("Cf-Connecting-Ip"), exclude)
     except (ValueError, TypeError, AttributeError):
         return None
