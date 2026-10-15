@@ -34,9 +34,10 @@ gas ต่อ batch ตามขนาด batch — คงที่:
 
 - เวลาใน simulated network ไม่มีความหมายเชิงสัมบูรณ์ (mine ทันที) — บน Amoy tx หนึ่งรอ confirm ~6.5 วิ
   และ backend ส่ง tx ทีละตัว (คิว nonce) → (ก) 100 tx ≈ 11 นาที · (ข) ≈ 6.5 วิ
-- gas บน Hardhat (71,209) ต่ำกว่าบน Amoy (78,132–78,156) ราว 7k — **UNKNOWN** ว่าเพราะอะไร
-  (น่าจะเป็น artifact/compiler setting ของ contract ที่ deploy บน Amoy ต่างจากที่ compile ใน repo) · สัดส่วน 100× ไม่เปลี่ยน
-  เพราะ gas ต่อ tx คงที่ทั้งสองที่ · พิสูจน์ได้ด้วยการ deploy artifact `ignition/deployments/chain-80002` ลง Hardhat แล้ววัดซ้ำ
+- gas บน Hardhat (71,209) ต่ำกว่าบน Amoy (78,132–78,156) ราว 7k เพราะ**คนละ build ของ contract**:
+  keccak ของ bytecode ที่ deploy บน Amoy (`eth_getCode`, 637 byte) **ตรงกับ** `ignition/deployments/chain-80002/artifacts/LogIntegrityModule#LogIntegrity.json`
+  แต่ **ไม่ตรง** กับ artifact ที่ compile ในเครื่อง (`artifacts/contracts/LogIntegrity.sol/LogIntegrity.json`, 1,345 byte) ซึ่ง bench ใช้ (เช็ค 2026-10-15)
+  · สัดส่วน 100× ไม่เปลี่ยนเพราะ gas ต่อ tx คงที่ทั้งสองที่ · **ตัวเลขที่ใช้บนหน้าเว็บ/เอกสาร = ค่าจริงจาก Amoy (78,156)**
 
 ## 2. ค่าจริงบน Polygon Amoy (52 batch ของ stack หลัก)
 
@@ -49,7 +50,7 @@ gas ต่อ batch ตามขนาด batch — คงที่:
 | gas ต่อ tx | min 78,132 · max 78,156 · เฉลี่ย 78,153 (37 จาก 47 = **78,156** พอดี) |
 | gas price ที่จ่ายจริง | 25 – 500 gwei (500 = ช่วงก่อนตั้งเพดานทิป `BLOCKCHAIN_MAX_PRIORITY_FEE_GWEI=50`) |
 | ค่า tx เฉลี่ย | 0.00730 POL (รวม 47 tx = 0.343 POL) |
-| tx_hash หา receipt ไม่เจอ | 5 ใบ (`839e295c` `38d4b0ce` `6fa81a06` `a4516a5d` `d720bdb5`, seal 12–18 ก.ย.) — **root ของทั้ง 5 อยู่บน contract ตรงกับ DB** (เช็คด้วย `getRoot`) แต่ tx_hash ที่บันทึกไว้ไม่ใช่ tx ที่ลงจริง (น่าจะถูกแทนที่ / re-anchor ภายหลังโดยไม่ได้อัปเดต hash) → backfill ข้าม gas ของ 5 ใบนี้ยังเป็น NULL |
+| หา receipt ไม่เจอ | 5 ใบ (`839e295c` `38d4b0ce` `6fa81a06` `a4516a5d` `d720bdb5`, seal 12–18 ก.ย.) — **tx_hash ใน DB ถูกต้อง**: event `RootStored` (eth_getLogs กรองด้วย keccak256(batch UUID)) ชี้ไปที่ tx เดียวกันทุกใบ (block 47,802,976–47,894,150) และ root บน contract ตรงกับ DB · แต่ public RPC (publicnode) ตอบ `null` ทั้ง `eth_getTransactionReceipt` และ `eth_getTransactionByHash` ของ tx ช่วงนั้น = node ไม่เก็บ index ของ tx เก่า (tx lookup limit) ไม่ใช่ hash ผิด · backfill จึงข้าม gas ของ 5 ใบนี้ยังเป็น NULL (ใช้ RPC แบบ archive ได้ถ้าต้องการ) |
 
 ค่าใช้จ่ายต่อ tx = 78,156 × gas price:
 
