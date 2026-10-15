@@ -386,6 +386,50 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * ยอดเงินของ wallet + ค่า storeRoot 1 ครั้งโดยประมาณ (ไม่ส่ง tx)
+   *
+   * gas มาจาก estimateGas ของ storeRoot กับ batch id สุ่ม (slot ว่าง = ราคาเดียวกับของจริง)
+   * ค่าต่อ gas ใช้ maxFeePerGas หลังกดเพดานทิปแบบเดียวกับ cappedFees() = เพดานบนที่อาจจ่าย
+   * ใช้กับ guard ยอดเงินต่ำของ sealBatch — call พวกนี้เป็น read ไม่เสีย gas
+   */
+  async estimateStoreRootCost(): Promise<{
+    address: string;
+    balanceWei: bigint;
+    gas: bigint;
+    feePerGasWei: bigint;
+    costWei: bigint;
+  }> {
+    if (!this.isReady) throw new Error('Blockchain not ready');
+
+    const probeId = ethers.id(`seal-cost-probe:${Date.now()}`);
+    const [balanceWei, gas, feeData] = await Promise.all([
+      this.provider.getBalance(this.wallet.address),
+      this.contract.storeRoot.estimateGas(probeId, ethers.id('probe')),
+      this.provider.getFeeData(),
+    ]);
+
+    const { maxFeePerGas, maxPriorityFeePerGas, gasPrice } = feeData;
+    let feePerGasWei = maxFeePerGas ?? gasPrice ?? 0n;
+    const cap = this.maxPriorityFeeWei;
+    if (
+      cap !== null &&
+      maxFeePerGas !== null &&
+      maxPriorityFeePerGas !== null &&
+      maxPriorityFeePerGas > cap
+    ) {
+      feePerGasWei = maxFeePerGas - maxPriorityFeePerGas + cap;
+    }
+
+    return {
+      address: this.wallet.address,
+      balanceWei,
+      gas,
+      feePerGasWei,
+      costWei: gas * feePerGasWei,
+    };
+  }
+
+  /**
    * verify ว่า root ที่เก็บไว้ตรงกับที่ส่งมาไหม
    * ถ้าไม่ตรง = ข้อมูลถูก tamper
    */

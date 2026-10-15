@@ -1,18 +1,34 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { IntegrityService } from './integrity.service';
 
+/** ชื่อ cron ของรอบ seal ใน SchedulerRegistry */
+export const SEAL_CRON_JOB = 'integrity-seal';
+
 @Injectable()
-export class IntegritySchedule {
+export class IntegritySchedule implements OnModuleInit {
   private readonly logger = new Logger(IntegritySchedule.name);
 
-  constructor(private readonly integrity: IntegrityService) {}
+  constructor(
+    private readonly integrity: IntegrityService,
+    private readonly scheduler: SchedulerRegistry,
+  ) {}
 
-  // seal batch ทุก 1 นาที (CronExpression.EVERY_MINUTE)
-  @Cron(CronExpression.EVERY_MINUTE)
+  // seal ตาม SEAL_CRON (default ทุก 1 นาที) — ลงทะเบียนเองแทน @Cron เพราะ decorator
+  // ถูกประเมินตอน import ก่อน ConfigModule โหลด .env (โหมด dev บน host จะไม่เห็นค่า)
+  // cron expression ผิด → CronJob โยนตอน boot (ดีกว่าเงียบแล้วไม่ seal เลย)
+  onModuleInit() {
+    const { cron, batchSize } = this.integrity.sealConfig;
+    const job = new CronJob(cron, () => void this.handleSealBatch());
+    this.scheduler.addCronJob(SEAL_CRON_JOB, job);
+    job.start();
+    this.logger.log(`Seal schedule: "${cron}" · batch size ${batchSize}`);
+  }
+
   async handleSealBatch() {
     try {
-      await this.integrity.sealBatch();
+      await this.integrity.runScheduledSeal();
     } catch (err) {
       this.logger.error('Seal batch job failed', err);
     }

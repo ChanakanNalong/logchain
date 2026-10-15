@@ -8,14 +8,22 @@
  *
  * ใช้:  node scripts/deploy-contract.mjs
  *       (อ่าน RPC/private key จาก .env, ไม่ต้องส่ง argument)
+ *       ENV_FILE=.env.hardhat node scripts/deploy-contract.mjs   ← environment hh
+ *
+ * ก่อน deploy พิมพ์ RPC + chainId + signer เสมอ · chainId ≠ 31337 (Hardhat) = chain จริง
+ * เสีย gas จริง → ต้องตั้ง CONFIRM_REAL_CHAIN=1 ถึงจะยอม (กัน deploy ขึ้น Amoy โดยไม่ตั้งใจ
+ * เพราะ .env ของ stack หลักชี้ Amoy อยู่)
  */
 import { readFileSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { ethers } from 'ethers';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ENV_PATH = join(__dirname, '..', '.env');
+const ENV_PATH = process.env.ENV_FILE
+  ? resolve(process.env.ENV_FILE)
+  : join(__dirname, '..', '.env');
+const HARDHAT_CHAIN_ID = 31337n;
 const ARTIFACT_PATH =
   process.env.CONTRACT_ARTIFACT ??
   join(
@@ -56,7 +64,18 @@ async function main() {
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   const wallet = new ethers.Wallet(pk, provider);
-  console.log(`Deploying LogIntegrity to ${rpcUrl} as ${wallet.address} ...`);
+  const { chainId } = await provider.getNetwork();
+  console.log(`env file : ${ENV_PATH}`);
+  console.log(`RPC      : ${rpcUrl}`);
+  console.log(`chainId  : ${chainId}`);
+  console.log(`signer   : ${wallet.address}`);
+  if (chainId !== HARDHAT_CHAIN_ID && process.env.CONFIRM_REAL_CHAIN !== '1') {
+    throw new Error(
+      `chainId ${chainId} is not Hardhat (${HARDHAT_CHAIN_ID}) — deploying costs real gas. ` +
+        'Re-run with CONFIRM_REAL_CHAIN=1 if that is intended',
+    );
+  }
+  console.log(`Deploying LogIntegrity ...`);
 
   const factory = new ethers.ContractFactory(art.abi, art.bytecode, wallet);
   const contract = await factory.deploy();

@@ -121,7 +121,12 @@ describe('Report test cases (chapter 4)', () => {
   const count = async (text: string, params?: unknown[]) =>
     (await sql<CountRow>(text, params))[0].c;
 
+  // PT-04/PT-06 วัด batch เต็ม 100 log — ตรึงขนาดไว้ ไม่ให้ SEAL_BATCH_SIZE ของเครื่องที่รันมาเปลี่ยนผล
+  // (ต้องตั้งก่อน compile — IntegrityService อ่าน SEAL_* ตอนสร้าง)
+  const prevBatchSize = process.env.SEAL_BATCH_SIZE;
+
   beforeAll(async () => {
+    process.env.SEAL_BATCH_SIZE = '100';
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -229,6 +234,8 @@ describe('Report test cases (chapter 4)', () => {
     } catch (err) {
       console.warn(`[report-cases] cleanup failed: ${(err as Error).message}`);
     } finally {
+      if (prevBatchSize === undefined) delete process.env.SEAL_BATCH_SIZE;
+      else process.env.SEAL_BATCH_SIZE = prevBatchSize;
       if (process.env.REPORT_RESULTS_FILE) {
         writeFileSync(
           process.env.REPORT_RESULTS_FILE,

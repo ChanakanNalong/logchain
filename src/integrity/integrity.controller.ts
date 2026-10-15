@@ -7,11 +7,13 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IntegrityService } from './integrity.service';
+import { SealSkippedError } from './seal-config';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 
 @ApiTags('integrity')
@@ -46,7 +48,17 @@ export class IntegrityController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Seal a batch of pending logs immediately' })
   async sealNow() {
-    const batch = await this.integrity.sealBatch();
+    // seal-now ปิด batch เดียวเหมือนเดิม และไม่ติด backoff ของ cron (admin สั่งเองตั้งใจ)
+    // แต่ยังติด guard ยอดเงิน — 503 พร้อมเหตุผล ไม่ใช่ "No pending logs" ที่ชี้ผิดทาง
+    let batch;
+    try {
+      batch = await this.integrity.sealBatch();
+    } catch (err) {
+      if (err instanceof SealSkippedError) {
+        throw new ServiceUnavailableException(err.message);
+      }
+      throw err;
+    }
     if (!batch) {
       return { message: 'No pending logs to seal' };
     }

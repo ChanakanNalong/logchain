@@ -12,8 +12,23 @@ import {
 } from '../blockchain/blockchain.service';
 import { DetectionService } from './detection.service';
 import { isRawHashIntact } from '../logs/services/log-hash';
+import { ethers } from 'ethers';
+import { readSealConfig, SealConfig, SealSkippedError } from './seal-config';
 
-const BATCH_SIZE = 100; // กำหนดขนาด batch
+/** alert ที่ guard ยอดเงินต่ำยกขึ้น (ไม่ผูก batch — batch ยังไม่ถูกสร้าง) */
+export const LOW_BALANCE_ALERT_TYPE = 'WALLET_LOW_BALANCE';
+
+/**
+ * เพดาน batch ต่อรอบ cron — กันวนไม่จบถ้า mapping ไม่ถูกเขียนแต่ batch ไม่ FAILED (บั๊ก)
+ * 1,000 × batch size 100 = 100,000 log ต่อรอบ เกินกว่านี้รอบถัดไปปิดต่อ
+ */
+const MAX_BATCHES_PER_TICK = 1000;
+
+/** ผลของรอบ seal ตาม cron — skipped = รอบนี้ไม่ได้พยายาม seal (log ยังค้างครบ) */
+export interface SealRunResult {
+  batches: Batch[];
+  skipped?: 'IN_FLIGHT' | 'BACKOFF' | 'LOW_BALANCE';
+}
 
 /**
  * สถานะของ batch
@@ -46,6 +61,23 @@ export class IntegrityService {
    */
   private sealQueue: Promise<unknown> = Promise.resolve();
 
+  /** ค่าตั้งของรอบ seal (SEAL_* env) — ดู seal-config.ts */
+  readonly sealConfig: SealConfig = readSealConfig(process.env);
+
+  /** รอบ cron ก่อนหน้ายัง drain ไม่จบ — กันรอบซ้อน (seal ทีละ tx อาจนานกว่า 1 รอบ) */
+  private drainInFlight = false;
+  /** seal ล้มติดกันกี่ครั้ง (FAILED หรือ throw) · reset เมื่อสำเร็จ */
+  private consecutiveFailures = 0;
+  /** รอบ cron ที่ต้องข้ามที่เหลือ (exponential backoff) */
+  private backoffTicksLeft = 0;
+  /**
+   * ยอดเงินต่ำค้างอยู่ — ไว้ log ตอนฟื้นและปิด alert
+   * เริ่มเป็น true: process ก่อนหน้าอาจทิ้ง alert OPEN ไว้ (restart ระหว่างยอดต่ำ)
+   * เช็คผ่านครั้งแรกจึงปิดของค้างให้ด้วย ไม่งั้น alert ค้าง OPEN ตลอดไป
+   */
+  private lowBalance = true;
+  private lastLowBalanceAlertAt = 0;
+
   constructor(
     @InjectRepository(Log) private readonly logsRepo: Repository<Log>,
     @InjectRepository(Batch) private readonly batchesRepo: Repository<Batch>,
@@ -66,10 +98,203 @@ export class IntegrityService {
    * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
   sealBatch(): Promise<Batch | null> {
-    const run = this.sealQueue.then(() => this.sealBatchNow());
+    const run = this.sealQueue
+      .then(() => this.sealBatchNow())
+      .then(
+        (batch) => {
+          if (batch) this.recordSealOutcome(batch.status !== 'FAILED');
+          return batch;
+        },
+        (err) => {
+          // ข้ามเพราะยอดเงินต่ำไม่ใช่ความล้มเหลวของ seal — ไม่นับเข้า backoff
+          if (!(err instanceof SealSkippedError)) this.recordSealOutcome(false);
+          throw err;
+        },
+      );
     // ตัวถัดไปในคิวต้องรอตัวนี้จบ ไม่ว่าจะสำเร็จหรือ throw
     this.sealQueue = run.catch(() => undefined);
     return run;
+  }
+
+  /**
+   * รอบ seal ของ cron — ปิด batch ทีละ sealConfig.batchSize จนไม่มี log ค้าง
+   *
+   * วนผ่าน sealBatch() ทีละใบ คิว sealQueue จึงยังกัน seal-now ที่ยิงแทรกได้เหมือนเดิม
+   * และลำดับยังเป็น createdAt ASC, id ASC (แต่ละใบหยิบ log ค้างที่เก่าสุดก่อน)
+   * หยุดเมื่อ: ไม่มี log ค้าง · batch ไม่เต็ม (= หมดแล้ว ไม่ต้อง query ซ้ำ) ·
+   * batch FAILED (log ชุดเดิมยังไม่ถูก map — วนต่อจะ seal ชุดเดิมซ้ำในรอบเดียว) · guard ยอดเงิน
+   */
+  async runScheduledSeal(): Promise<SealRunResult> {
+    if (this.drainInFlight) {
+      this.logger.debug(
+        'Previous seal round still running — skipping this tick',
+      );
+      return { batches: [], skipped: 'IN_FLIGHT' };
+    }
+    if (this.backoffTicksLeft > 0) {
+      this.backoffTicksLeft--;
+      this.logger.warn(
+        `Seal backoff: skipping tick after ${this.consecutiveFailures} consecutive failures ` +
+          `(${this.backoffTicksLeft} more to skip)`,
+      );
+      return { batches: [], skipped: 'BACKOFF' };
+    }
+
+    this.drainInFlight = true;
+    const batches: Batch[] = [];
+    try {
+      for (;;) {
+        let batch: Batch | null;
+        try {
+          batch = await this.sealBatch();
+        } catch (err) {
+          if (err instanceof SealSkippedError) {
+            return { batches, skipped: err.reason };
+          }
+          throw err;
+        }
+        if (!batch) break;
+        batches.push(batch);
+        if (batch.status === 'FAILED') break;
+        if (batch.logCount < this.sealConfig.batchSize) break;
+        if (batches.length >= MAX_BATCHES_PER_TICK) {
+          this.logger.warn(
+            `Seal round hit ${MAX_BATCHES_PER_TICK} batches — continuing next tick`,
+          );
+          break;
+        }
+      }
+      if (batches.length > 1) {
+        this.logger.log(
+          `Seal round drained backlog: ${batches.length} batches, ` +
+            `${batches.reduce((n, b) => n + b.logCount, 0)} logs`,
+        );
+      }
+      return { batches };
+    } finally {
+      this.drainInFlight = false;
+    }
+  }
+
+  /** นับผล seal สำหรับ backoff — ล้มครบ N ครั้งติดกันแล้วข้าม 2^(ครั้งที่เกิน N) รอบ */
+  private recordSealOutcome(ok: boolean): void {
+    if (ok) {
+      if (this.consecutiveFailures > 0) {
+        this.logger.log(
+          `Seal succeeded after ${this.consecutiveFailures} consecutive failure(s) — backoff reset`,
+        );
+      }
+      this.consecutiveFailures = 0;
+      this.backoffTicksLeft = 0;
+      return;
+    }
+
+    this.consecutiveFailures++;
+    const after = this.sealConfig.failureBackoffAfter;
+    if (after <= 0 || this.consecutiveFailures < after) return;
+
+    // exponent มีเพดาน — กัน 2 ** n ล้นจนได้ Infinity เมื่อล้มต่อเนื่องเป็นวัน
+    const exp = Math.min(this.consecutiveFailures - after, 30);
+    this.backoffTicksLeft = Math.min(2 ** exp, this.sealConfig.backoffMaxTicks);
+    this.logger.warn(
+      `Seal failed ${this.consecutiveFailures} times in a row — skipping the next ` +
+        `${this.backoffTicksLeft} tick(s) instead of creating another FAILED batch every tick`,
+    );
+  }
+
+  /**
+   * guard ยอดเงินต่ำ — เรียกก่อนสร้าง batch เท่านั้น (ไม่มี chain = ไม่มี tx = ไม่ต้องเช็ค)
+   * ยอด < SEAL_MIN_BALANCE_TX × ค่า storeRoot โดยประมาณ → throw SealSkippedError (log ค้าง pending)
+   * เช็คยอดไม่ได้ (RPC พัง) → seal ต่อ: ถ้า RPC พังจริง storeRoot จะ FAILED แล้ว backoff รับช่วง
+   */
+  private async checkWalletBalance(): Promise<void> {
+    const minTx = this.sealConfig.minBalanceTx;
+    if (minTx <= 0 || !this.blockchain.ready) return;
+
+    let est: Awaited<ReturnType<BlockchainService['estimateStoreRootCost']>>;
+    try {
+      est = await this.blockchain.estimateStoreRootCost();
+    } catch (err) {
+      this.logger.warn(
+        `Cannot check wallet balance (${(err as Error).message}) — sealing anyway`,
+      );
+      return;
+    }
+
+    const requiredWei = est.costWei * BigInt(minTx);
+    const pol = (wei: bigint) => ethers.formatEther(wei);
+    if (est.balanceWei >= requiredWei) {
+      if (this.lowBalance) {
+        this.lowBalance = false;
+        const { affected } = await this.alertsRepo.update(
+          { alertType: LOW_BALANCE_ALERT_TYPE, status: 'OPEN' },
+          { status: 'RESOLVED' },
+        );
+        if (affected) {
+          this.logger.log(
+            `Wallet balance recovered: ${pol(est.balanceWei)} POL ≥ ${pol(requiredWei)} — ` +
+              `sealing resumed, resolved ${affected} ${LOW_BALANCE_ALERT_TYPE} alert(s)`,
+          );
+        }
+      }
+      return;
+    }
+
+    this.lowBalance = true;
+    const message =
+      `Wallet ${est.address} balance ${pol(est.balanceWei)} POL is below ` +
+      `${minTx} × storeRoot (~${pol(est.costWei)} POL each = ${pol(requiredWei)} POL) — ` +
+      'not creating a batch; logs stay pending';
+    this.logger.warn(message);
+    await this.raiseLowBalanceAlert(est, requiredWei, message);
+    throw new SealSkippedError('LOW_BALANCE', message);
+  }
+
+  /** alert ยอดเงินต่ำ — ไม่ถี่กว่า SEAL_LOW_BALANCE_ALERT_MINUTES และไม่ซ้ำกับใบที่ยัง OPEN */
+  private async raiseLowBalanceAlert(
+    est: { address: string; balanceWei: bigint; gas: bigint; costWei: bigint },
+    requiredWei: bigint,
+    message: string,
+  ): Promise<void> {
+    const now = Date.now();
+    const intervalMs = this.sealConfig.lowBalanceAlertMinutes * 60_000;
+    if (now - this.lastLowBalanceAlertAt < intervalMs) return;
+    this.lastLowBalanceAlertAt = now;
+
+    try {
+      const existing = await this.alertsRepo.findOne({
+        where: {
+          alertType: LOW_BALANCE_ALERT_TYPE,
+          source: 'INTEGRITY',
+          status: 'OPEN',
+        },
+      });
+      if (existing) return;
+
+      await this.alertsRepo.save(
+        this.alertsRepo.create({
+          alertType: LOW_BALANCE_ALERT_TYPE,
+          severity: 'HIGH',
+          source: 'INTEGRITY',
+          title: 'Wallet balance too low to anchor batches — sealing paused',
+          detail: {
+            wallet: est.address,
+            balanceWei: est.balanceWei.toString(),
+            requiredWei: requiredWei.toString(),
+            estimatedGas: est.gas.toString(),
+            estimatedCostWei: est.costWei.toString(),
+            minBalanceTx: this.sealConfig.minBalanceTx,
+            message,
+          },
+          status: 'OPEN',
+        }),
+      );
+    } catch (err) {
+      // alert พังต้องไม่ทำให้ guard พัง — log ยังค้าง pending อย่างปลอดภัยอยู่ดี
+      this.logger.error(
+        `Cannot record ${LOW_BALANCE_ALERT_TYPE} alert: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async sealBatchNow(): Promise<Batch | null> {
@@ -81,13 +306,16 @@ export class IntegrityService {
     const pendingLogs = await this.logsRepo.find({
       where: mappedIds.length > 0 ? { id: Not(In(mappedIds)) } : {},
       order: { createdAt: 'ASC', id: 'ASC' }, // ต้องตรงกับ getLeavesForBatch
-      take: BATCH_SIZE,
+      take: this.sealConfig.batchSize,
     });
 
     if (pendingLogs.length === 0) {
       this.logger.debug('No pending logs to seal');
       return null;
     }
+
+    // 2b. ยอดเงินไม่พอ anchor → ไม่สร้าง batch เลย (ไม่ใช่สร้างแล้ว FAILED)
+    await this.checkWalletBalance();
 
     // 3. สร้าง Merkle tree
     const leaves = pendingLogs.map((log) => log.rawHash);
