@@ -1,11 +1,24 @@
-import { Fragment, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight, CircleCheck, CircleX, Search, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CircleCheck, CircleX, GitBranch, Search, ShieldCheck } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Card, SectionLabel, Button, Badge, Th, Td } from "@/components/ui";
+import BatchStatusBadge from "@/components/BatchStatusBadge";
+import { RootCard, type RootState } from "@/components/BatchDiffDrawer";
+import { PolygonscanLink } from "@/components/LogTable";
+import MerkleTreeView from "@/components/merkle/MerkleTreeView";
+import ProofSteps from "@/components/merkle/ProofSteps";
+import CostCard from "@/components/merkle/CostCard";
+import BatchPicker, { logsLabel } from "@/components/merkle/BatchPicker";
 import { api } from "@/lib/api";
-import { mapLog, unwrapLogs } from "@/lib/logRows";
-import { QUERY_KEYS } from "@/lib/nav";
+import { getBatches, getBatchTree, getLogProof, getLogs } from "@/lib/endpoints";
+import { unanchoredRootView } from "@/lib/chainState";
+import { fmtTime, isZeroRoot, shortId } from "@/lib/format";
+import { mapLog, type LogRow } from "@/lib/logRows";
+import { checkProofAgainstPath, proofPath, sameHash } from "@/lib/merkle";
+import { QUERY_KEYS, useReplaceQuery } from "@/lib/nav";
+import { useElementWidth } from "@/lib/useElementWidth";
+import type { BatchListItem, BatchTree, LogProofResult } from "@/types/api";
 
 /**
  * GET /logs/:id/proof ต้องการ UUID เต็ม (log_batch_mapping.log_id เป็น type uuid)
@@ -16,24 +29,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const NEEDS_FULL_ID =
   "Log ID must be the full UUID — the Logs table shows only the first 8 characters. Click an ID there to copy the whole one.";
-
-/** สถานะ batch -> สีของ Badge */
-function statusTone(status: string) {
-  switch (status) {
-    case "CONFIRMED": return "good";
-    case "TAMPERED": return "danger";
-    // anchor ไม่ผ่าน (RPC ล่ม / gas ไม่พอ) ไม่ใช่หลักฐานว่าข้อมูลถูกแก้ — เตือน ไม่ใช่แดง
-    case "FAILED":
-    case "PENDING": return "warn";
-    // SEALED = ปิด batch แล้วและผ่านการตรวจแบบ local ทุกนาที แต่ยังไม่ได้ anchor
-    // ขึ้น chain (ยังไม่ได้ตั้ง blockchain) — ไม่ใช่ปัญหา แต่ก็ยังไม่ใช่ "good"
-    // เท่า CONFIRMED เพราะ root ยังอยู่ใน DB ก้อนเดียวกับ log
-    case "SEALED": return "neutral";
-    default: return "neutral";
-  }
-}
-
-const fmtTime = (v: string | null) => (v ? new Date(v).toLocaleString("sv-SE") : "—");
 
 /**
  * ผลจำแนก batch ของ Isolation Forest (ตรวจจับระดับที่ 3)
@@ -46,38 +41,84 @@ function anomalyTone(v: boolean | null | undefined) {
   return null;
 }
 
+
+function treeError(e: any): string {
+  switch (e?.response?.status) {
+    case 400: return "Batch ID ต้องเป็น UUID";
+    case 403: return "บัญชีนี้ไม่มีสิทธิ์ดู tree ของ batch";
+    case 404: return "ไม่พบ batch นี้";
+    default: return "โหลด tree ไม่สำเร็จ";
+  }
+}
+
+/** dbRoot / computedRoot / chainRoot against the reference (chain when anchored, else DB) */
+function treeRoots(tree: BatchTree) {
+  const anchored = tree.chainRoot !== null && !isZeroRoot(tree.chainRoot);
+  const reference = anchored ? tree.chainRoot! : tree.dbRoot;
+  const cmp = (v: string | null): RootState => (sameHash(v, reference) ? { kind: "match" } : { kind: "mismatch" });
+  const unanchored = unanchoredRootView(tree.status);
+  return {
+    anchored,
+    referenceName: anchored ? "root บนเชน" : "root ใน DB",
+    chainValue: anchored ? tree.chainRoot : null,
+    chain: (tree.chainRoot === null
+      ? { kind: "gray", text: "ติดต่อเชนไม่ได้" }
+      : isZeroRoot(tree.chainRoot)
+        ? { kind: "gray", text: unanchored.label, tone: unanchored.tone }
+        : cmp(tree.chainRoot)) as RootState,
+    db: cmp(tree.dbRoot),
+    computed: (tree.computedRoot ? cmp(tree.computedRoot) : { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้" }) as RootState,
+  };
+}
+
 export default function Verify() {
   const t = useTheme();
+  const searchParams = useSearchParams();
+  const replaceQuery = useReplaceQuery();
   const [logId, setLogId] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<LogProofResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   // ?proofLog=<id> — sent by "ดู proof บน tree" in the log drawer
-  const proofLog = useSearchParams().get(QUERY_KEYS.proofLog);
+  const proofLog = searchParams.get(QUERY_KEYS.proofLog);
 
   const [overview, setOverview] = useState<any>(null);
-  const [batches, setBatches] = useState<any[] | null>(null);
-  const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [batches, setBatches] = useState<BatchListItem[] | null>(null);
+  const [recentLogs, setRecentLogs] = useState<LogRow[]>([]);
   const [chainError, setChainError] = useState("");
 
+  // batch whose tree is on screen (v_batch keeps it across F5)
+  const [selectedBatch, setSelectedBatch] = useState<string | null>(() => {
+    const id = searchParams.get("v_batch");
+    return id && UUID_RE.test(id) ? id : null;
+  });
+  // the last loaded tree stays on screen (dimmed) while the next one loads,
+  // so picking another batch does not collapse the page and jump the scroll
+  const [treeData, setTreeData] = useState<BatchTree | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeErr, setTreeErr] = useState("");
+  const [step, setStep] = useState(0);
+  const [focus, setFocus] = useState<{ layer: number; index: number } | null>(null);
+
+  // measured on a box that always exists (the root cards mount only once a tree is loaded)
+  const treeBoxRef = useRef<HTMLDivElement>(null);
+  const treeBoxWidth = useElementWidth(treeBoxRef);
+
   // สรุปสถานะ chain โหลดแยกจากฟอร์ม — ถ้าส่วนนี้ล่ม ฟอร์ม verify ต้องยังใช้ได้อยู่
-  // แต่ละส่วนแสดงผลของตัวเอง: auditor อ่าน /batches ได้แต่ /stats/overview กับ /logs ไม่ได้ —
-  // Promise.all ทิ้ง batch ที่โหลดได้แล้วขึ้น "No batches sealed yet" ทั้งที่มี
+  // แต่ละส่วนแสดงผลของตัวเอง (Promise.allSettled) · /batches กับ /logs ผ่าน lib/endpoints (สวิตช์ mock)
   useEffect(() => {
     let cancelled = false;
 
     Promise.allSettled([
       api.get("/stats/overview"),
-      api.get("/batches", { params: { limit: 8 } }),
-      api.get("/logs", { params: { limit: 6 } }),
+      getBatches({ limit: 10 }),
+      getLogs({ limit: 6 }),
     ]).then(([overviewRes, batchesRes, logsRes]) => {
       if (cancelled) return;
       if (overviewRes.status === "fulfilled") setOverview(overviewRes.value.data);
-      // GET /batches คืน { items, total, limit, offset } แล้ว (docs/api/batches-diff.md) — array เดิมยังรับได้
-      const batchData = batchesRes.status === "fulfilled" ? batchesRes.value.data : null;
-      setBatches(Array.isArray(batchData) ? batchData : (batchData?.items ?? []));
-      if (logsRes.status === "fulfilled") setRecentLogs(unwrapLogs(logsRes.value.data).slice(0, 6).map(mapLog));
+      setBatches(batchesRes.status === "fulfilled" ? batchesRes.value.items : []);
+      if (logsRes.status === "fulfilled") setRecentLogs(logsRes.value.items.slice(0, 6).map(mapLog));
 
       const failed = [overviewRes, batchesRes, logsRes].find((r) => r.status === "rejected");
       if (failed) {
@@ -94,10 +135,28 @@ export default function Verify() {
     return () => { cancelled = true; };
   }, []);
 
-  async function runVerify(rawId: string) {
+  // tree of the selected batch — loads on its own, the proof form keeps working meanwhile
+  useEffect(() => {
+    replaceQuery({ v_batch: selectedBatch });
+    if (!selectedBatch) { setTreeData(null); return; }
+    let cancelled = false;
+    setTreeLoading(true);
+    setTreeErr("");
+    getBatchTree(selectedBatch)
+      .then((data) => { if (!cancelled) setTreeData(data); })
+      .catch((e) => {
+        if (cancelled) return;
+        if (e?.response?.status !== 404) console.error("batch tree fetch failed", e);
+        setTreeData(null);
+        setTreeErr(treeError(e));
+      })
+      .finally(() => { if (!cancelled) setTreeLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedBatch, replaceQuery]);
+
+  const runVerify = useCallback(async (rawId: string) => {
     const id = rawId.trim();
     // เดิมกดปุ่มตอนช่องว่างแล้วเงียบสนิท ไม่มีทั้งผลและ error — แยกไม่ออกว่าแอปค้าง
-    // หรือไม่ได้ทำอะไร (เจอบ่อยเวลา copy ID ไม่ติดแล้ววางไม่ลง)
     if (!id) {
       setResult(null);
       setError("Paste a log ID first, or pick one from the list below.");
@@ -111,9 +170,12 @@ export default function Verify() {
 
     setLoading(true); setError(""); setResult(null);
     try {
-      const r = await api.get(`/logs/${id}/proof`);
-      if (!r.data) { setError("Log not found or not yet sealed into a batch"); }
-      else setResult(r.data);
+      const r = await getLogProof(id);
+      if (!r) { setError("Log not found or not yet sealed into a batch"); return; }
+      setResult(r);
+      setSelectedBatch(r.batch.id); // show this log's batch tree
+      setStep(0);
+      setFocus(null);
     } catch (e: any) {
       const status = e.response?.status;
       setError(
@@ -125,21 +187,47 @@ export default function Verify() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  // มาจากปุ่ม "ดู proof บน tree" ใน log drawer — เติม ID แล้วตรวจ proof ให้เลย (ยังไม่วาด tree)
+  // มาจากปุ่ม "ดู proof บน tree" ใน log drawer — เติม ID แล้วตรวจ proof + เปิด tree ของ batch นั้น
   useEffect(() => {
     if (!proofLog) return;
     setLogId(proofLog);
     void runVerify(proofLog);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proofLog]);
+  }, [proofLog, runVerify]);
 
-  /** กดจากลิสต์ log — เติมช่องให้เห็นว่าตรวจตัวไหน แล้วยิงด้วย id ตรงๆ ไม่รอ state */
-  function verifyFromList(id: string) {
+  /**
+   * Every way of checking a log (button, Enter, recent list, leaf click) goes
+   * through ?proofLog= so F5 brings back the last one; the effect above runs it.
+   */
+  function verifyFromList(rawId: string) {
+    const id = rawId.trim();
     setLogId(id);
-    void runVerify(id);
+    if (!UUID_RE.test(id) || id === proofLog) void runVerify(id); // bad id: just show the error
+    else replaceQuery({ [QUERY_KEYS.proofLog]: id });
   }
+
+  /** another batch: a proof from the previous one no longer applies */
+  function selectBatch(id: string | null) {
+    if (result && result.batch.id !== id) {
+      setResult(null);
+      setError("");
+      setStep(0);
+      setFocus(null);
+      replaceQuery({ [QUERY_KEYS.proofLog]: null });
+    }
+    setSelectedBatch(id);
+  }
+
+  // the proof belongs to this tree only when it is the same batch
+  const proofForTree = result && treeData && result.batch.id === treeData.batchId ? result : null;
+  const path = useMemo(
+    () => (proofForTree && treeData ? proofPath(treeData, proofForTree.leafIndex) : null),
+    [proofForTree, treeData],
+  );
+  // never highlight a path the backend proof does not back up
+  const pathCheck = path && proofForTree ? checkProofAgainstPath(path, proofForTree.proof) : null;
+  const pathOk = !!path && path.length > 0 && pathCheck?.ok === true;
 
   const verified = result?.verify ?? false;
   const placeholder = (text: string) => (
@@ -157,8 +245,18 @@ export default function Verify() {
     { label: "Anchored on chain", value: confirmed.toLocaleString(), tone: "blue" },
   ];
 
+  const pickerSelected =
+    treeData && treeData.batchId === selectedBatch
+      ? { id: treeData.batchId, status: treeData.status, logCount: treeData.logCount }
+      : (batches ?? []).find((b) => b.id === selectedBatch) ?? null;
+
+  const roots = treeData ? treeRoots(treeData) : null;
+  // 3 across, or 1 column when narrow — never 2 + 1
+  const rootCols = treeBoxWidth >= 600 ? 3 : 1;
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    // minmax(0,1fr): wide content scrolls inside its own frame, never the page
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, minWidth: 0 }}>
       {/* สรุปสถานะ chain — หน้านี้จะได้ไม่ว่างเปล่าตั้งแต่เปิด */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -170,11 +268,11 @@ export default function Verify() {
         ) : !tiles ? (
           placeholder("Loading chain status…")
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginTop: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(150px,100%),1fr))", gap: 14, marginTop: 6 }}>
             {tiles.map((k) => (
               <div key={k.label}>
                 <div style={{ fontSize: 11, color: t.muted, ...sansFont, fontWeight: 500 }}>{k.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2, color: t[k.tone] ?? t.text, ...monoFont }}>
+                <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2, color: (t as any)[k.tone] ?? t.text, ...monoFont }}>
                   {k.value}
                 </div>
               </div>
@@ -186,16 +284,17 @@ export default function Verify() {
       <Card>
         <SectionLabel>Merkle proof verification</SectionLabel>
         <p style={{ color: t.muted, fontSize: 13, marginTop: 4 }}>
-          Enter a log ID to recompute its hash and verify the Merkle proof against the batch root committed on-chain.
+          Enter a log ID to check its Merkle proof against the batch root <strong>stored in the DB</strong>.
+          Whether that root matches the chain is shown separately under <span style={monoFont}>chainRoot</span> below.
         </p>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-          <div style={{ position: "relative", flex: 1 }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: "1 1 260px", minWidth: 0 }}>
             <Search size={15} color={t.muted} style={{ position: "absolute", left: 12, top: 11 }} />
             <input
               value={logId}
               onChange={(e) => setLogId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runVerify(logId)}
+              onKeyDown={(e) => e.key === "Enter" && verifyFromList(logId)}
               placeholder="Log ID เต็ม (เช่น e0cfd1d3-ee4d-4844-8c98-656fdf03f02b)"
               style={{
                 width: "100%", background: t.surface2, border: `1px solid ${t.border}`,
@@ -204,29 +303,37 @@ export default function Verify() {
               }}
             />
           </div>
-          <Button variant="primary" onClick={() => runVerify(logId)} small>
+          <Button variant="primary" onClick={() => verifyFromList(logId)} small disabled={loading}>
             {loading ? "Verifying…" : "Verify"}
           </Button>
         </div>
 
+        {/* fixed room for the result, so checking a log never pushes the tree down */}
+        <div style={{ minHeight: 300 }}>
         {error && (
           <div style={{ marginTop: 14, color: t.danger, fontSize: 13 }}>{error}</div>
+        )}
+        {!result && !error && (
+          <div style={{ marginTop: 14, padding: 16, borderRadius: 10, border: `1px dashed ${t.border}`, color: t.muted, fontSize: 13, textAlign: "center" }}>
+            {loading ? "กำลังตรวจ proof…" : "ยังไม่ได้ตรวจ log — ใส่ log id ด้านบน หรือคลิก leaf ใน tree"}
+          </div>
         )}
 
         {result && (
           <>
-            <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 10 }}>
               <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>LOG HASH (recomputed)</div>
+                <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>LOG RAW HASH · leaf #{result.leafIndex}</div>
                 <div style={{ fontSize: 12, wordBreak: "break-all", ...monoFont }}>{result.rawHash}</div>
               </div>
               <div style={{ background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>BATCH MERKLE ROOT</div>
-                <div style={{ fontSize: 12, wordBreak: "break-all", ...monoFont }}>{result.batch?.merkleRoot}</div>
-                <div style={{ fontSize: 11, color: t.muted, marginTop: 6 }}>
-                  tx: {result.batch?.txHash?.slice(0, 20) ?? "—"}… · status: {result.batch?.status}
+                <div style={{ fontSize: 11, color: t.muted, marginBottom: 6 }}>BATCH MERKLE ROOT (stored in the DB)</div>
+                <div style={{ fontSize: 12, wordBreak: "break-all", ...monoFont }}>{result.batch.merkleRoot}</div>
+                <div style={{ fontSize: 11, color: t.muted, marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <BatchStatusBadge status={result.batch.status} />
+                  <span style={monoFont}>tx {result.batch.txHash ? `${result.batch.txHash.slice(0, 20)}…` : "—"}</span>
                 </div>
-                {result.batch?.ifAnomaly != null && (
+                {result.batch.ifAnomaly != null && (
                   <div style={{ fontSize: 11, marginTop: 6, color: result.batch.ifAnomaly ? t.danger : t.muted }}>
                     Isolation Forest: {result.batch.ifAnomaly ? "batch flagged anomalous" : "batch normal"}
                     {result.batch.ifReason ? ` — ${result.batch.ifReason}` : ""}
@@ -248,35 +355,119 @@ export default function Verify() {
                 </div>
                 <div style={{ fontSize: 12, color: t.muted }}>
                   {verified
-                    ? "Recomputed hash matches the Merkle proof path to the committed batch root."
-                    : "Recomputed hash does not match the committed root — log may have been altered."}
+                    ? `The proof (${result.proof.length} hash${result.proof.length === 1 ? "" : "es"}) rebuilds the batch root stored in the DB. Compare with the chain under chainRoot.`
+                    : "The proof does not rebuild the batch root stored in the DB — the log or its batch may have been altered after seal."}
                 </div>
               </div>
             </div>
           </>
         )}
+        </div>
       </Card>
 
-      {result?.proof && (
-        <Card>
-          <SectionLabel dot={t.cyan}>Proof path ({result.proof.length} steps)</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap", fontSize: 12, ...monoFont }}>
-            <span style={{ padding: "6px 10px", background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 8 }}>leaf</span>
-            <ChevronRight size={14} color={t.muted} />
-            {result.proof.map((_: any, i: number) => (
-              <Fragment key={i}>
-                <span style={{ padding: "6px 10px", background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 8 }}>h{i + 1}</span>
-                <ChevronRight size={14} color={t.muted} />
-              </Fragment>
-            ))}
-            <span style={{ padding: "6px 10px", background: t.surface2, border: `1px solid ${t.border}`, borderRadius: 8 }}>root</span>
+      {/* tree of one batch — picked here, from Recent batches, or by verifying a log */}
+      <Card>
+        <div ref={treeBoxRef}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <SectionLabel dot={t.blue}>Merkle tree</SectionLabel>
+          <BatchPicker value={selectedBatch} selected={pickerSelected} onChange={selectBatch} />
+        </div>
+
+        {treeLoading && (
+          <div style={{ color: t.muted, fontSize: 12.5, margin: "6px 0" }}>
+            กำลังโหลด tree และอ่าน root จากเชน… (อาจใช้เวลาถึง 5 วินาที)
           </div>
-        </Card>
+        )}
+        {!selectedBatch ? (
+          placeholder("เลือก batch หรือใส่ log id ด้านบนเพื่อดู tree")
+        ) : treeErr ? (
+          <div style={{ color: t.danger, padding: 16, fontSize: 13 }}>{treeErr}</div>
+        ) : !treeData ? (
+          // first load: hold roughly a tree's height so the page below does not jump
+          <div style={{ minHeight: 640 }} />
+        ) : roots ? (
+          <div style={{ opacity: treeLoading ? 0.45 : 1, transition: "opacity .15s", pointerEvents: treeLoading ? "none" : undefined }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "6px 0 10px", fontSize: 12, color: t.muted }}>
+              <BatchStatusBadge status={treeData.status} />
+              <span style={monoFont}>batch {shortId(treeData.batchId)} · {logsLabel(treeData.logCount)}</span>
+              <span style={monoFont}>checked {fmtTime(treeData.checkedAt)}</span>
+            </div>
+
+            <div style={{ fontSize: 12.5, color: t.muted, marginBottom: 8 }}>
+              เทียบกับ: <strong style={{ color: t.text }}>{roots.referenceName}</strong>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${rootCols}, minmax(0, 1fr))`, gap: 10 }}>
+              <RootCard title="chainRoot" origin="บนเชน — อ่านจาก contract ตอนนี้" value={roots.chainValue} state={roots.chain} isReference={roots.anchored} />
+              <RootCard title="dbRoot" origin="root ที่เก็บใน DB ตอน seal" value={treeData.dbRoot} state={roots.db} isReference={!roots.anchored} />
+              <RootCard title="computedRoot" origin="คำนวณจาก log ที่ผูกกับ batch ตอนนี้ (tree ด้านล่าง)" value={treeData.computedRoot || null} state={roots.computed} isReference={false} />
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 12, color: t.muted }}>
+              {roots.anchored && roots.db.kind === "match" && treeData.polygonscanUrl && (
+                <>
+                  <Badge tone="good">dbRoot ตรงกับบนเชน</Badge>
+                  <PolygonscanLink url={treeData.polygonscanUrl} />
+                </>
+              )}
+              {treeData.chainError && <span style={monoFont}>{treeData.chainError}</span>}
+            </div>
+
+            {treeData.layers.length === 0 ? (
+              placeholder("batch นี้ยังไม่มี log ผูกอยู่ — ไม่มี tree ให้วาด")
+            ) : (
+              <div style={{ marginTop: 14 }}>
+                {proofForTree && pathCheck && !pathCheck.ok && (
+                  <div role="alert" style={{ marginBottom: 10, padding: "8px 12px", borderRadius: 9, display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: t.warn, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.4)" }}>
+                    <AlertTriangle size={15} />
+                    proof จาก server ไม่ตรงกับ tree ที่วาด ({pathCheck.reason}) — จึงไม่ไฮไลต์เส้นทาง
+                  </div>
+                )}
+                {proofForTree && pathOk && (
+                  <div style={{ marginBottom: 8, fontSize: 13 }}>
+                    <GitBranch size={14} style={{ verticalAlign: -2, marginRight: 6 }} color={t.blue2} />
+                    {treeData.logCount === 1 ? (
+                      <>batch มี 1 ล็อก — root คือ leaf hash ของ log นี้เอง ไม่ต้องใช้ hash อื่น</>
+                    ) : (
+                      <>
+                        ใช้ <strong>{proofForTree.proof.length} hash</strong> จาก {treeData.logCount.toLocaleString()} log
+                        <span style={{ color: t.muted }}> — ไม่ต้องใช้ log ทั้ง batch เพื่อพิสูจน์ log เดียว</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                <MerkleTreeView
+                  tree={treeData}
+                  path={pathOk ? path : null}
+                  focus={pathOk ? focus : null}
+                  onLeafClick={(i) => {
+                    const leaf = treeData.leaves[i];
+                    if (leaf) verifyFromList(leaf.logId);
+                  }}
+                />
+                {!proofForTree && (
+                  <div style={{ fontSize: 12, color: t.muted, marginTop: 6 }}>คลิก leaf หรือใส่ log id ด้านบนเพื่อดูเส้นทาง proof</div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
+        </div>
+      </Card>
+
+      {treeData && proofForTree && path && pathOk && (
+        <ProofSteps
+          tree={treeData}
+          proof={proofForTree}
+          path={path}
+          step={step}
+          onStep={(k, f) => { setStep(k); setFocus(f); }}
+        />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-        {/* batch ล่าสุด — เห็นได้เลยว่ามีอะไรถูกผูกขึ้น chain ไปแล้วบ้าง */}
-        <Card>
+      {treeData && <CostCard tree={treeData} />}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 16 }}>
+        {/* batch ล่าสุด — เห็นได้เลยว่ามีอะไรถูกผูกขึ้น chain ไปแล้วบ้าง · กดดู tree ได้ */}
+        <Card style={{ minWidth: 0 }}>
           <SectionLabel dot={t.blue}>Recent batches</SectionLabel>
           {batches === null ? placeholder("Loading batches…")
             : batches.length === 0 ? placeholder("No batches sealed yet")
@@ -284,14 +475,14 @@ export default function Verify() {
               <div style={{ overflowX: "auto", marginTop: 6 }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx"].map((h) => <Th key={h}>{h}</Th>)}</tr>
+                    <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx", ""].map((h, i) => <Th key={h + i}>{h}</Th>)}</tr>
                   </thead>
                   <tbody>
                     {batches.map((b) => {
                       const tone = anomalyTone(b.ifAnomaly);
                       return (
                       <tr key={b.id}>
-                        <Td><Badge tone={statusTone(b.status)}>{b.status}</Badge></Td>
+                        <Td><BatchStatusBadge status={b.status} /></Td>
                         <Td style={{ color: t.blue2, ...monoFont }} title={b.merkleRoot}>
                           {b.merkleRoot?.slice(0, 12)}…
                         </Td>
@@ -304,9 +495,14 @@ export default function Verify() {
                             <span style={{ color: t.muted }}>—</span>
                           )}
                         </Td>
-                        <Td style={{ color: t.muted, ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
+                        <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
                         <Td style={{ color: t.muted, ...monoFont }} title={b.txHash ?? ""}>
                           {b.txHash ? `${b.txHash.slice(0, 10)}…` : "—"}
+                        </Td>
+                        <Td style={{ textAlign: "right" }}>
+                          <Button variant="subtle" small onClick={() => selectBatch(b.id)} title="ดู Merkle tree ของ batch นี้" ariaLabel={`Show tree of batch ${b.id}`}>
+                            Tree
+                          </Button>
                         </Td>
                       </tr>
                       );
@@ -318,7 +514,7 @@ export default function Verify() {
         </Card>
 
         {/* ยิง verify ได้จากตรงนี้เลย ไม่ต้องไปคัดลอก id จากหน้า Logs */}
-        <Card>
+        <Card style={{ minWidth: 0 }}>
           <SectionLabel dot={t.cyan}>Verify a recent log</SectionLabel>
           <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
             {recentLogs.length === 0

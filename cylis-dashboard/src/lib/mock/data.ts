@@ -5,6 +5,7 @@
  * Fixed values only (no Math.random) so every reload shows the same rows.
  */
 import type { AlertItem, AlertLogRole, BatchInfo, BatchStatus, ChainCheck, LogItem, LogProof } from "@/types/api";
+import { buildLayers } from "./merkleMock";
 
 const EXPLORER = "https://amoy.polygonscan.com/tx/";
 const BASE_TIME = Date.parse("2026-10-15T10:00:00.000Z");
@@ -46,16 +47,17 @@ export const ZERO_ROOT = "0x" + "0".repeat(64);
 
 interface MockBatch {
   info: BatchInfo;
+  /** how the chain compares — applied once the real root is known (finalizeBatchRoots) */
+  chainMode: "match" | "mismatch" | "zero" | "error";
   /** what GET /logs/:id/detail returns for every log of this batch */
   chainCheck: Omit<Extract<ChainCheck, { match: boolean }>, "checkedAt"> | { error: string };
-  proofVerified: boolean;
 }
 
 function batch(
   key: string,
   status: BatchStatus,
   minutesAgo: number,
-  opts: { anchored: boolean; chain: "match" | "mismatch" | "zero" | "error"; proofVerified?: boolean },
+  opts: { anchored: boolean; chain: "match" | "mismatch" | "zero" | "error" },
 ): MockBatch {
   const merkleRoot = hex(`root:${key}`);
   const txHash = opts.anchored ? "0x" + hex(`tx:${key}`) : null;
@@ -80,7 +82,17 @@ function batch(
       confirmedAt: status === "CONFIRMED" || status === "TAMPERED" ? at(minutesAgo, 6) : null,
     },
     chainCheck,
-    proofVerified: opts.proofVerified ?? true,
+    chainMode: opts.chain,
+  };
+}
+
+/** Chain check of a batch for its (final) stored root */
+function chainCheckFor(key: string, mode: MockBatch["chainMode"], dbRoot: string): MockBatch["chainCheck"] {
+  if (mode === "error") return { error: "could not read root from chain: request timed out after 5000ms" };
+  return {
+    dbRoot,
+    chainRoot: mode === "match" ? dbRoot : mode === "zero" ? ZERO_ROOT : "0x" + hex(`chain:${key}`),
+    match: mode === "match",
   };
 }
 
@@ -91,7 +103,7 @@ export const MOCK_BATCHES = {
   confirmedRpcDown: batch("confirmed-rpc-down", "CONFIRMED", 40, { anchored: true, chain: "error" }),
   // the usual tamper case: a row was edited after seal (caught by its raw hash)
   // while the stored root was left alone — so the stored root still matches the chain
-  tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "match", proofVerified: false }),
+  tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "match" }),
   // status from an older round disagrees with the live check → drawer shows the "recheck" note
   confirmedMismatch: batch("confirmed-mismatch", "CONFIRMED", 25, { anchored: true, chain: "mismatch" }),
   // tx was sent but verify found no root on chain (backend `MISSING`)
@@ -235,17 +247,50 @@ function buildLog(s: Seed): MockLog {
     blockNumber: b?.info.blockNumber ?? null,
     polygonscanUrl: b?.info.polygonscanUrl ?? null,
   };
-  const proof: LogProof | null = b
-    ? {
-        verified: b.proofVerified,
-        path: [0, 1, 2].map((i) => ({ position: i % 2 ? "left" : "right", data: "0x" + hex(`proof:${s.key}:${i}`) })),
-      }
-    : null;
+  // the drawer's proof is built by the mock handler from the batch's real tree (lib/mock/trees.ts)
+  const proof: LogProof | null = null;
   return { item, batch: b, proof };
 }
 
 /** Newest first, like the backend */
 export const MOCK_LOGS: MockLog[] = SEEDS.map(buildLog).sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt));
+
+/**
+ * raw_hash values of the tampered batch at seal time (what the snapshot and
+ * the stored root were built from) — the rows were changed afterwards.
+ */
+export const TAMPERED_SEALED_RAW = {
+  privEsc: hex("raw:priv-esc"),
+  card: hex("raw:card:sealed"),
+  deleted: hex("raw:deleted"),
+};
+
+/** Leaves in seal order (createdAt ASC, id ASC) of the logs mapped to a batch now */
+export function mappedLeaves(batchId: string): { logId: string; rawHash: string }[] {
+  return MOCK_LOGS.map((l) => l.item)
+    .filter((l) => l.batchId === batchId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+    .map((l) => ({ logId: l.id, rawHash: l.rawHash }));
+}
+
+/**
+ * Real Merkle roots: each batch's stored root is built (sha256) from the
+ * raw hashes it was sealed with, and its chain check follows from that root.
+ */
+function finalizeBatchRoots() {
+  for (const [key, b] of Object.entries(MOCK_BATCHES) as [BatchKey, MockBatch][]) {
+    let sealed = mappedLeaves(b.info.id).map((l) => l.rawHash);
+    if (key === "tampered") {
+      // seal order: scan-sqli, priv-esc, card, deleted
+      sealed = [hex("raw:scan-sqli"), TAMPERED_SEALED_RAW.privEsc, TAMPERED_SEALED_RAW.card, TAMPERED_SEALED_RAW.deleted];
+    }
+    const root = buildLayers(sealed).root;
+    if (!root) continue; // no logs mapped (PENDING) — keep the placeholder root
+    b.info.merkleRoot = root.slice(2);
+    b.chainCheck = chainCheckFor(key, b.chainMode, root);
+  }
+}
+finalizeBatchRoots();
 
 export const logId = (key: string) => uuid(`log:${key}`);
 

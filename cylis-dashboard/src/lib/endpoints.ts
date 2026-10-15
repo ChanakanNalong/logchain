@@ -9,7 +9,7 @@
  * Mock mode still signs in through Keycloak; roles come from the real token.
  */
 import { api } from "@/lib/api";
-import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, LogDetail, LogsPage, LogsQuery } from "@/types/api";
+import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, BatchTree, LogDetail, LogProofResult, LogsPage, LogsQuery } from "@/types/api";
 
 /** For a "mock data" marker in the UI */
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
@@ -83,5 +83,21 @@ export async function getBatchDiff(id: string): Promise<BatchDiff> {
   const mock = await loadMock();
   if (mock) return mock.getBatchDiff(id);
   const r = await api.get<BatchDiff>(`/batches/${id}/diff`);
+  return r.data;
+}
+
+/** GET /batches/:id/tree — layers, roots and anchoring cost; reads the chain live */
+export async function getBatchTree(id: string): Promise<BatchTree> {
+  const mock = await loadMock();
+  if (mock) return mock.getBatchTree(id);
+  const r = await api.get<BatchTree>(`/batches/${id}/tree`);
+  return r.data;
+}
+
+/** GET /logs/:id/proof — Merkle proof of one log against the batch root in the DB */
+export async function getLogProof(id: string): Promise<LogProofResult> {
+  const mock = await loadMock();
+  if (mock) return mock.getLogProof(id);
+  const r = await api.get<LogProofResult>(`/logs/${id}/proof`);
   return r.data;
 }

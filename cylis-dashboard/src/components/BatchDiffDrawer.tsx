@@ -62,14 +62,14 @@ function Banner({ tone, icon: Icon, children }: { tone: "danger" | "info"; icon:
   );
 }
 
-type RootState =
+export type RootState =
   | { kind: "match" }
   | { kind: "mismatch" }
   /** not comparable — tone neutral (default), slate or orange like the chain check */
   | { kind: "gray"; text: string; tone?: "neutral" | "slateMuted" | "orange" };
 
 /** One of the four roots, coloured against the reference root */
-function RootCard({
+export function RootCard({
   title, origin, value, state, isReference,
 }: {
   title: string;
