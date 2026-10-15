@@ -77,6 +77,10 @@ jobs:
         run: pip install "$(grep -E '^PyYAML==' requirements.txt)"
       - name: Unit tests
         run: python -m unittest discover -s tests -t . -v
+      # forwarder/ (stdlib ล้วน) — เทสของมันโหลด rule จริงของ detection ด้วย จึงใช้ job เดียวกัน
+      - name: Forwarder unit tests
+        working-directory: forwarder
+        run: python -m unittest discover -s tests -t . -v
 
   prometheus:
     name: Prometheus — config + alert rule tests

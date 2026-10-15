@@ -67,6 +67,30 @@
       ]
     },
     {
+      "clientId": "vps-forwarder",
+      "enabled": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${LOGCHAIN_FORWARDER_SECRET}",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "logchain-frontend",
       "name": "LogChain Dashboard (SPA)",
       "enabled": true,
@@ -138,6 +162,12 @@
       "username": "service-account-log-ingestor",
       "enabled": true,
       "serviceAccountClientId": "log-ingestor",
+      "realmRoles": ["ingestor"]
+    },
+    {
+      "username": "service-account-vps-forwarder",
+      "enabled": true,
+      "serviceAccountClientId": "vps-forwarder",
       "realmRoles": ["ingestor"]
     },
     {

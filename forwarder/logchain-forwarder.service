@@ -1,0 +1,26 @@
+# /etc/systemd/system/logchain-forwarder.service — ดู forwarder/README.md
+[Unit]
+Description=LogChain VPS log forwarder (sshd + access log -> POST /api/v1/logs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=logchain-fwd
+Group=logchain-fwd
+# อ่าน journald (systemd-journal) และ /var/log/auth.log, /var/log/nginx/*.log (adm) ได้ — ไม่ต้องเป็น root
+SupplementaryGroups=systemd-journal adm
+Environment=LOGCHAIN_FORWARDER_ENV=/etc/logchain-forwarder.env
+WorkingDirectory=/opt/logchain-forwarder
+ExecStart=/usr/bin/python3 -m logchain_forwarder
+Restart=on-failure
+RestartSec=10
+StateDirectory=logchain-forwarder
+# ไม่ต้องเขียนอะไรนอก StateDirectory
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -85,6 +85,8 @@ rules:
       - "(?i)(\\$\\(.*\\)|`.*`)"
       # "../../" ย้ายไปเป็นของ 60002 (path traversal) — เดิมอยู่ที่นี่และ 31151 มาก่อนในไฟล์
       # /../../etc/passwd จึงถูกรายงานเป็น command injection
+    # access log ส่ง query string แบบ encode (host=8.8.8.8;wget%20http://…) — ลองกับสำเนาที่ decode แล้วด้วย
+    url_decode: true
 
   # --- PCI / CDE-specific (highest priorty) ----
   - id: 90001
