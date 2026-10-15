@@ -27,12 +27,16 @@ logs.raw ──▶ consumer ──▶ Drain3 parse ──▶ buffer ต่อ so
   rule ที่ตั้ง `url_decode: true` (31100) ลอง match กับสำเนาที่ URL-decode ด้วย (`%20` / `+` → ช่องว่าง) โดยไม่แก้ message
 - threshold (5710: 5 ครั้งใน 60 วิ) และ chain (5715: ต้องมี 5710 ภายใน 300 วิ) **นับแยกตาม `sourceIp`**
   ไม่มี `sourceIp` = นับตาม `source` · forwarder ที่ส่งทุก log เป็น source เดียวจึงไม่ทำให้หลาย IP รวมกันเป็น brute force
-- sshd: `Failed password for …` และ `Invalid user … from …` นับเข้า 5710 · `Accepted password|publickey|keyboard-interactive` เข้า 5715
+- sshd: `Failed password for …`, `Invalid user … from …` และ `Connection closed by` / `Disconnected from authenticating user … port N`
+  (VPS แบบ key-only มีแค่บรรทัดนี้) นับเข้า 5710 · `Accepted password|publickey|keyboard-interactive` เข้า 5715
   นับ 1 ครั้งต่อ (sourceIp, port) ในหน้าต่าง (`threshold.distinct_by`) — sshd เขียนทั้ง `Invalid user` และ
-  `Failed password for invalid user` ต่อการเดา 1 ครั้ง จึงไม่นับเป็น 2 · บรรทัดที่ไม่มี `port N` นับทุกบรรทัดเหมือนเดิม
+  `Failed password for invalid user` ต่อการเดา 1 ครั้ง จึงไม่นับเป็น 2 · บรรทัดที่ไม่มี `port N` (เช่น `pam_unix(sshd:auth):
+  authentication failure`) ไม่นับถ้ามีบรรทัดที่มี port ของ actor เดียวกันห่าง ≤ 5 วิ (`undistinct_pair_seconds`) ไม่มีคู่ = นับเหมือนเดิม
 
 **ข้อจำกัดที่รู้อยู่**
 - เดาหลายรหัสใน connection เดียว (`MaxAuthTries`) นับเป็น 1 ครั้ง เพราะ port เดียวกัน
+- การจับคู่บรรทัด pam กับบรรทัดที่มี port ดูแค่ actor เดียวกันและเวลา ≤ 5 วิ ไม่ได้อ่าน `rhost=` — forwarder ที่ไม่ใส่ `sourceIp`
+  (actor = source) แล้วมีหลาย IP เดาพร้อมกัน บรรทัด pam ของ IP หนึ่งอาจถูกตัดเพราะบรรทัดของอีก IP (นับขาดได้ ไม่นับเกิน)
 - 60001 จับ `/wp-admin` / `/wp-login.php` เป็น scanner — เว็บที่เป็น WordPress จริงจะ false positive (VPS ของโปรเจกต์ไม่ใช่ WordPress)
 - 31100 decode URL ชั้นเดียว (`%2520` ยังไม่ถูกถอด) · 60002 ยังไม่ decode (`%2e%2e%2f` หลุด)
 - payload ที่ส่งเข้า Kafka (ดู `app/alert_payload.py`): ฟิลด์เดิมครบ + `source_ip`, `related_log_ids` (log ทั้งหน้าต่างของ threshold

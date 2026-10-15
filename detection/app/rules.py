@@ -119,13 +119,19 @@ class RuleEngine:
                 window = rule["threshold"]["window_seconds"]
                 count = rule["threshold"]["count"]
                 # นับ event ในช่วง window — log_id ของชุดนี้คือหลักฐานของ alert (รวมบรรทัดที่นับซ้ำไม่ได้)
-                in_window = [(lid, att) for ts, lid, att in history if now - ts <= window]
-                attempts = len({att for _, att in in_window if att is not None}) + sum(
-                    1 for _, att in in_window if att is None
+                in_window = [(ts, lid, att) for ts, lid, att in history if now - ts <= window]
+                keyed_ts = [ts for ts, _, att in in_window if att is not None]
+                pair = rule["threshold"].get("undistinct_pair_seconds")
+                attempts = len({att for _, _, att in in_window if att is not None}) + sum(
+                    1
+                    for ts, _, att in in_window
+                    if att is None
+                    # บรรทัดไม่มี key ที่มีคู่ที่มี key ใกล้ ๆ = การเดาครั้งเดียวกัน (นับไปแล้ว)
+                    and not (pair and any(abs(ts - k) <= pair for k in keyed_ts))
                 )
                 if attempts < count:
                     continue
-                related_log_ids = [lid for lid, _ in in_window if lid]
+                related_log_ids = [lid for _, lid, _ in in_window if lid]
 
             # requires_prior_rule (chained rule): match เฉพาะเมื่อ rule ก่อนหน้า
             # เคยจับ source เดียวกันได้ภายใน window_seconds

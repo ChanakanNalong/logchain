@@ -153,6 +153,69 @@ class SshdBruteForceTest(RuleTestCase):
         self.assertIsNone(self.rule_of(self.ev("Accepted publickey for kan from 203.0.113.5 port 52320 ssh2")))
 
 
+class RealSshdFixtureTest(RuleTestCase):
+    """log จริงจาก sshd (PasswordAuthentication yes, ทดสอบบนเครื่อง local)"""
+
+    IP = "127.0.0.1"
+    FAKEUSER = [
+        "Invalid user fakeuser from 127.0.0.1 port {port}",
+        "Connection closed by invalid user fakeuser 127.0.0.1 port {port} [preauth]",
+    ]
+    ROOT = [
+        "pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=127.0.0.1  user=root",
+        "Failed password for root from 127.0.0.1 port {port} ssh2",
+        "Connection closed by authenticating user root 127.0.0.1 port {port} [preauth]",
+    ]
+
+    def attempt(self, lines, port, start):
+        """1 ครั้ง = หลายบรรทัด ห่างกันไม่ถึงวินาที (เวลาเดียวกันใน fixture)"""
+        return [
+            self.engine.evaluate(self.ev(line.format(port=port), ip=self.IP, sec=start))
+            for line in lines
+        ]
+
+    def test_root_once_counts_one(self):
+        results = self.attempt(self.ROOT, 44818, 0)
+        self.assertEqual(results, [None, None, None])
+        # อีก 3 ครั้ง (port ใหม่) ยังไม่ถึง 5 → ถ้า root ครั้งแรกถูกนับเป็น 2-3 จะเด้งก่อน
+        for i, port in enumerate((44819, 44820, 44821), start=1):
+            self.assertEqual(self.attempt(self.ROOT, port, i * 10), [None, None, None])
+
+    def test_fakeuser_once_counts_one(self):
+        self.assertEqual(self.attempt(self.FAKEUSER, 57474, 0), [None, None])
+        for i, port in enumerate((57475, 57476, 57477), start=1):
+            self.assertEqual(self.attempt(self.FAKEUSER, port, i * 10), [None, None])
+        # ครั้งที่ 5 เด้งที่ "Invalid user" · "Connection closed by invalid user" ไม่ใช่บรรทัดของ 5710
+        last = self.attempt(self.FAKEUSER, 57478, 40)
+        self.assertEqual([m and m["rule_id"] for m in last], [5710, None])
+
+    def test_root_five_times_on_different_ports_is_5710(self):
+        fired = []
+        for i, port in enumerate(range(44818, 44823)):
+            fired.append([m and m["rule_id"] for m in self.attempt(self.ROOT, port, i * 2)])
+        self.assertEqual(fired[:4], [[None, None, None]] * 4)
+        # ครั้งที่ 5: pam ไม่ถูกนับ (มีบรรทัดที่มี port ห่าง ≤5 วิ) → เด้งที่ Failed password
+        self.assertEqual(fired[4], [None, 5710, 5710])
+
+    def test_key_only_vps_closed_by_authenticating_user_counts(self):
+        line = "Connection closed by authenticating user root 127.0.0.1 port {port} [preauth]"
+        results = [
+            self.rule_of(self.ev(line.format(port=50000 + i), ip=self.IP)) for i in range(5)
+        ]
+        self.assertEqual(results, [None, None, None, None, 5710])
+        self.setUp()
+        line = "Disconnected from authenticating user root 127.0.0.1 port {port} [preauth]"
+        results = [
+            self.rule_of(self.ev(line.format(port=50000 + i), ip=self.IP)) for i in range(5)
+        ]
+        self.assertEqual(results[-1], 5710)
+
+    def test_pam_line_alone_still_counts(self):
+        # ไม่มีบรรทัดคู่ที่มี port → นับทุกบรรทัดเหมือนเดิม (demo-all-rules ใช้แบบนี้)
+        results = [self.rule_of(self.ev(self.ROOT[0], ip=self.IP, sec=i * 10)) for i in range(5)]
+        self.assertEqual(results, [None] * 4 + [5710])
+
+
 class PerIpGroupingTest(RuleTestCase):
     FAIL_T = "Failed password for root from 203.0.113.xxx port {port} ssh2"
 

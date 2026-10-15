@@ -9,6 +9,7 @@
 #   event_types: ถ้ามี - จำกัด rule นี้ให้ match แค่ event_type ที่ ระบุ
 #   threshold: optional - match X ครั้งใน Y วินาที (frequency rule)
 #     distinct_by: optional regex (1 group) - นับ 1 ครั้งต่อค่าที่ไม่ซ้ำในหน้าต่าง (ไม่เจอ = นับทุกบรรทัด)
+#     undistinct_pair_seconds: optional - บรรทัดที่ distinct_by ไม่เจอ ไม่นับถ้ามีบรรทัดที่เจอห่างไม่เกิน N วิ
 #   cde_scope_only: ถ้า true -> match เฉพาะ log ที่อยู่ใน CDE (cdeScope=true)
 #   url_decode: ถ้า true -> ลอง match กับสำเนาที่ URL-decode แล้วด้วย (message ที่เก็บไม่เปลี่ยน)
 #
@@ -29,6 +30,10 @@ rules:
       # sshd: "Invalid user admin from …" — ตัวพิมพ์ใหญ่ตรงตัว ไม่ให้นับ "… for invalid user …" ซ้ำ
       # หรือ "Connection closed by invalid user …" (บรรทัดปิด connection ไม่ใช่การเดารหัส)
       - "\\bInvalid user \\S+ from\\b"
+      # sshd: "Connection closed by authenticating user root 1.2.3.4 port 44818 [preauth]" (+ "Disconnected from …")
+      # = user มีจริงแต่ auth ไม่ผ่านแล้วตัดไป — VPS ที่ปิด password (key-only) มีแค่บรรทัดนี้ ไม่มี "Failed password"
+      # ไม่ใช้ (?i): "Connection closed by invalid user" ถูกนับผ่าน "Invalid user … from" แล้ว
+      - "\\b(Connection closed by|Disconnected from) authenticating user \\S+ \\S+ port \\d+"
     threshold:
       count: 5
       window_seconds: 60
@@ -36,6 +41,10 @@ rules:
       # ต่อการเดา 1 ครั้ง — นับ 1 ครั้งต่อ (sourceIp, port) ไม่ให้กลายเป็น 2
       # ข้อแลก: เดาหลายรหัสใน connection เดียว (MaxAuthTries) ก็นับเป็น 1
       distinct_by: "\\bport (\\d+)\\b"
+      # บรรทัดที่ไม่มี port (pam_unix(sshd:auth): authentication failure; rhost=…) มาคู่กับ "Failed password … port P"
+      # ของ connection เดียวกัน — ไม่นับถ้ามีบรรทัดที่มี port ของ actor เดียวกันห่างไม่เกินกี่วินาที
+      # ไม่มีบรรทัดคู่ (เช่น demo-all-rules "authentication failed for user …") = นับตามเดิม
+      undistinct_pair_seconds: 5
 
   - id: 5715
     description: "Successful login after multiple failures"
