@@ -9,16 +9,25 @@ import type { AlertItem, AlertLogRole, BatchInfo, BatchStatus, ChainCheck, LogIt
 const EXPLORER = "https://amoy.polygonscan.com/tx/";
 const BASE_TIME = Date.parse("2026-10-15T10:00:00.000Z");
 
-/** Deterministic hex of the given length, seeded by a string */
+/**
+ * Deterministic hex of the given length, seeded by a string. FNV-1a over the
+ * seed, then a murmur3-style finaliser per 8-hex word — similar seeds must give
+ * unrelated ids, or rows like brute-window-0..3 read almost the same on screen.
+ */
 function hex(seed: string, len = 64): string {
   let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
   let out = "";
   while (out.length < len) {
-    for (let i = 0; i < seed.length; i++) {
-      h ^= seed.charCodeAt(i) + out.length;
-      h = Math.imul(h, 16777619) >>> 0;
-    }
-    out += h.toString(16).padStart(8, "0");
+    h = (h + 0x9e3779b9) | 0;
+    let z = h;
+    z = Math.imul(z ^ (z >>> 16), 0x85ebca6b);
+    z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35);
+    z ^= z >>> 16;
+    out += (z >>> 0).toString(16).padStart(8, "0");
   }
   return out.slice(0, len);
 }
@@ -80,10 +89,13 @@ export const MOCK_BATCHES = {
   confirmed: batch("confirmed", "CONFIRMED", 50, { anchored: true, chain: "match" }),
   // 3c: sealed and anchored, but the RPC is down right now
   confirmedRpcDown: batch("confirmed-rpc-down", "CONFIRMED", 40, { anchored: true, chain: "error" }),
-  // root in the DB was rewritten after anchoring → does not match the chain
-  tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "mismatch", proofVerified: false }),
-  // tx sent, receipt not confirmed yet
-  unverified: batch("unverified", "UNVERIFIED", 20, { anchored: true, chain: "match" }),
+  // the usual tamper case: a row was edited after seal (caught by its raw hash)
+  // while the stored root was left alone — so the stored root still matches the chain
+  tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "match", proofVerified: false }),
+  // status from an older round disagrees with the live check → drawer shows the "recheck" note
+  confirmedMismatch: batch("confirmed-mismatch", "CONFIRMED", 25, { anchored: true, chain: "mismatch" }),
+  // tx was sent but verify found no root on chain (backend `MISSING`)
+  unverified: batch("unverified", "UNVERIFIED", 20, { anchored: true, chain: "zero" }),
   // sealed without anchoring → chain still holds 0x000… for this batch
   sealed: batch("sealed", "SEALED", 15, { anchored: false, chain: "zero" }),
   // anchoring gave up
@@ -165,7 +177,7 @@ const SEEDS: Seed[] = [
     key: `auth-${i}`, minutesAgo: 22 - i * 2, source: "auth-service", sourceIp: `10.0.5.${40 + i}`,
     eventType: i % 3 === 0 ? "AUTH_FAILURE" : "AUTH_SUCCESS", severity: i % 3 === 0 ? "WARNING" : "INFO",
     message: i % 3 === 0 ? `login failed for user user${i}: bad password` : `login ok for user user${i}`,
-    batch: i < 2 ? "unverified" : i < 4 ? "sealed" : "failed",
+    batch: i < 2 ? "unverified" : i < 4 ? "sealed" : i === 4 ? "failed" : "confirmedMismatch",
   })),
   ...Array.from({ length: 6 }, (_, i): Seed => ({
     key: `db-${i}`, minutesAgo: 9 - i, source: "app-svc-1", sourceIp: null,
@@ -294,8 +306,10 @@ export const MOCK_ALERTS: MockAlert[] = [
       logId: null, batchId: MOCK_BATCHES.tampered.info.id, alertType: "INTEGRITY_TAMPERED", ruleId: null,
       severity: "CRITICAL", source: "integrity", sourceIp: null, title: "Batch root does not match the on-chain root",
       detail: {
-        dbRoot: "0x" + MOCK_BATCHES.tampered.info.merkleRoot,
-        chainRoot: (MOCK_BATCHES.tampered.chainCheck as { chainRoot: string }).chainRoot,
+        // stored root still equals the chain; the root recomputed from the rows does not
+        recomputedRoot: "0x" + hex("recomputed:tampered"),
+        onChainRoot: "0x" + MOCK_BATCHES.tampered.info.merkleRoot,
+        modifiedLogIds: [logId("card")],
       },
       status: "OPEN", occurrenceCount: 1, createdAt: at(12), lastSeenAt: at(12), lastNotifiedAt: at(12),
     },

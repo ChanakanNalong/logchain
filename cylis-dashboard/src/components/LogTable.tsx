@@ -141,10 +141,16 @@ export default function LogTable({ logs, showChain = false, onRowClick }: LogTab
                   ? <IdCell id={r.id} />
                   : r.id}
               </Td>
-              <Td style={{ color: t.muted, ...monoFont }}>{r.ts}</Td>
+              <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{r.ts}</Td>
               <Td>{r.source}</Td>
               <Td style={{ ...monoFont }}>{r.ip}</Td>
-              <Td>{r.event}</Td>
+              {/* one line; the full message is in the tooltip and the drawer.
+                  max-width on a <td> is not reliable in auto table layout — cap a div instead */}
+              <Td>
+                <div title={r.event} style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.event}
+                </div>
+              </Td>
               <Td style={{ color: t.muted }}>{r.attackType}</Td>
               <Td>
                 {/* show the severity the backend actually stored (CRITICAL / WARNING /

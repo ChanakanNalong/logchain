@@ -151,7 +151,9 @@ export default function Logs() {
   const lastShown = Math.min(offset + rows.length, total);
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    // minmax(0,1fr): an `auto` track grows to the widest table and the whole
+    // page scrolls sideways; this keeps the scrolling inside each table wrapper
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, minWidth: 0 }}>
       <Card>
         <SectionLabel>Search logs</SectionLabel>
         <div style={{ position: "relative", marginTop: 8 }}>

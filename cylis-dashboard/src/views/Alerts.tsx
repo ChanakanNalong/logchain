@@ -144,8 +144,10 @@ export default function Alerts() {
   );
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14 }}>
+    // minmax(0,1fr): an `auto` track grows to the widest table and the whole
+    // page scrolls sideways; this keeps the scrolling inside each table wrapper
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, minWidth: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(180px,100%),1fr))", gap: 14 }}>
         {tiles.map((k) => (
           <Card key={k.label}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -251,8 +253,9 @@ export default function Alerts() {
                         {isOpen && (
                           <tr>
                             <Td colSpan={9} style={{ background: t.surface2 }}>
-                              <div style={{ display: "grid", gap: 10, fontSize: 12 }}>
-                                <div style={{ color: t.muted, ...monoFont }}>
+                              {/* width 0 + min-width 100%: fills the cell without pushing the table wider */}
+                              <div style={{ display: "grid", gap: 10, fontSize: 12, width: 0, minWidth: "100%" }}>
+                                <div style={{ color: t.muted, overflowWrap: "anywhere", ...monoFont }}>
                                   alert {a.id}
                                   {a.ruleId ? ` · rule ${a.ruleId}` : ""}
                                   {a.sourceIp ? ` · from ${a.sourceIp}` : ""}
@@ -302,7 +305,11 @@ function RelatedLogs({
   onOpen: (log: AlertDetail["logs"][number]) => void;
 }) {
   const t = useTheme();
-  if (!state || state.status === "loading") return <div style={{ color: t.muted, ...sansFont }}>Loading related logs…</div>;
+  // reserve roughly the height of a few rows: the list replacing a one-line
+  // placeholder used to push content around right where the user was aiming
+  if (!state || state.status === "loading") {
+    return <div style={{ color: t.muted, minHeight: 140, ...sansFont }}>Loading related logs…</div>;
+  }
   if (state.status === "error") {
     return (
       <div style={{ color: t.danger, display: "flex", gap: 10, alignItems: "center", ...sansFont }}>
@@ -326,17 +333,17 @@ function RelatedLogs({
               onClick={() => onOpen(l)}
               title={`Open log ${l.id}`}
               style={{
-                display: "flex", flexWrap: "wrap", gap: "6px 10px", alignItems: "center",
+                display: "flex", gap: 10, alignItems: "center", minWidth: 0,
                 textAlign: "left", width: "100%", padding: "8px 10px", borderRadius: 9, cursor: "pointer",
                 background: t.surface, border: `1px solid ${t.border}`, color: t.text, fontSize: 12,
               }}
             >
-              <AlertRoleBadge role={l.role} />
-              <span style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{fmtTime(l.createdAt)}</span>
-              <span style={{ flex: "1 1 260px", minWidth: 0, overflowWrap: "anywhere", ...monoFont }}>
+              <span style={{ flexShrink: 0 }}><AlertRoleBadge role={l.role} /></span>
+              <span style={{ color: t.muted, whiteSpace: "nowrap", flexShrink: 0, ...monoFont }}>{fmtTime(l.createdAt)}</span>
+              <span title={l.message} style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...monoFont }}>
                 <span style={{ color: t.blue2 }}>{shortId(l.id)}</span> {l.sourceIp ? `· ${l.sourceIp} · ` : "· "}{l.message}
               </span>
-              <BatchStatusBadge status={l.batchStatus} />
+              <span style={{ flexShrink: 0 }}><BatchStatusBadge status={l.batchStatus} /></span>
             </button>
           ))}
         </div>

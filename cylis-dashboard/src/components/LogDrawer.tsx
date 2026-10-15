@@ -7,7 +7,7 @@
  * Closes on Esc and on a click outside the panel; full screen on narrow screens.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Copy, GitBranch, X } from "lucide-react";
+import { Check, Copy, GitBranch, ShieldAlert, X } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Badge, Button, SectionLabel } from "@/components/ui";
 import BatchStatusBadge from "@/components/BatchStatusBadge";
@@ -57,9 +57,34 @@ function errorText(e: any): string {
 function chainCheckView(c: ChainCheck | null): { tone: string; label: string; note: string } {
   if (c === null) return { tone: "neutral", label: "รอ seal รอบถัดไป", note: "log นี้ยังไม่อยู่ใน batch จึงยังไม่มี root ให้เทียบ" };
   if ("error" in c) return { tone: "neutral", label: "ติดต่อเชนไม่ได้ตอนนี้", note: "อ่าน root จากเชนไม่ได้ (RPC ล่มหรือ timeout) — ไม่ได้แปลว่าข้อมูลถูกแก้ ลองใหม่ภายหลัง" };
-  if (c.match) return { tone: "good", label: "ตรงกับบนเชน", note: "root ใน DB ตรงกับ root ที่ตรึงไว้บนเชน" };
+  if (c.match) return { tone: "good", label: "root ใน DB ตรงกับบนเชน", note: "root ที่เก็บใน DB ตรงกับ root ที่ตรึงไว้บนเชน (เทียบ root ไม่ได้เทียบทีละ row)" };
   if (isZeroRoot(c.chainRoot)) return { tone: "orange", label: "ยังไม่ถูกตรึงบนเชน", note: "บนเชนยังไม่มี root ของ batch นี้ (seal แล้วแต่ยังไม่ได้ anchor หรือ anchor ไม่สำเร็จ)" };
-  return { tone: "danger", label: "ไม่ตรงกับบนเชน", note: "root ใน DB ต่างจาก root บนเชน — ข้อมูลใน batch นี้อาจถูกแก้หลัง anchor" };
+  return { tone: "danger", label: "root ใน DB ไม่ตรงกับบนเชน", note: "root ใน DB ต่างจาก root บนเชน — ข้อมูลใน batch นี้อาจถูกแก้หลัง anchor" };
+}
+
+const NOT_ANCHORED_STATUSES = ["PENDING", "SEALED", "UNVERIFIED", "FAILED"];
+
+/**
+ * Where the batch status and the live check tell different stories. Both stay
+ * on screen — this only explains the gap.
+ *  - TAMPERED + root matches is the normal tamper case: the backend also
+ *    marks TAMPERED when a row no longer matches its raw hash, while the
+ *    stored root is untouched (integrity.service.ts, `modified.length > 0`).
+ *  - the rest are real disagreements, usually a status from an older round.
+ */
+function statusNote(status: string, c: ChainCheck | null): { tone: "danger" | "warn"; text: string } | null {
+  if (!c || "error" in c) return null;
+  const state = c.match ? "match" : isZeroRoot(c.chainRoot) ? "zero" : "mismatch";
+  if (status === "TAMPERED") {
+    return state === "match"
+      ? { tone: "danger", text: "root ใน DB ยังตรงกับเชน แต่ row ใน batch ถูกแก้หลัง seal (ตรวจด้วย raw hash ของแต่ละ row)" }
+      : null;
+  }
+  const conflict =
+    (status === "CONFIRMED" && state !== "match") ||
+    (NOT_ANCHORED_STATUSES.includes(status) && state === "match") ||
+    state === "mismatch";
+  return conflict ? { tone: "warn", text: "สถานะ batch กับผลตรวจล่าสุดไม่ตรงกัน กดตรวจกับเชนอีกครั้ง" } : null;
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -119,7 +144,7 @@ export default function LogDrawer({
   const narrow = useIsNarrow();
   const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
-  const [detail, setDetail] = useState<LogDetail | null>(null);
+  const [loaded, setLoaded] = useState<LogDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -127,11 +152,11 @@ export default function LogDrawer({
   useEffect(() => {
     if (!logId) return;
     let cancelled = false;
-    setDetail(null);
+    setLoaded(null);
     setError("");
     setLoading(true);
     getLogDetail(logId)
-      .then((d) => { if (!cancelled) setDetail(d); })
+      .then((d) => { if (!cancelled) setLoaded(d); })
       .catch((e) => {
         if (cancelled) return;
         console.error("log detail fetch failed", e);
@@ -152,11 +177,16 @@ export default function LogDrawer({
 
   if (!logId) return null;
 
+  // the drawer stays mounted between opens — never show the previous log's
+  // detail under the new id, not even for the frame before the effect clears it
+  const detail = loaded?.log.id === logId ? loaded : null;
   const log = detail?.log;
   const shown = { ...seed, ...log };
   const canSeeAlerts = canAccessPage("alerts");
   const canSeeVerify = canAccessPage("verify");
   const check = detail ? chainCheckView(detail.chainCheck) : null;
+  const note = detail?.batch ? statusNote(detail.batch.status, detail.chainCheck) : null;
+  const tampered = detail?.batch?.status === "TAMPERED";
   const chainMatch = detail?.chainCheck && !("error" in detail.chainCheck) ? detail.chainCheck : null;
 
   return (
@@ -206,6 +236,20 @@ export default function LogDrawer({
           <div style={{ marginTop: 16, color: t.danger, fontSize: 13, display: "flex", alignItems: "center", gap: 10 }}>
             {error}
             <Button variant="ghost" small onClick={() => setReloadKey((k) => k + 1)}>Retry</Button>
+          </div>
+        )}
+
+        {tampered && (
+          // red first: whatever the chain check says below, this batch was judged tampered
+          <div
+            role="alert"
+            style={{
+              marginTop: 16, padding: "10px 12px", borderRadius: 10, display: "flex", gap: 10, alignItems: "center",
+              background: "rgba(244,63,94,0.14)", border: `1px solid ${t.danger}`, color: t.danger, fontSize: 13, fontWeight: 600,
+            }}
+          >
+            <ShieldAlert size={18} style={{ flexShrink: 0 }} />
+            Batch ของ log นี้ถูกตัดสินว่า TAMPERED — ข้อมูลถูกแก้หลัง seal
           </div>
         )}
 
@@ -262,6 +306,18 @@ export default function LogDrawer({
                 <div style={{ display: "grid", gap: 6 }}>
                   <div><Badge tone={check.tone}>{check.label}</Badge></div>
                   <div style={{ fontSize: 12.5, color: t.muted }}>{check.note}</div>
+                </div>
+              )}
+              {note && (
+                <div
+                  style={{
+                    marginTop: 8, padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
+                    color: note.tone === "danger" ? t.danger : t.warn,
+                    border: `1px solid ${note.tone === "danger" ? "rgba(244,63,94,0.4)" : "rgba(245,158,11,0.4)"}`,
+                    background: note.tone === "danger" ? "rgba(244,63,94,0.08)" : "rgba(245,158,11,0.08)",
+                  }}
+                >
+                  {note.text}
                 </div>
               )}
               {chainMatch && (
