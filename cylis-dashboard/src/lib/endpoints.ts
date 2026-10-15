@@ -9,7 +9,7 @@
  * Mock mode still signs in through Keycloak; roles come from the real token.
  */
 import { api } from "@/lib/api";
-import type { AlertDetail, AlertItem, LogDetail, LogsPage, LogsQuery } from "@/types/api";
+import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, LogDetail, LogsPage, LogsQuery } from "@/types/api";
 
 /** For a "mock data" marker in the UI */
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
@@ -66,4 +66,22 @@ export async function resolveAlert(id: string): Promise<void> {
   const mock = await loadMock();
   if (mock) return mock.resolveAlert(id);
   await api.patch(`/alerts/${id}/resolve`);
+}
+
+/** GET /batches — `status` goes out comma-joined */
+export async function getBatches(query: BatchesQuery): Promise<BatchesPage> {
+  const mock = await loadMock();
+  if (mock) return mock.getBatches(query);
+  const r = await api.get<BatchesPage>("/batches", {
+    params: { limit: query.limit, offset: query.offset, status: query.status?.length ? query.status.join(",") : undefined },
+  });
+  return r.data;
+}
+
+/** GET /batches/:id/diff — admin / auditor only; reads the chain live */
+export async function getBatchDiff(id: string): Promise<BatchDiff> {
+  const mock = await loadMock();
+  if (mock) return mock.getBatchDiff(id);
+  const r = await api.get<BatchDiff>(`/batches/${id}/diff`);
+  return r.data;
 }

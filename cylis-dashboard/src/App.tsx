@@ -15,6 +15,7 @@ import {
   Moon,
   Earth,
   LogOut,
+  Boxes,
 } from "lucide-react";
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
 import { keycloak, logout } from "@/lib/keycloak";
@@ -30,6 +31,7 @@ import Verify from "@/views/Verify";
 import Alerts from "@/views/Alerts";
 import Reports from "@/views/Reports";
 import Settings from "@/views/Settings";
+import Batches from "@/views/Batches";
 import { sansFont, monoFont } from "@/theme";
 
 const NAV_ITEMS = [
@@ -40,6 +42,7 @@ const NAV_ITEMS = [
   { id: "verify", label: "Verify", icon: ShieldCheck, Page: Verify },
   { id: "alerts", label: "Alerts", icon: Bell, Page: Alerts },
   { id: "reports", label: "Reports", icon: FileBarChart2, Page: Reports },
+  { id: "batches", label: "Batch audit", icon: Boxes, Page: Batches },
   { id: "settings", label: "Settings", icon: SettingsIcon, Page: Settings },
 ];
 
@@ -70,6 +73,7 @@ const PAGE_TITLES = {
   verify: "Integrity verification",
   alerts: "Alert triage",
   reports: "",
+  batches: "Batch audit — chain vs snapshot",
   settings: "Alerts & access",
 };
 

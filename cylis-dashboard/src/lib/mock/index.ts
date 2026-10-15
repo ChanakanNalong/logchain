@@ -4,8 +4,9 @@
  * Errors are thrown in the axios shape (`e.response.status` / `.data`) so the
  * views handle them exactly like real API failures.
  */
-import type { AlertDetail, AlertItem, LogAlertRef, LogDetail, LogsPage, LogsQuery } from "@/types/api";
+import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, LogAlertRef, LogDetail, LogsPage, LogsQuery } from "@/types/api";
 import { MOCK_ALERTS, MOCK_LOGS } from "./data";
+import { MOCK_BATCH_LIST, buildDiff, diffChainIsDown } from "./batches";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLE_ORDER = { trigger: 0, window: 1, prior: 2, repeat: 3 } as const;
@@ -112,4 +113,28 @@ export async function resolveAlert(id: string): Promise<void> {
   const found = MOCK_ALERTS.find((a) => a.alert.id === id);
   if (!found) throw httpError(404, "Alert not found", "Not Found");
   found.alert.status = "RESOLVED";
+}
+
+export async function getBatches(query: BatchesQuery): Promise<BatchesPage> {
+  await delay(250);
+  const limit = query.limit ?? 10;
+  const offset = query.offset ?? 0;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw httpError(400, [limit > 100 ? "limit must not be greater than 100" : "limit must not be less than 1"], "Bad Request");
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw httpError(400, ["offset must not be less than 0"], "Bad Request");
+  }
+  const statuses = (query.status ?? []).map((s) => s.toUpperCase());
+  const rows = MOCK_BATCH_LIST.filter((b) => !statuses.length || statuses.includes(b.status));
+  return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset };
+}
+
+export async function getBatchDiff(id: string): Promise<BatchDiff> {
+  if (!UUID_RE.test(id)) throw httpError(400, "Batch ID must be a UUID", "Bad Request");
+  // reads the chain live like the real endpoint — slower when the RPC "times out"
+  await delay(diffChainIsDown(id) ? 3000 : 1500);
+  const diff = buildDiff(id);
+  if (!diff) throw httpError(404, "Batch not found", "Not Found");
+  return diff;
 }
