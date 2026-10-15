@@ -36,6 +36,7 @@ import { AlertsSourceLength1790553600000 } from './database/migrations/179055360
 import { BatchIsoForest1790640000000 } from './database/migrations/1790640000000-BatchIsoForest';
 import { AlertLogs1790726400000 } from './database/migrations/1790726400000-AlertLogs';
 import { BatchLogSnapshot1790812800000 } from './database/migrations/1790812800000-BatchLogSnapshot';
+import { BatchGasAndIndexes1790899200000 } from './database/migrations/1790899200000-BatchGasAndIndexes';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { BatchLogSnapshot1790812800000 } from './database/migrations/17908128000
             BatchIsoForest1790640000000,
             AlertLogs1790726400000,
             BatchLogSnapshot1790812800000,
+            BatchGasAndIndexes1790899200000,
           ],
           migrationsRun: true,
         };
