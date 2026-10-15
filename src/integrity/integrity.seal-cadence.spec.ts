@@ -3,7 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { CronExpression } from '@nestjs/schedule';
 import { IntegrityService, LOW_BALANCE_ALERT_TYPE } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
-import { fakeSealManager } from './fake-seal-transaction';
+import { fakeSealManager } from '../../test/helpers/fake-seal-transaction';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';

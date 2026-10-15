@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
-import { fakeSealManager } from './fake-seal-transaction';
+import { fakeSealManager } from '../../test/helpers/fake-seal-transaction';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import type { RawHashCanonical } from '../logs/services/log-hash';
 import { BlockchainService } from '../blockchain/blockchain.service';

@@ -1,6 +1,6 @@
-import { Batch } from '../logs/entities/batch.entity';
-import { LogBatchMapping } from '../logs/entities/log-batch-mapping.entity';
-import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
+import { Batch } from '../../src/logs/entities/batch.entity';
+import { LogBatchMapping } from '../../src/logs/entities/log-batch-mapping.entity';
+import { BatchLogSnapshot } from '../../src/integrity/entities/batch-log-snapshot.entity';
 
 /**
  * สำหรับ unit test เท่านั้น — mappingRepo.manager ปลอมที่ IntegrityService.writeMappingAndSnapshot ใช้
