@@ -111,7 +111,7 @@ class AccessParserTest(unittest.TestCase):
             with self.subTest(name):
                 p = parse_access(line)
                 self.assertIsNotNone(p)
-                self.assertEqual(p["source"], "vps-nginx")
+                self.assertEqual(p["source"], "web-proxy")
                 self.assertEqual(p["eventType"], "HTTP_ACCESS")
                 self.assertEqual(p["severity"], "WARNING")
         p = parse_access(NGINX["scanner"])
@@ -141,6 +141,36 @@ class AccessParserTest(unittest.TestCase):
         self.assertEqual(parse_access(line)["message"], 'GET /wp-login.php 404 "Mozilla/5.0"')
         self.assertEqual(parse_access(line, trust_cf=True)["sourceIp"], "198.51.100.1")
         self.assertIsNone(parse_access('{"request": "not a dict"}'))
+
+
+class WebProxyFilterTest(unittest.TestCase):
+    """https-proxy (Caddy JSON) บน CT141: client_ip จริง · ตัด IP ภายใน + health check"""
+
+    def caddy(self, client_ip, uri, status=404, ua="Mozilla/5.0 zgrab/0.x"):
+        return json.dumps({
+            "logger": "http.log.access", "status": status,
+            "request": {"remote_ip": "172.18.0.1", "client_ip": client_ip, "method": "GET", "uri": uri,
+                        "headers": {"User-Agent": [ua]}},
+        })
+
+    def test_uses_trusted_client_ip_not_the_tunnel_ip(self):
+        p = parse_access(self.caddy("203.0.113.5", "/.env"))
+        self.assertEqual(p["source"], "web-proxy")
+        self.assertEqual(p["sourceIp"], "203.0.113.5")
+
+    def test_internal_ips_are_dropped(self):
+        for ip in ("10.10.31.19", "172.18.0.1", "172.31.255.1", "127.0.0.1", "::1"):
+            with self.subTest(ip):
+                self.assertIsNone(parse_access(self.caddy(ip, "/.env")))
+        self.assertIsNotNone(parse_access(self.caddy("172.32.0.1", "/.env")))  # นอก /12
+
+    def test_health_checks_are_dropped(self):
+        for uri in ("/health", "/api/v1/health", "/health?probe=1"):
+            with self.subTest(uri):
+                self.assertIsNone(parse_access(self.caddy("203.0.113.5", uri, status=503, ua="sqlmap/1.7")))
+
+    def test_nginx_internal_ip_dropped_too(self):
+        self.assertIsNone(parse_access(NGINX["scanner"].replace("203.0.113.5", "10.0.0.7")))
 
 
 class GateTest(unittest.TestCase):
