@@ -139,11 +139,10 @@ python3 scripts/check-rbac-live.py     # token จริงของ analyst/ope
 npm run lint:ci   # ← สำคัญ: มีเพดาน warning 667 · `npm run lint` ไม่เช็คเพดาน
 npm test
 npm run build
-# integration: ต้องมี stack รันอยู่ แต่ **ต้องหยุด backend ก่อน** — ไม่งั้น cron ของ backend seal log ของเทสต์
-# แล้วเทสต์ลบ log ทิ้ง → batch TAMPERED/FAILED + alert CRITICAL + อีเมล + gas จริง (เกิดแล้ว 2026-10-04)
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose stop backend
-npx jest --config test/jest-e2e.json
-HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose start backend
+# integration/e2e: รันกับ environment hh (README หัวข้อ "environment hh") ไม่ใช่ stack หลัก
+# เทสเขียน DB จริง · guard ใน test/e2e-db-guard.ts ต้องการ E2E_ALLOW_DB ที่ตรงกับ DB · หยุด hh-backend ก่อนรัน
+( set -a; . ./.env.hardhat; . .hardhat/vault-secrets/approle.env; set +a
+  NODE_ENV=test E2E_ALLOW_DB=127.0.0.1:15433 npm run test:e2e )
 # ฝั่ง detection (ต้องมี PyYAML — หรือรันใน image ของ detection)
 docker run --rm -v $PWD/detection:/w -w /w --entrypoint python logchain-detection:dev \
   -m unittest discover -s tests -t . -v
