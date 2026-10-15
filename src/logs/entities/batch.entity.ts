@@ -30,6 +30,22 @@ export class Batch {
   @Column({ name: 'confirmed_at', type: 'timestamptz', nullable: true })
   confirmedAt: Date | null;
 
+  // ---- ค่า gas จริงของ tx storeRoot (BatchGasAndIndexes migration) ----
+  // เก็บเป็น string ทศนิยม (pg คืน bigint/numeric เป็น string) — ห้ามแปลงเป็น number จะเสียความแม่น
+  // null = ไม่มี tx ใหม่ของ batch นี้ (ROOT_EXISTS / ยังไม่ confirm / ก่อนมีคอลัมน์)
+  @Column({ name: 'gas_used', type: 'bigint', nullable: true })
+  gasUsed: string | null;
+
+  /** wei ต่อ gas ที่จ่ายจริง (receipt.gasPrice) */
+  @Column({
+    name: 'effective_gas_price',
+    type: 'numeric',
+    precision: 78,
+    scale: 0,
+    nullable: true,
+  })
+  effectiveGasPrice: string | null;
+
   // ---- ผลจำแนกของ Isolation Forest (ตรวจจับระดับที่ 3) ----
   // NULL = ยังไม่ได้จำแนก (detection ล่ม/timeout/ยังไม่ train) · false = จำแนกแล้วว่าปกติ
   @Column({ name: 'if_anomaly', type: 'boolean', nullable: true })

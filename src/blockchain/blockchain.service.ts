@@ -26,6 +26,16 @@ export interface StoreRootResult {
   txHash: string;
   blockNumber: number | null;
   confirmed: boolean;
+  /** จาก receipt — null เมื่อยังไม่ confirm (ยังไม่มี receipt) */
+  gasUsed?: bigint | null;
+  /** wei ต่อ gas ที่จ่ายจริง (receipt.gasPrice = effectiveGasPrice) */
+  effectiveGasPrice?: bigint | null;
+}
+
+/** gas ของ tx ที่ลง chain แล้ว — ทศนิยมเป็น string ให้ลง bigint/numeric ได้ตรง ๆ */
+export interface TxGas {
+  gasUsed: string;
+  effectiveGasPrice: string;
 }
 
 /**
@@ -299,6 +309,8 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
         txHash: receipt.hash,
         blockNumber: receipt.blockNumber,
         confirmed: true,
+        gasUsed: receipt.gasUsed,
+        effectiveGasPrice: receipt.gasPrice,
       };
     } catch (err: unknown) {
       // ผลของ tx รู้แน่แล้ว (revert บน chain / ถูกแทนที่) → caller ตั้ง FAILED เหมือนเดิม
@@ -319,7 +331,13 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `Root tx=${tx.hash} for batch ${batchId} ${why} — leaving it for the next verify round`,
       );
-      return { txHash: tx.hash, blockNumber: null, confirmed: false };
+      return {
+        txHash: tx.hash,
+        blockNumber: null,
+        confirmed: false,
+        gasUsed: null,
+        effectiveGasPrice: null,
+      };
     }
   }
 
@@ -426,6 +444,20 @@ export class BlockchainService implements OnModuleInit, OnModuleDestroy {
       gas,
       feePerGasWei,
       costWei: gas * feePerGasWei,
+    };
+  }
+
+  /**
+   * gas ของ tx ที่ลง chain แล้ว (eth_getTransactionReceipt) — ใช้ตอน batch UNVERIFIED เพิ่ง confirm
+   * ยังไม่มี receipt = null · RPC พัง = throw (caller ทำ best-effort)
+   */
+  async getTxGas(txHash: string): Promise<TxGas | null> {
+    if (!this.isReady) throw new Error('Blockchain not ready');
+    const receipt = await this.provider.getTransactionReceipt(txHash);
+    if (!receipt) return null;
+    return {
+      gasUsed: receipt.gasUsed.toString(),
+      effectiveGasPrice: receipt.gasPrice.toString(),
     };
   }
 

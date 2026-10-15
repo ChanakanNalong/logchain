@@ -624,6 +624,7 @@ rm -rf infra/vault/.secrets infra/kafka/certs .env detection/.env
 | `scripts/harden-master-admin.sh` | harden master realm (strong cred + MFA + automation service account, idempotent) |
 | `scripts/check-tracked-secrets.sh` | ตรวจว่าไม่มี `.env` / key / cert หลุดเข้า git |
 | `scripts/demo-brute-force.sh` | ยิง log รัว ๆ ให้ detection จับได้ → alert โผล่ที่หน้า Alerts (ต้องใช้ token ที่มี role `analyst`/`operator`/`admin` ไม่งั้นขั้นสุดท้ายที่ไปอ่าน `/alerts` ได้ 403 ทั้งที่ alert ถูกบันทึกแล้ว) |
+| `scripts/backfill-batch-gas.mjs` | เติม `batches.gas_used` / `effective_gas_price` จาก receipt ของ `tx_hash` · dry-run เป็นค่าเริ่มต้น · `--apply` เขียนเฉพาะ 2 คอลัมน์นี้ · `ENV_FILE=` เลือก stack (ผล bench + ค่า Amoy: [docs/bench-anchor.md](docs/bench-anchor.md)) |
 | `scripts/demo-tamper.sh` | แก้ log ในฐานข้อมูลตรง ๆ → Merkle verify จับได้ + diff พิมพ์ `position N · field · before → after` · `TAMPER=message` แก้ข้อความแทน raw_hash · `API=` / `PG_CONTAINER=` ชี้ stack อื่น (เช่น hh) |
 | `scripts/demo-mtls.sh` | ต่อ Kafka ผ่าน SSL listener (39092-39094) |
 | `scripts/seed-test-users.sh` | สร้าง/อัปเดต user ทดสอบ 1 คนต่อ role ใน Keycloak (**dev เท่านั้น**) — ดูหัวข้อถัดไป |

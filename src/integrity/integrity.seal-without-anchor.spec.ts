@@ -295,6 +295,28 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     // จะทำให้ stats ตัดออกจากตัวหารทั้งที่ไม่มีอะไรผิด
     expect(batch!.status).toBe('SEALED');
   });
+  it('late anchor (SEALED → anchorSealedBatches) records gas from the receipt', async () => {
+    const batch = await service.sealBatch();
+    expect(batch!.status).toBe('SEALED');
+
+    blockchain.ready = true;
+    blockchain.storeRoot.mockImplementation((batchId: string, root: string) => {
+      onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+      return Promise.resolve({
+        txHash: '0xlate',
+        blockNumber: 43,
+        confirmed: true,
+        gasUsed: 78156n,
+        effectiveGasPrice: 1_000_000_000n,
+      });
+    });
+    await service.anchorSealedBatches();
+
+    expect(batch!.status).toBe('CONFIRMED');
+    expect(batch!.gasUsed).toBe('78156');
+    expect(batch!.effectiveGasPrice).toBe('1000000000');
+  });
+
   describe('snapshot ตอน seal (batch_log_snapshot)', () => {
     it('เขียน snapshot ทุก log ตามลำดับ leaf — hash ใหม่จาก snapshot ได้ raw_hash เดิม', async () => {
       const batch = await service.sealBatch();

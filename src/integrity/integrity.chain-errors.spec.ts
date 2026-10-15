@@ -54,9 +54,13 @@ describe('IntegrityService — chain write errors', () => {
   let batchStore: any[];
   let onChain: Map<string, string>;
   let storeRootImpl: (batchId: string, root: string) => Promise<any>;
+  let txGasImpl: (
+    txHash: string,
+  ) => Promise<{ gasUsed: string; effectiveGasPrice: string } | null>;
   let errorSpy: jest.SpyInstance;
 
   beforeEach(async () => {
+    txGasImpl = () => Promise.resolve(null);
     const t = new Date('2026-08-28T21:00:00.000Z');
     logsStore = [makeLog('a', t), makeLog('b', t)];
     mappingStore = [];
@@ -148,6 +152,7 @@ describe('IntegrityService — chain write errors', () => {
       storeRoot: jest.fn((batchId: string, root: string) =>
         storeRootImpl(batchId, root),
       ),
+      getTxGas: jest.fn((txHash: string) => txGasImpl(txHash)),
       checkRoot: jest.fn(async (batchId: string, root: string) => {
         const stored = onChain.get(batchId);
         const expected = (
@@ -379,6 +384,79 @@ describe('IntegrityService — chain write errors', () => {
 
       expect(batchStore[0].status).toBe('UNVERIFIED'); // ยังไม่ตั้ง FAILED อยู่ดี
       expect(errorSpy).toHaveBeenCalled();
+    });
+  });
+  describe('gas from the receipt (gas_used / effective_gas_price)', () => {
+    const anchored = (batchId: string, root: string) => {
+      onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+      return Promise.resolve({
+        txHash: '0xgas',
+        blockNumber: 7,
+        confirmed: true,
+        gasUsed: 78156n,
+        effectiveGasPrice: 25_000_000_000n,
+      });
+    };
+
+    it('stores gasUsed and effectiveGasPrice as decimal strings on confirm', async () => {
+      storeRootImpl = anchored;
+      const batch = await service.sealBatch();
+      expect(batch!.status).toBe('CONFIRMED');
+      expect(batch!.gasUsed).toBe('78156');
+      expect(batch!.effectiveGasPrice).toBe('25000000000');
+    });
+
+    it('ROOT_EXISTS (no new tx) leaves gas null', async () => {
+      storeRootImpl = async (batchId, root) => {
+        onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+        throw revertError('Root already exists');
+      };
+      const batch = await service.sealBatch();
+      expect(batch!.status).toBe('CONFIRMED');
+      expect(batch!.gasUsed ?? null).toBeNull();
+      expect(batch!.effectiveGasPrice ?? null).toBeNull();
+    });
+
+    it('unconfirmed tx: null now, filled from the receipt when verify confirms it', async () => {
+      storeRootImpl = (batchId, root) => {
+        onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+        return Promise.resolve({
+          txHash: '0xslow',
+          blockNumber: null,
+          confirmed: false,
+          gasUsed: null,
+          effectiveGasPrice: null,
+        });
+      };
+      const batch = await service.sealBatch();
+      expect(batch!.gasUsed).toBeNull();
+
+      txGasImpl = (h) =>
+        Promise.resolve(
+          h === '0xslow'
+            ? { gasUsed: '78156', effectiveGasPrice: '30000000000' }
+            : null,
+        );
+      await service.verifyAllBatches();
+      expect(batch!.status).toBe('CONFIRMED');
+      expect(batch!.gasUsed).toBe('78156');
+      expect(batch!.effectiveGasPrice).toBe('30000000000');
+    });
+
+    it('a failing receipt lookup does not block the confirm', async () => {
+      storeRootImpl = (batchId, root) => {
+        onChain.set(batchId, root.startsWith('0x') ? root : '0x' + root);
+        return Promise.resolve({
+          txHash: '0xslow',
+          blockNumber: null,
+          confirmed: false,
+        });
+      };
+      const batch = await service.sealBatch();
+      txGasImpl = () => Promise.reject(new Error('rpc down'));
+      await service.verifyAllBatches();
+      expect(batch!.status).toBe('CONFIRMED');
+      expect(batch!.gasUsed ?? null).toBeNull();
     });
   });
 });

@@ -26,6 +26,19 @@ export const LOW_BALANCE_ALERT_TYPE = 'WALLET_LOW_BALANCE';
  */
 const MAX_BATCHES_PER_TICK = 1000;
 
+/**
+ * gas ของ tx storeRoot ลง batch — receipt ยังไม่มี (ยังไม่ confirm) = null
+ * ROOT_EXISTS ไม่ผ่านตรงนี้เลย (ไม่มี tx ใหม่) จึงค้าง null ตามสเปค
+ */
+function setGas(
+  batch: Batch,
+  r: { gasUsed?: bigint | null; effectiveGasPrice?: bigint | null },
+): void {
+  batch.gasUsed = r.gasUsed == null ? null : r.gasUsed.toString();
+  batch.effectiveGasPrice =
+    r.effectiveGasPrice == null ? null : r.effectiveGasPrice.toString();
+}
+
 /** แถวดิบของ GET /batches (ชื่อคอลัมน์ Postgres) */
 interface BatchListRow {
   id: string;
@@ -362,11 +375,12 @@ export class IntegrityService {
 
     try {
       // 6. commit root ขึ้น chain
-      const { txHash, blockNumber, confirmed } =
-        await this.blockchain.storeRoot(batch.id, root);
+      const result = await this.blockchain.storeRoot(batch.id, root);
+      const { txHash, blockNumber, confirmed } = result;
 
       batch.txHash = txHash;
       batch.blockNumber = blockNumber;
+      setGas(batch, result);
 
       // tx ส่งแล้วแต่รอ confirm ไม่ทัน (public RPC ช้า) — ไม่ใช่ FAILED และห้ามค้าง PENDING
       // ปล่อยเป็น UNVERIFIED ให้ verifyAllBatches ตามผลต่อ: tx ลงเมื่อไร -> MATCH -> CONFIRMED
@@ -487,10 +501,11 @@ export class IntegrityService {
     for (const batch of batches) {
       const root = '0x' + batch.merkleRoot;
       try {
-        const { txHash, blockNumber, confirmed } =
-          await this.blockchain.storeRoot(batch.id, root);
+        const result = await this.blockchain.storeRoot(batch.id, root);
+        const { txHash, blockNumber, confirmed } = result;
         batch.txHash = txHash;
         batch.blockNumber = blockNumber;
+        setGas(batch, result);
 
         // mapping ถูกเขียนไปแล้วตอน seal — ที่นี่แค่เลื่อนสถานะ
         batch.status = confirmed === false ? 'UNVERIFIED' : 'CONFIRMED';
@@ -540,6 +555,22 @@ export class IntegrityService {
       `Batch ${batch.id} sealed: ${logs.length} log, root=${root.slice(0, 18)}...`,
     );
     return batch;
+  }
+
+  /** gas จาก receipt ของ tx ที่เพิ่ง confirm — best effort ห้ามทำให้ verify พัง */
+  private async fillGasFromReceipt(batch: Batch): Promise<void> {
+    if (!batch.txHash || batch.gasUsed != null) return;
+    try {
+      const gas = await this.blockchain.getTxGas(batch.txHash);
+      if (gas) {
+        batch.gasUsed = gas.gasUsed;
+        batch.effectiveGasPrice = gas.effectiveGasPrice;
+      }
+    } catch (err) {
+      this.logger.debug(
+        `No receipt gas for batch ${batch.id}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -702,7 +733,10 @@ export class IntegrityService {
           this.logger.log(
             `Batch ${batch.id} re-verified (${batch.status} → CONFIRMED)`,
           );
+          const wasUnverified = batch.status === 'UNVERIFIED';
           batch.status = 'CONFIRMED';
+          // tx ที่ confirm ช้า (เคยรอไม่ทัน) — เพิ่งมี receipt ตอนนี้ เติม gas ให้
+          if (wasUnverified) await this.fillGasFromReceipt(batch);
           await this.batchesRepo.save(batch);
         }
         // ปิด alert เก่าที่ยังค้างอยู่เสมอ ไม่ใช่เฉพาะตอนเพิ่งเปลี่ยน status —
@@ -776,16 +810,15 @@ export class IntegrityService {
         const { result } = await this.blockchain.checkRoot(batch.id, storeRoot);
         if (result !== 'MISSING') continue;
 
-        const { txHash, blockNumber } = await this.blockchain.storeRoot(
-          batch.id,
-          storeRoot,
-        );
-        batch.txHash = txHash;
-        batch.blockNumber = blockNumber;
+        const stored = await this.blockchain.storeRoot(batch.id, storeRoot);
+        batch.txHash = stored.txHash;
+        batch.blockNumber = stored.blockNumber;
+        // tx ใหม่แทนตัวเก่า — gas ของตัวเก่า (ถ้ามี) ไม่ใช่ของ tx นี้แล้ว
+        setGas(batch, stored);
         await this.batchesRepo.save(batch);
 
         this.logger.warn(
-          `Batch ${batch.id} re-anchored after chain reset (root unchanged) tx=${txHash.slice(0, 12)}...`,
+          `Batch ${batch.id} re-anchored after chain reset (root unchanged) tx=${stored.txHash.slice(0, 12)}...`,
         );
       } catch (err: any) {
         // root โผล่บน chain ระหว่าง checkRoot กับ storeRoot (หรือ tx เก่าเพิ่ง confirm)
