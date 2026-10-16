@@ -145,3 +145,116 @@ export interface AlertDetail {
   alert: AlertItem;
   logs: AlertLogRef[];
 }
+
+/* ── Batch audit — docs/api/batches-diff.md ─────────────────────────── */
+
+/** One row of `GET /batches` */
+export interface BatchListItem {
+  id: string;
+  /** hex 64, no 0x */
+  merkleRoot: string;
+  txHash: string | null;
+  blockNumber: number | null;
+  polygonscanUrl: string | null;
+  status: BatchStatus;
+  /** logs sealed into the batch */
+  logCount: number;
+  sealedAt: string;
+  confirmedAt: string | null;
+  ifAnomaly?: boolean | null;
+  ifScore?: number | null;
+  ifReason?: string | null;
+  ifScoredAt?: string | null;
+  /** false = sealed before snapshots existed → diff is batch-level only */
+  hasSnapshot?: boolean;
+  /**
+   * Not in GET /batches yet (only in GET /batches/:id/tree → cost) — the mock
+   * sends them; the real list shows "—" until the backend adds them.
+   * Decimal string (like /tree) or number.
+   */
+  gasUsed?: string | number | null;
+  effectiveGasPriceGwei?: string | number | null;
+}
+
+export type BatchesPage = Paged<BatchListItem>;
+
+export interface BatchesQuery {
+  limit?: number;
+  offset?: number;
+  status?: string[];
+}
+
+export type BatchChangeType = "CONTENT_MODIFIED" | "HASH_MODIFIED" | "DELETED" | "UNMAPPED_OR_INSERTED";
+
+/** A log as stored in the seal-time snapshot (DELETED) or as it is now (UNMAPPED_OR_INSERTED) */
+export interface SnapshotLog {
+  id: string;
+  createdAt: string;
+  source: string;
+  sourceIp: string | null;
+  eventType: string;
+  severity: string;
+  message: string;
+  classification: string;
+  cdeScope: boolean;
+  rawHash: string;
+}
+
+export interface FieldChange {
+  field: string;
+  before: string | boolean | null;
+  after: string | boolean | null;
+}
+
+export interface BatchChange {
+  /** leaf index in the Merkle tree, from 0 */
+  position: number;
+  logId: string;
+  type: BatchChangeType;
+  /** CONTENT_MODIFIED / HASH_MODIFIED */
+  fields?: FieldChange[];
+  /** DELETED: the row is gone, or only its mapping to this batch */
+  reason?: "ROW_MISSING" | "MAPPING_MISSING";
+  /** DELETED: content at seal time */
+  snapshot?: SnapshotLog;
+  /** UNMAPPED_OR_INSERTED: content now */
+  current?: SnapshotLog;
+}
+
+export type DiffVerdict = "INTACT" | "TAMPERED" | "UNVERIFIABLE";
+
+export interface BatchDiff {
+  batchId: string;
+  status: BatchStatus;
+  txHash: string | null;
+  blockNumber: number | null;
+  polygonscanUrl: string | null;
+  /** null = chain unreadable (see chainError) · 0x000… = never anchored */
+  chainRoot: string | null;
+  chainError: string | null;
+  /** root rebuilt from the seal-time snapshot · null for legacy batches */
+  snapshotRoot: string | null;
+  /** root stored in the DB at seal */
+  dbRoot: string;
+  /** root rebuilt from the logs mapped to the batch now · null when none are left */
+  currentRoot: string | null;
+  /** null for legacy batches */
+  snapshotTrusted: boolean | null;
+  /** what the snapshot was checked against · null for legacy */
+  trustBasis: "chain" | "db" | null;
+  untrustedReasons: ("SNAPSHOT_ROOT_MISMATCH" | "SNAPSHOT_CONTENT_MISMATCH")[];
+  legacy: boolean;
+  checkedAt: string;
+  summary: {
+    verdict: DiffVerdict;
+    snapshotLogs: number;
+    mappedLogs: number;
+    /** per-position counts are null when the snapshot is untrusted or missing */
+    unchanged: number | null;
+    contentModified: number | null;
+    hashModified: number | null;
+    deleted: number | null;
+    unmappedOrInserted: number | null;
+  };
+  changes: BatchChange[];
+}

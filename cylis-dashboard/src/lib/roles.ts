@@ -17,6 +17,8 @@ export const PAGE_ROLES: Record<string, readonly AppRole[]> = {
   verify: ['admin', 'analyst', 'operator'],
   alerts: ['admin', 'analyst', 'operator'],
   reports: ['admin', 'auditor'],
+  // GET /batches/:id/diff is @Roles('admin', 'auditor') — after reports so auditor still lands on Reports
+  batches: ['admin', 'auditor'],
   settings: ['admin'],
 };
 

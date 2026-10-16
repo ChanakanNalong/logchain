@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BellRing, CircleCheck, ChevronDown, ChevronRight, ShieldAlert, Search } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
@@ -11,6 +11,7 @@ import { alertTone } from "@/lib/logRows";
 import { fmtTime, shortId } from "@/lib/format";
 import { QUERY_KEYS, useReplaceQuery } from "@/lib/nav";
 import { canDo } from "@/lib/roles";
+import { useElementWidth } from "@/lib/useElementWidth";
 import type { AlertDetail, AlertItem as AlertRow } from "@/types/api";
 
 const ALL_STATUSES = "All statuses";
@@ -430,17 +431,3 @@ function RelatedLogs({
   );
 }
 
-/** Rendered width of an element, kept current with a ResizeObserver (0 until measured) */
-function useElementWidth(ref: RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const update = () => setWidth(el.clientWidth);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return width;
-}

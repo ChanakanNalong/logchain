@@ -58,6 +58,8 @@ export function Badge({ children, tone = "neutral", title }: any) {
     neutral: { bg: "rgba(124,135,163,0.12)", fg: t.muted, bd: t.border },
     // darker grey than neutral — reads as "a step further along" but still not a verdict
     slate: { bg: "rgba(71,85,105,0.32)", fg: t.text, bd: "rgba(100,116,139,0.55)" },
+    // same dark-grey pill, muted text — "not sent to chain yet" (lib/chainState.ts)
+    slateMuted: { bg: "rgba(71,85,105,0.22)", fg: t.muted, bd: "rgba(100,116,139,0.55)" },
     blue: { bg: "rgba(59,130,246,0.12)", fg: t.blue2, bd: "rgba(59,130,246,0.35)" },
     danger: { bg: "rgba(244,63,94,0.12)", fg: t.danger, bd: "rgba(244,63,94,0.35)" },
     warn: { bg: "rgba(245,158,11,0.12)", fg: t.warn, bd: "rgba(245,158,11,0.35)" },
@@ -88,7 +90,7 @@ export function Badge({ children, tone = "neutral", title }: any) {
 }
 
 /** Button — variants: primary | ghost | subtle */
-export function Button({ children, variant = "primary", icon: Icon, onClick, small, disabled }: any) {
+export function Button({ children, variant = "primary", icon: Icon, onClick, small, disabled, title, ariaLabel }: any) {
   const t = useTheme();
   const base = {
     display: "inline-flex",
@@ -109,7 +111,7 @@ export function Button({ children, variant = "primary", icon: Icon, onClick, sma
     subtle: { background: t.surface2, color: t.text, border: `1px solid ${t.border}` },
   };
   return (
-    <button onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant] }}>
+    <button onClick={onClick} disabled={disabled} title={title} aria-label={ariaLabel} style={{ ...base, ...variants[variant] }}>
       {Icon && <Icon size={small ? 13 : 15} />}
       {children}
     </button>

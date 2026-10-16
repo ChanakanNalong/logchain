@@ -17,6 +17,7 @@ import { getLogDetail } from "@/lib/endpoints";
 import { fmtTime, isZeroRoot, shortHash } from "@/lib/format";
 import { alertTone, toTone } from "@/lib/logRows";
 import { QUERY_KEYS, useNavigate } from "@/lib/nav";
+import { unanchoredRootView } from "@/lib/chainState";
 import { canAccessPage } from "@/lib/roles";
 import type { ChainCheck, LogDetail } from "@/types/api";
 
@@ -59,14 +60,7 @@ function chainCheckView(c: ChainCheck | null, batchStatus: string | undefined): 
   if ("error" in c) return { tone: "neutral", label: "ติดต่อเชนไม่ได้ตอนนี้", note: "อ่าน root จากเชนไม่ได้ (RPC ล่มหรือ timeout) — ไม่ได้แปลว่าข้อมูลถูกแก้ ลองใหม่ภายหลัง" };
   // a tampered batch never gets green, even though its stored root still matches (demo: no green on edited logs)
   if (c.match) return { tone: batchStatus === "TAMPERED" ? "blue" : "good", label: "root ใน DB ตรงกับบนเชน", note: "root ที่เก็บใน DB ตรงกับ root ที่ตรึงไว้บนเชน (เทียบ root ไม่ได้เทียบทีละ row)" };
-  if (isZeroRoot(c.chainRoot)) {
-    // not sent yet vs sent (or tried) but missing — told apart by the batch status
-    return batchStatus === "SEALED" || batchStatus === "PENDING"
-      ? { tone: "slate", label: "ยังไม่ได้ส่ง root ขึ้นเชน (รอ anchor)", note: "batch นี้ seal แล้วแต่ยังไม่ได้ส่ง root ขึ้นเชน" }
-      : batchStatus === "FAILED"
-        ? { tone: "orange", label: "ส่ง root ขึ้นเชนไม่สำเร็จ", note: "anchor ไม่สำเร็จ บนเชนจึงไม่มี root ของ batch นี้ — ไม่ได้แปลว่าข้อมูลถูกแก้" }
-        : { tone: "orange", label: "ไม่พบ root บนเชน", note: "ส่ง root ขึ้นเชนแล้ว แต่ไม่พบ root ของ batch นี้บนเชน — ไม่ได้แปลว่าข้อมูลถูกแก้" };
-  }
+  if (isZeroRoot(c.chainRoot)) return unanchoredRootView(batchStatus);
   return { tone: "danger", label: "root ใน DB ไม่ตรงกับบนเชน", note: "root ใน DB ต่างจาก root บนเชน — ข้อมูลใน batch นี้อาจถูกแก้หลัง anchor" };
 }
 
@@ -95,7 +89,7 @@ function statusNote(status: string, c: ChainCheck | null): { tone: "danger" | "w
   return conflict ? { tone: "warn", text: "สถานะ batch กับผลตรวจล่าสุดไม่ตรงกัน กดตรวจกับเชนอีกครั้ง" } : null;
 }
 
-function CopyButton({ value }: { value: string }) {
+export function CopyButton({ value }: { value: string }) {
   const t = useTheme();
   const [state, setState] = useState<"idle" | "ok" | "fail">("idle");
   useEffect(() => {
@@ -195,6 +189,12 @@ export default function LogDrawer({
   const check = detail ? chainCheckView(detail.chainCheck, detail.batch?.status) : null;
   const note = detail?.batch ? statusNote(detail.batch.status, detail.chainCheck) : null;
   const tampered = detail?.batch?.status === "TAMPERED";
+  // not known yet (no seed for it and the detail is still on its way) → say so instead of "—"
+  const pending = !detail && !error;
+  const val = (v: string | null | undefined): ReactNode =>
+    v !== undefined && v !== null ? v
+    : v === undefined && pending ? <span style={{ color: t.muted, fontStyle: "italic" }}>กำลังโหลด…</span>
+    : "—";
   const chainMatch = detail?.chainCheck && !("error" in detail.chainCheck) ? detail.chainCheck : null;
 
   return (
@@ -262,14 +262,14 @@ export default function LogDrawer({
         )}
 
         <Section title="Log">
-          <Field label="Time" mono>{fmtTime(shown.createdAt)}</Field>
-          <Field label="Source">{shown.source ?? "—"}</Field>
-          <Field label="Source IP" mono copy={shown.sourceIp}>{shown.sourceIp ?? "—"}</Field>
-          <Field label="Event type" mono>{shown.eventType ?? "—"}</Field>
+          <Field label="Time" mono>{shown.createdAt !== undefined ? fmtTime(shown.createdAt) : val(undefined)}</Field>
+          <Field label="Source">{val(shown.source)}</Field>
+          <Field label="Source IP" mono copy={shown.sourceIp}>{val(shown.sourceIp)}</Field>
+          <Field label="Event type" mono>{val(shown.eventType)}</Field>
           <Field label="Severity">
-            {shown.severity ? <Badge tone={toTone(shown.severity)}>{shown.severity}</Badge> : "—"}
+            {shown.severity ? <Badge tone={toTone(shown.severity)}>{shown.severity}</Badge> : val(shown.severity)}
           </Field>
-          <Field label="Message" mono>{shown.message ?? "—"}</Field>
+          <Field label="Message" mono>{val(shown.message)}</Field>
           {log && (
             <>
               <Field label="Classification">{log.classification}</Field>
@@ -330,7 +330,16 @@ export default function LogDrawer({
               )}
               {chainMatch && (
                 <div style={{ marginTop: 6 }}>
-                  <Field label="Root on chain" mono copy={chainMatch.chainRoot}>{shortHash(chainMatch.chainRoot, 10, 8)}</Field>
+                  {isZeroRoot(chainMatch.chainRoot) ? (
+                    // 0x000… means "no root on chain", not a hash to show
+                    <Field label="Root on chain">
+                      <span style={{ color: unanchoredRootView(detail.batch?.status).tone === "orange" ? t.orange : t.muted }}>
+                        — · {unanchoredRootView(detail.batch?.status).label}
+                      </span>
+                    </Field>
+                  ) : (
+                    <Field label="Root on chain" mono copy={chainMatch.chainRoot}>{shortHash(chainMatch.chainRoot, 10, 8)}</Field>
+                  )}
                   <Field label="Root in DB" mono copy={chainMatch.dbRoot}>{shortHash(chainMatch.dbRoot, 10, 8)}</Field>
                 </div>
               )}

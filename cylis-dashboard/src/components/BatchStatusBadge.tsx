@@ -8,8 +8,9 @@ import type { BatchStatus } from "@/types/api";
  */
 const STATUS: Record<BatchStatus | "NONE", { label: string; tone: string; hint: string }> = {
   NONE: { label: "Pending (รอ seal)", tone: "neutral", hint: "ยังไม่ถูก seal เข้า batch — รอรอบ seal ถัดไป" },
-  // not in the spec table: a batch row exists but sealing has not finished
-  PENDING: { label: "Pending (รอ seal)", tone: "neutral", hint: "batch ถูกสร้างแล้ว กำลังรอ seal" },
+  // integrity.service.ts sealBatch: the row is saved as PENDING with its Merkle root,
+  // then anchored — a short-lived state between building the root and the tx result
+  PENDING: { label: "Pending (รอส่งขึ้นเชน)", tone: "neutral", hint: "สร้าง Merkle root แล้ว กำลังส่งขึ้นเชน (สถานะชั่วคราวระหว่าง seal)" },
   SEALED: { label: "Sealed (ยังไม่ขึ้นเชน)", tone: "slate", hint: "seal เป็น Merkle root แล้ว แต่ยังไม่ได้ anchor ขึ้นเชน" },
   UNVERIFIED: { label: "Unverified", tone: "warn", hint: "ส่ง tx แล้ว ยังยืนยัน receipt ไม่ได้" },
   CONFIRMED: { label: "On-chain ✓", tone: "good", hint: "root อยู่บนเชนแล้ว" },

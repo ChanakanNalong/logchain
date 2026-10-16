@@ -14,7 +14,7 @@ const BASE_TIME = Date.parse("2026-10-15T10:00:00.000Z");
  * seed, then a murmur3-style finaliser per 8-hex word — similar seeds must give
  * unrelated ids, or rows like brute-window-0..3 read almost the same on screen.
  */
-function hex(seed: string, len = 64): string {
+export function hex(seed: string, len = 64): string {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i);
@@ -33,16 +33,16 @@ function hex(seed: string, len = 64): string {
 }
 
 /** Deterministic v4-looking UUID */
-function uuid(seed: string): string {
+export function uuid(seed: string): string {
   const x = hex(`uuid:${seed}`, 32);
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-4${x.slice(13, 16)}-8${x.slice(17, 20)}-${x.slice(20, 32)}`;
 }
 
-function at(minutesAgo: number, seconds = 0): string {
+export function at(minutesAgo: number, seconds = 0): string {
   return new Date(BASE_TIME - minutesAgo * 60_000 + seconds * 1000).toISOString();
 }
 
-const ZERO_ROOT = "0x" + "0".repeat(64);
+export const ZERO_ROOT = "0x" + "0".repeat(64);
 
 interface MockBatch {
   info: BatchInfo;
@@ -116,6 +116,8 @@ interface Seed {
   message: string;
   batch: BatchKey | null;
   cdeScope?: boolean;
+  /** override the stored hash (a HASH_MODIFIED row in the batch diff mock) */
+  rawHash?: string;
 }
 
 const BRUTE_IP = "203.0.113.5";
@@ -161,11 +163,21 @@ const SEEDS: Seed[] = [
   {
     key: "priv-esc", minutesAgo: 35, source: "auth-service", sourceIp: "10.0.4.21",
     eventType: "PRIV_ESC", severity: "CRITICAL", message: "user jdoe added to group sudo by uid 1001", batch: "tampered",
+    // only raw_hash was rewritten (HASH_MODIFIED) — content still as sealed
+    rawHash: "f".repeat(64),
   },
+  // edited after seal: lib/mock/batches.ts holds the seal-time version
+  // (ERROR, "bulk read … 2,400 rows") — this is what the row says now
   {
     key: "card", minutesAgo: 34, source: "app-svc-1", sourceIp: "10.0.4.30",
-    eventType: "CARD_ACCESS", severity: "ERROR", message: "bulk read of card_holders by svc-report (2,400 rows)",
+    eventType: "CARD_ACCESS", severity: "INFO", message: "scheduled report read card_holders (12 rows)",
     batch: "tampered", cdeScope: true,
+  },
+  // not in the seal-time snapshot, mapped to the tampered batch later (UNMAPPED_OR_INSERTED)
+  {
+    key: "inserted", minutesAgo: 34, seconds: 40, source: "app-svc-1", sourceIp: "10.0.4.30",
+    eventType: "USER_ACTIVITY", severity: "INFO", message: "card_holders export approved by admin (ticket CHG-1042)",
+    batch: "tampered",
   },
   ...Array.from({ length: 8 }, (_, i): Seed => ({
     key: `web-${i}`, minutesAgo: 30 - i, source: "app-web-1", sourceIp: `192.0.2.${10 + i}`,
@@ -183,7 +195,9 @@ const SEEDS: Seed[] = [
     key: `db-${i}`, minutesAgo: 9 - i, source: "app-svc-1", sourceIp: null,
     eventType: "DB_QUERY", severity: i === 0 ? "DEBUG" : "INFO",
     message: `query orders_by_customer took ${120 + i * 15}ms`,
-    batch: i < 3 ? "pending" : null,
+    // PENDING batches have no log mapping yet (written after the anchor), so no log
+    // ever shows a PENDING batch — these stay unsealed (batchStatus null)
+    batch: null,
   })),
   {
     key: "ssh-invalid", minutesAgo: 1, source: "vps-sshd", sourceIp: "2001:db8::1",
@@ -214,7 +228,7 @@ function buildLog(s: Seed): MockLog {
     classification: s.cdeScope ? "CONFIDENTIAL" : "INTERNAL",
     cdeScope: s.cdeScope ?? false,
     retentionDays: s.cdeScope ? 365 * 7 : 365,
-    rawHash: hex(`raw:${s.key}`),
+    rawHash: s.rawHash ?? hex(`raw:${s.key}`),
     batchId: b?.info.id ?? null,
     batchStatus: b?.info.status ?? null,
     txHash: b?.info.txHash ?? null,
@@ -233,7 +247,7 @@ function buildLog(s: Seed): MockLog {
 /** Newest first, like the backend */
 export const MOCK_LOGS: MockLog[] = SEEDS.map(buildLog).sort((a, b) => b.item.createdAt.localeCompare(a.item.createdAt));
 
-const logId = (key: string) => uuid(`log:${key}`);
+export const logId = (key: string) => uuid(`log:${key}`);
 
 export interface MockAlert {
   alert: AlertItem;
@@ -309,7 +323,7 @@ export const MOCK_ALERTS: MockAlert[] = [
         // stored root still equals the chain; the root recomputed from the rows does not
         recomputedRoot: "0x" + hex("recomputed:tampered"),
         onChainRoot: "0x" + MOCK_BATCHES.tampered.info.merkleRoot,
-        modifiedLogIds: [logId("card")],
+        modifiedLogIds: [logId("card"), logId("priv-esc")],
       },
       status: "OPEN", occurrenceCount: 1, createdAt: at(12), lastSeenAt: at(12), lastNotifiedAt: at(12),
     },
