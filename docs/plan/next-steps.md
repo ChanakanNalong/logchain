@@ -32,6 +32,7 @@
 >    หลัง forwarder เก็บ traffic จริง **3–5 วัน** → เขียน `scripts/retrain-isoforest.*` ดึง batch จริง (`if_scored_at` ไม่ null) มาเป็น training set ·
 >    **เกณฑ์สลับเป็น `active`:** มี batch จริง ≥ ~200 ใบครอบคลุมช่วงโหลดปกติ และ FP บน hold-out ของ traffic จริง < ~5% · อัปเดต `IF_MODE=active` ใน `.env` ของ cloud แล้ว restart backend
 >    (alert เก่า 3 ใบบน cloud RESOLVED แล้ว — worklog 10-05 หัวข้อ 3)
+> 9. **(อนาคต · ไม่เร่ง) แสดง Merkle tree ระดับ batch (ไม่มี proof รายล็อก) ใน drawer Batch audit สำหรับ auditor** — backend `GET /batches/:id/tree` รองรับ auditor อยู่แล้ว (`@Roles('analyst','operator','auditor','admin')`) แต่ frontend `PAGE_ROLES.verify` ไม่มี auditor (หน้า Verify พ่วง proof รายล็อกที่ auditor เรียก `/logs/:id/proof` ไม่ได้ = 403) · ปัจจุบัน auditor เข้าหน้า Verify ไม่ได้ (redirect→Reports) ตามตาราง RBAC เดิม — ตั้งใจ · ถ้าจะทำ: ฝัง tree-only view (root + ชั้น + cost · ไม่คลิก leaf ดู proof) ใน drawer Batch audit แทนการเปิดหน้า Verify ให้ auditor
 >
 > **🔒 FREEZE ตั้งแต่ 2026-10-05:** **ห้ามแก้โค้ดทุกส่วน** (backend · dashboard · detection · infra · script · เทส) จนสอบเสร็จ
 > **ยกเว้นบั๊กที่ทำให้ demo ใช้งานไม่ได้** — แก้ได้เฉพาะจุดนั้น ต้องรันชุดตรวจครบ (หยุด backend ก่อนรัน integration) และยังได้ 31 ชุด 416 กรณี ·
