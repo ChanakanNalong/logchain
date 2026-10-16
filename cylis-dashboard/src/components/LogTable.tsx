@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ExternalLink } from "lucide-react";
 import { useTheme, monoFont } from "@/theme";
 import { Th, Td, Badge } from "@/components/ui";
+import BatchStatusBadge from "@/components/BatchStatusBadge";
+import type { LogRow } from "@/lib/logRows";
 
 /**
  * คัดลอกข้อความลง clipboard
  * navigator.clipboard ใช้ได้เฉพาะ secure context (https / localhost) — ถ้าเปิด
  * dashboard ผ่าน IP ในแลนจะโยน error ทิ้ง เลยต้องมีทางถอยแบบ execCommand ไว้
  */
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -33,7 +35,7 @@ async function copyText(text: string): Promise<boolean> {
  * ช่อง ID: โชว์ 8 ตัวแรกพอให้อ่านออก แต่คลิกแล้วได้ UUID เต็มไปวางในหน้า Verify
  * (GET /logs/:id/proof ต้องการตัวเต็ม ถ้าส่ง 8 ตัวจะเป็น 400 ทันที)
  */
-function IdCell({ id }: { id: string }) {
+export function IdCell({ id }: { id: string }) {
   const t = useTheme();
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -53,7 +55,8 @@ function IdCell({ id }: { id: string }) {
   return (
     <button
       type="button"
-      onClick={onCopy}
+      // rows can be clickable (open the log drawer) — copying must not open it too
+      onClick={(e) => { e.stopPropagation(); void onCopy(); }}
       title={copied ? "Copied" : `Click to copy the full ID — ${id}`}
       style={{
         display: "inline-flex",
@@ -77,37 +80,91 @@ function IdCell({ id }: { id: string }) {
   );
 }
 
-export default function LogTable({ logs }: any) {
+/** Tx link to the explorer — opens a new tab without handing it `window.opener` */
+export function PolygonscanLink({ url, label = "Polygonscan" }: { url: string; label?: string }) {
   const t = useTheme();
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title="Open the anchoring tx on Polygonscan"
+      style={{ display: "inline-flex", alignItems: "center", gap: 4, color: t.blue2, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+    >
+      {label} <ExternalLink size={12} />
+    </a>
+  );
+}
+
+interface LogTableProps {
+  logs: LogRow[];
+  /** add the On-chain column (batch status + tx link) */
+  showChain?: boolean;
+  /** makes rows clickable / keyboard-openable */
+  onRowClick?: (row: LogRow) => void;
+}
+
+export default function LogTable({ logs, showChain = false, onRowClick }: LogTableProps) {
+  const t = useTheme();
+  const headers = ["ID", "Timestamp", "Source", "IP", "Event", "Attack Type", "Severity", ...(showChain ? ["On-chain"] : [])];
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            {["ID", "Timestamp", "Source", "IP", "Event", "Attack Type", "Severity"].map((h) => (
+            {headers.map((h) => (
               <Th key={h}>{h}</Th>
             ))}
           </tr>
         </thead>
         <tbody>
           {logs.map((r) => (
-            <tr key={r.id}>
+            <tr
+              key={r.id}
+              onClick={onRowClick ? () => onRowClick(r) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(r); }
+                    }
+                  : undefined
+              }
+              tabIndex={onRowClick ? 0 : undefined}
+              aria-label={onRowClick ? `Open log ${r.id}` : undefined}
+              style={onRowClick ? { cursor: "pointer" } : undefined}
+            >
               {/* rows carry the full log id; only the display is shortened */}
               <Td style={{ color: t.blue2, ...monoFont }}>
                 {typeof r.id === "string" && r.id.length > 8
                   ? <IdCell id={r.id} />
                   : r.id}
               </Td>
-              <Td style={{ color: t.muted, ...monoFont }}>{r.ts}</Td>
+              <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{r.ts}</Td>
               <Td>{r.source}</Td>
               <Td style={{ ...monoFont }}>{r.ip}</Td>
-              <Td>{r.event}</Td>
+              {/* one line; the full message is in the tooltip and the drawer.
+                  max-width on a <td> is not reliable in auto table layout — cap a div instead */}
+              <Td>
+                <div title={r.event} style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.event}
+                </div>
+              </Td>
               <Td style={{ color: t.muted }}>{r.attackType}</Td>
               <Td>
                 {/* show the severity the backend actually stored (CRITICAL / WARNING /
                     INFO / …); `sev` only picks the colour, it is not the label */}
                 <Badge tone={r.sev}>{r.severity ?? "—"}</Badge>
               </Td>
+              {showChain && (
+                <Td>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <BatchStatusBadge status={r.batchStatus} />
+                    {r.polygonscanUrl && <PolygonscanLink url={r.polygonscanUrl} label="tx" />}
+                  </div>
+                </Td>
+              )}
             </tr>
           ))}
         </tbody>

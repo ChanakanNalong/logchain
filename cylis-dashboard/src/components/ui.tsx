@@ -52,19 +52,23 @@ export function SectionLabel({ children, dot }: any) {
 }
 
 /** Pill-shaped status badge */
-export function Badge({ children, tone = "neutral" }: any) {
+export function Badge({ children, tone = "neutral", title }: any) {
   const t = useTheme();
   const tones = {
     neutral: { bg: "rgba(124,135,163,0.12)", fg: t.muted, bd: t.border },
+    // darker grey than neutral — reads as "a step further along" but still not a verdict
+    slate: { bg: "rgba(71,85,105,0.32)", fg: t.text, bd: "rgba(100,116,139,0.55)" },
     blue: { bg: "rgba(59,130,246,0.12)", fg: t.blue2, bd: "rgba(59,130,246,0.35)" },
     danger: { bg: "rgba(244,63,94,0.12)", fg: t.danger, bd: "rgba(244,63,94,0.35)" },
     warn: { bg: "rgba(245,158,11,0.12)", fg: t.warn, bd: "rgba(245,158,11,0.35)" },
     good: { bg: "rgba(52,211,153,0.12)", fg: t.good, bd: "rgba(52,211,153,0.35)" },
     cyan: { bg: "rgba(34,211,238,0.12)", fg: t.cyan, bd: "rgba(34,211,238,0.35)" },
+    orange: { bg: "rgba(249,115,22,0.12)", fg: t.orange, bd: "rgba(249,115,22,0.4)" },
   };
   const c = tones[tone] || tones.neutral;
   return (
     <span
+      title={title}
       style={{
         display: "inline-flex",
         alignItems: "center",

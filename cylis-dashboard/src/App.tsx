@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import {
   LayoutDashboard,
   ScrollText,
@@ -19,6 +19,9 @@ import {
 import { darkTheme, lightTheme, ThemeContext } from "@/theme";
 import { keycloak, logout } from "@/lib/keycloak";
 import { canAccessPage } from "@/lib/roles";
+import { NavContext, PAGE_QUERY_KEYS, QUERY_KEYS, readViewFromUrl, replaceQuery, type QueryUpdate } from "@/lib/nav";
+import { USE_MOCK } from "@/lib/endpoints";
+import { Badge } from "@/components/ui";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
 import MLDetection from "@/views/MLDetection";
@@ -40,6 +43,25 @@ const NAV_ITEMS = [
   { id: "settings", label: "Settings", icon: SettingsIcon, Page: Settings },
 ];
 
+const THEME_KEY = "cylis-theme";
+
+/** Saved theme; storage can be missing or throw (private mode, blocked site data) → dark */
+function readTheme(): "dark" | "light" {
+  try {
+    return window.localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+function saveTheme(mode: "dark" | "light") {
+  try {
+    window.localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    // not remembered this time — the toggle still works for the session
+  }
+}
+
 const PAGE_TITLES = {
   dashboard: "Security overview",
   logs: "Log explorer",
@@ -59,8 +81,32 @@ export default function App() {
   const firstAllowedId = visibleNavItems[0]?.id;
   const canSeeAlerts = canAccessPage("alerts");
 
-  const [activeId, setActiveId] = useState(() => firstAllowedId ?? "dashboard");
-  const [mode, setMode] = useState("dark"); // "dark" | "light"
+  // App only renders after the Keycloak login (client side, never prerendered),
+  // so reading window/localStorage in these initialisers is safe.
+  // ?view= keeps the page across F5; a page the roles don't allow falls back.
+  const [activeId, setActiveId] = useState(() => {
+    const fromUrl = readViewFromUrl();
+    return fromUrl && canAccessPage(fromUrl) ? fromUrl : firstAllowedId ?? "dashboard";
+  });
+  const [mode, setModeState] = useState<"dark" | "light">(readTheme);
+  const setMode = (next: "dark" | "light") => { setModeState(next); saveTheme(next); };
+
+  // Every page switch goes through here (sidebar, bell, drawer links). Drops the
+  // query keys of the other pages, then sets the target's own (lib/nav.tsx).
+  // A page the roles don't allow is ignored; callers already hide links to those.
+  const navigate = useCallback(
+    (pageId: string, query?: QueryUpdate) => {
+      if (!canAccessPage(pageId)) return;
+      if (pageId === activeId && !query) return; // re-clicking the current page keeps its filters
+      const cleared: QueryUpdate = {};
+      for (const [page, keys] of Object.entries(PAGE_QUERY_KEYS)) {
+        if (page !== pageId) for (const k of keys) cleared[k] = null;
+      }
+      replaceQuery({ ...cleared, ...query, [QUERY_KEYS.view]: pageId });
+      setActiveId(pageId);
+    },
+    [activeId],
+  );
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -73,6 +119,12 @@ export default function App() {
   useEffect(() => {
     if (!activeAllowed && firstAllowedId) setActiveId(firstAllowedId);
   }, [activeAllowed, firstAllowedId]);
+
+  // ?view= always names the page on screen (also after a fallback/bounce above)
+  const shownId = visibleNavItems.find((item) => item.id === activeId)?.id ?? firstAllowedId;
+  useEffect(() => {
+    if (shownId) replaceQuery({ [QUERY_KEYS.view]: shownId });
+  }, [shownId]);
 
   const formattedNow = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
@@ -98,6 +150,7 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={theme}>
+      <NavContext.Provider value={navigate}>
       <div
         style={{
           height: "100vh",
@@ -166,7 +219,7 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveId(item.id)}
+                  onClick={() => navigate(item.id)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -221,6 +274,8 @@ export default function App() {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* NEXT_PUBLIC_USE_MOCK=1 — Logs/Alerts are not real data */}
+                {USE_MOCK && <Badge tone="orange" title="Logs, Alerts และ drawer ใช้ข้อมูลจำลอง หน้าอื่นใช้ข้อมูลจริง">MOCK DATA</Badge>}
                 <Clock size={14} color={theme.muted} />
                 <span style={{ fontSize: 12, color: theme.muted, ...monoFont, letterSpacing: "0.02em" }}>
                   {clockLabel}
@@ -259,7 +314,7 @@ export default function App() {
                 {canSeeAlerts && (
                   <button
                     type="button"
-                    onClick={() => setActiveId("alerts")}
+                    onClick={() => navigate("alerts")}
                     title="Alert triage"
                     aria-label="Alert triage"
                     style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, display: "flex" }}
@@ -308,6 +363,7 @@ export default function App() {
           </main>
         </div>
       </div>
+      </NavContext.Provider>
     </ThemeContext.Provider>
   );
 }
