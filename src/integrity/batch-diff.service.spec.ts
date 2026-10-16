@@ -390,23 +390,84 @@ describe('BatchDiffService', () => {
       expect(d.changes.map((c) => c.position)).toEqual([5]);
     });
 
-    it('SEALED batch never anchored (zero root on chain) → basis db, INTACT', async () => {
-      const w = world();
-      w.batch.status = 'SEALED';
-      w.batch.txHash = null as unknown as string;
-      w.chain.getRoot.mockResolvedValue({ root: ZERO, timestamp: 0 });
-      const d = await service(w).diff(BATCH);
-      expect(d.trustBasis).toBe('db');
-      expect(d.polygonscanUrl).toBeNull();
-      expect(d.summary.verdict).toBe('INTACT');
-    });
-
     it('batches.merkle_root rewritten → TAMPERED even when logs look intact', async () => {
       const w = world();
       w.batch.merkleRoot = 'a'.repeat(64);
       const d = await service(w).diff(BATCH);
       expect(d.snapshotTrusted).toBe(true); // snapshot ผูกกับ chain ไม่ใช่ DB
       expect(d.summary.verdict).toBe('TAMPERED');
+    });
+
+    it('batches.merkle_root rewritten on a CONFIRMED legacy batch → still TAMPERED, no NOT_ANCHORED', async () => {
+      const w = world();
+      w.snapshots = [];
+      w.batch.merkleRoot = 'b'.repeat(64);
+      const d = await service(w).diff(BATCH);
+      expect(d.summary.verdict).toBe('TAMPERED');
+      expect(d.untrustedReasons).toEqual([]);
+    });
+  });
+
+  describe('not anchored (no tx, nothing on chain)', () => {
+    const unanchored = (w: World, status: string) => {
+      w.batch.status = status;
+      w.batch.txHash = null as unknown as string;
+      w.batch.blockNumber = null;
+      w.chain.getRoot.mockResolvedValue({ root: ZERO, timestamp: 0 });
+    };
+
+    it('FAILED with no mapping → UNVERIFIABLE / NOT_ANCHORED, not TAMPERED', async () => {
+      const w = world();
+      unanchored(w, 'FAILED');
+      w.snapshots = [];
+      w.current = [];
+      const d = await service(w).diff(BATCH);
+      expect(d.currentRoot).toBeNull();
+      expect(d.legacy).toBe(true);
+      expect(d.polygonscanUrl).toBeNull();
+      expect(d.untrustedReasons).toEqual(['NOT_ANCHORED']);
+      expect(d.summary).toMatchObject({
+        verdict: 'UNVERIFIABLE',
+        snapshotLogs: 0,
+        mappedLogs: 0,
+      });
+    });
+
+    it('SEALED with no tx → UNVERIFIABLE / NOT_ANCHORED, basis db', async () => {
+      const w = world();
+      unanchored(w, 'SEALED');
+      const d = await service(w).diff(BATCH);
+      expect(d.trustBasis).toBe('db');
+      expect(d.snapshotTrusted).toBe(true);
+      expect(d.untrustedReasons).toEqual(['NOT_ANCHORED']);
+      expect(d.summary.verdict).toBe('UNVERIFIABLE');
+    });
+
+    it('SEALED with no tx and an edited log → UNVERIFIABLE, change still listed', async () => {
+      const w = world();
+      unanchored(w, 'SEALED');
+      tamper(w, 2, { message: 'x' });
+      const d = await service(w).diff(BATCH);
+      expect(d.summary.verdict).toBe('UNVERIFIABLE');
+      expect(d.changes.map((c) => c.position)).toEqual([2]);
+    });
+
+    it('PENDING with no tx → UNVERIFIABLE / NOT_ANCHORED', async () => {
+      const w = world();
+      unanchored(w, 'PENDING');
+      const d = await service(w).diff(BATCH);
+      expect(d.untrustedReasons).toEqual(['NOT_ANCHORED']);
+      expect(d.summary.verdict).toBe('UNVERIFIABLE');
+    });
+
+    it('no tx in DB but the root is on chain → anchored, normal verdict', async () => {
+      const w = world();
+      w.batch.status = 'SEALED';
+      w.batch.txHash = null as unknown as string;
+      const d = await service(w).diff(BATCH);
+      expect(d.trustBasis).toBe('chain');
+      expect(d.untrustedReasons).toEqual([]);
+      expect(d.summary.verdict).toBe('INTACT');
     });
   });
 
