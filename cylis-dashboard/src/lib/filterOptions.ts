@@ -8,6 +8,9 @@
 /** CreateLogDto enum (src/logs/dto/create-log.dto.ts) — the only values a log can hold */
 export const LOG_SEVERITIES = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] as const;
 
+/** "Attacks" quick filter — forwarder/detection tag anything suspicious >= WARNING */
+export const ATTACK_SEVERITIES = ["WARNING", "ERROR", "CRITICAL"] as const;
+
 /** The VPS log forwarder (forwarder/README.md) — sshd journal + web-proxy all-requests */
 export const VPS_SOURCES = ["vps-sshd", "web-proxy"] as const;
 

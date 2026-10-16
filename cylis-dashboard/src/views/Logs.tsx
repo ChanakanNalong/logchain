@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search, ChevronLeft, ChevronRight, Server, X } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Server, ShieldAlert, X } from "lucide-react";
 import { useTheme, monoFont } from "@/theme";
 import { Card, SectionLabel, Button, FilterDropdown, Badge } from "@/components/ui";
 import LogTable from "@/components/LogTable";
@@ -9,7 +9,7 @@ import MultiSelectDropdown from "@/components/MultiSelectDropdown";
 import { getLogs } from "@/lib/endpoints";
 import { mapLog, type LogRow } from "@/lib/logRows";
 import { useReplaceQuery } from "@/lib/nav";
-import { LOG_EVENT_TYPES, LOG_SEVERITIES, LOG_SOURCES, VPS_SOURCES } from "@/lib/filterOptions";
+import { ATTACK_SEVERITIES, LOG_EVENT_TYPES, LOG_SEVERITIES, LOG_SOURCES, VPS_SOURCES } from "@/lib/filterOptions";
 import type { LogItem } from "@/types/api";
 
 const DEFAULT_LIMIT = 25;
@@ -131,6 +131,9 @@ export default function Logs() {
 
   const realLogsOn = sameSet(source, VPS_SOURCES);
   function toggleRealLogs() { updateSource(realLogsOn ? [] : [...VPS_SOURCES]); }
+  // "Attacks" shortcut = severity WARNING/ERROR/CRITICAL; independent of Real logs (source) so both stack
+  const attacksOn = sameSet(severity, ATTACK_SEVERITIES);
+  function toggleAttacks() { updateSeverity(attacksOn ? [] : [...ATTACK_SEVERITIES]); }
 
   const openRow = useCallback(
     (row: LogRow) => {
@@ -188,6 +191,22 @@ export default function Logs() {
             Real logs
             {realLogsOn && <X size={12} />}
           </button>
+          <button
+            type="button"
+            onClick={toggleAttacks}
+            aria-pressed={attacksOn}
+            title={attacksOn ? "Showing only WARNING/ERROR/CRITICAL — click to clear" : `Show only ${ATTACK_SEVERITIES.join(" + ")}`}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 12px", borderRadius: 9,
+              background: attacksOn ? "rgba(244,63,94,0.14)" : t.surface2,
+              border: `1px solid ${attacksOn ? "rgba(244,63,94,0.45)" : t.border}`,
+              color: attacksOn ? t.danger : t.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            <ShieldAlert size={13} />
+            Attacks
+            {attacksOn && <X size={12} />}
+          </button>
           <MultiSelectDropdown label="sources" options={LOG_SOURCES} value={source} onChange={updateSource} allowCustom />
           <MultiSelectDropdown label="severities" options={LOG_SEVERITIES} value={severity} onChange={updateSeverity} />
           <MultiSelectDropdown label="event types" options={LOG_EVENT_TYPES} value={eventType} onChange={updateEventType} allowCustom />
@@ -202,6 +221,7 @@ export default function Logs() {
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <SectionLabel>{anyFilter ? "Matching logs" : "All logs"} ({total.toLocaleString()})</SectionLabel>
             {realLogsOn && <Badge tone="good">กำลังกรอง: Real logs</Badge>}
+            {attacksOn && <Badge tone="danger">กำลังกรอง: Attacks</Badge>}
           </div>
           <FilterDropdown value={`${limit} / page`} onChange={updateLimit} options={LIMITS.map((n) => `${n} / page`)} />
         </div>
