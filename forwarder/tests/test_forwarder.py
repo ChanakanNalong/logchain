@@ -377,6 +377,35 @@ class FollowJournalTest(unittest.TestCase):
         self.assertTrue(any("--after-cursor=c3" in c for c in invocations[1:]))
 
 
+class StatsTest(unittest.TestCase):
+    def test_access_stats_counts_with_filters_and_rolled_files(self):
+        from logchain_forwarder.stats import access_stats
+        from logchain_forwarder.parsers import parse_networks
+        d = tempfile.mkdtemp()
+        line = lambda ip, uri, st=404, ua="Mozilla/5.0", ts=1792000000: json.dumps({  # noqa: E731
+            "logger": "http.log.access", "ts": ts, "status": st,
+            "request": {"remote_ip": "172.18.0.1", "client_ip": ip, "host": "api.example", "method": "GET",
+                        "uri": uri, "headers": {"User-Agent": [ua]}}})
+        with open(os.path.join(d, "access.log"), "w") as f:
+            f.write("\n".join([
+                line("203.0.113.5", "/.env"),             # probe → ส่ง
+                line("203.0.113.5", "/", 200),            # ปกติ
+                line("49.48.73.182", "/.env"),            # IP เรา → ไม่ส่ง ไม่นับ IP
+                line("10.10.31.19", "/.env"),             # ภายใน
+                line("198.51.100.9", "/health", 200),     # health
+                "not json",
+            ]) + "\n")
+        with open(os.path.join(d, "access-2026-10-16T00-00-00.000.log"), "w") as f:
+            f.write(line("198.51.100.9", "/x", 200, ua="sqlmap/1.7", ts=1792003600) + "\n")
+        r = access_stats([os.path.join(d, "access.log")], False, parse_networks("49.48.73.182"))
+        self.assertEqual(len(r["files"]), 2)
+        self.assertEqual(r["requests"], 6)
+        self.assertEqual(r["unique_external_ips"], 2)
+        self.assertEqual(r["would_send"], 2)
+        self.assertEqual(r["reasons"], {"probe-path": 1, "scanner-ua": 1})
+        self.assertEqual(r["hours_covered"], 2)
+
+
 class DetectionRulesTest(unittest.TestCase):
     """payload ที่ forwarder ส่ง → detection/app/rules.py ตัวจริง ต้องเข้ากฎที่ตั้งใจ"""
 

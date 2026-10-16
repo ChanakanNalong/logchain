@@ -54,18 +54,23 @@ sudo mkdir -p /opt/logchain-forwarder && sudo cp -r forwarder/logchain_forwarder
 sudo install -m 640 -o root -g logchain-fwd forwarder/logchain-forwarder.env.example /etc/logchain-forwarder.env
 sudoedit /etc/logchain-forwarder.env        # API / token URL / secret / ACCESS_LOGS
 
-# 3. ทดลองแบบไม่ส่งจริงก่อน (พิมพ์ payload)
+# 3. ทดลองแบบไม่ส่งจริงก่อน
+#    --stats = อ่าน log ย้อนหลังแล้วสรุปตัวเลข (ดูหัวข้อ "สรุปจาก log จริง") · --dry-run = ตามดูของใหม่แล้วพิมพ์ payload
 sudo -u logchain-fwd -g logchain-fwd --preserve-env=LOGCHAIN_FORWARDER_ENV \
   sh -c 'cd /opt/logchain-forwarder && LOGCHAIN_FORWARDER_ENV=/etc/logchain-forwarder.env STATE_FILE=/tmp/fwd-test.json python3 -m logchain_forwarder --dry-run'
 
-# 4. service
+# 4. service — ติดตั้งไว้ก่อน ยังไม่ enable (กัน reboot แล้วเปิดเองก่อนพร้อม)
 sudo install -m 644 forwarder/logchain-forwarder.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now logchain-forwarder
+sudo systemctl daemon-reload
+
+# 5. เปิดจริง — ครั้งเดียวทั้ง enable และ start
+sudo systemctl enable --now logchain-forwarder
 ```
 
 ## เปิด / ปิด / ดูสถานะ
 
 ```bash
+sudo systemctl enable --now logchain-forwarder             # เปิดจริง (และเปิดเองหลัง reboot)
 systemctl status logchain-forwarder
 journalctl -u logchain-forwarder -f                       # log ของ forwarder (summary ทุก 10 นาที)
 sudo systemctl restart logchain-forwarder                  # หลังแก้ /etc/logchain-forwarder.env
@@ -75,6 +80,21 @@ sudo systemctl disable --now logchain-forwarder            # ปิดถาว�
 **ปิดด่วนเมื่อ POL ใกล้หมด**: `sudo systemctl stop logchain-forwarder` — log ไม่เข้า API = ไม่มี batch ใหม่ = ไม่มี tx
 (backend มี guard ของตัวเองด้วย: `SEAL_MIN_BALANCE_TX` ไม่สร้าง batch เมื่อยอดต่ำ + alert `WALLET_LOW_BALANCE`)
 ลดค่าใช้จ่ายโดยไม่ปิด: ลด `RATE_PER_HOUR` หรือเอา `ACCESS_LOGS` ออก
+
+## สรุปจาก log จริง (`--stats`)
+
+อ่าน `ACCESS_LOGS` (รวมไฟล์ที่ roll แล้ว) + journald ของ sshd ย้อนหลัง `--since-hours` แล้วพิมพ์ JSON สรุป — **ไม่ส่ง ไม่เขียน state**
+ตัวกรองชุดเดียวกับตอนส่งจริง · พิมพ์แค่ตัวเลข / เหตุผล / path ตัวอย่าง (ไม่มี IP) · รันในสภาพเดียวกับ service:
+
+```bash
+sudo systemd-run --wait --pipe --quiet \
+  -p User=logchain-fwd -p Group=logchain-fwd -p SupplementaryGroups="systemd-journal adm" \
+  -p ProtectSystem=strict -p ProtectHome=true -p PrivateTmp=true -p NoNewPrivileges=true \
+  -p BindReadOnlyPaths=/home/logchain/logchain/logs/https-proxy:/var/log/https-proxy \
+  -p WorkingDirectory=/opt/logchain-forwarder \
+  /usr/bin/python3 -m logchain_forwarder --config /etc/logchain-forwarder.env --stats --since-hours 24
+```
+(บรรทัด `BindReadOnlyPaths` เฉพาะ CT141 — ตรงกับ drop-in `logchain-forwarder.ct141.conf`)
 
 ## ข้อจำกัด
 

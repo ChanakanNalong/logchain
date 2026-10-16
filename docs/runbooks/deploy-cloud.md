@@ -152,6 +152,16 @@ login dashboard จะได้ 400 → เพิ่มเองใน `https://
 - เส้นทางยืนยันแล้ว: Cloudflare → cloudflared (container `cloudflare` บน CT141) → `172.17.0.1:80` → https-proxy · ไม่มี proxy อื่นคั่น
   (https-proxy bind แค่ `172.17.0.1:80` — เครื่องอื่นต่อตรงไม่ได้)
 
+### E3. forwarder บน CT141 (2026-10-16 · ติดตั้งแล้ว **ยังไม่เปิด**)
+
+- user `logchain-fwd` (system, nologin, กลุ่ม adm + systemd-journal) · โค้ด `/opt/logchain-forwarder` (root, อ่านอย่างเดียว)
+- `/etc/logchain-forwarder.env` `root:logchain-fwd 0640` · client `vps-forwarder` (realm logchain · service account · realm role `ingestor`
+  อย่างเดียว · mapper User Realm Role → `roles`) สร้างใน admin console (`master-automation` ไม่มีสิทธิ์ใน realm logchain)
+- unit `/etc/systemd/system/logchain-forwarder.service` + drop-in `logchain-forwarder.service.d/ct141.conf` · daemon-reload แล้ว **ไม่ enable**
+- **เปิดจริง:** `systemctl enable --now logchain-forwarder` · ปิด: `systemctl disable --now logchain-forwarder`
+- อัปเดตโค้ด forwarder: `cp -r /home/logchain/logchain/forwarder/logchain_forwarder /opt/logchain-forwarder/` แล้ว restart (ถ้าเปิดอยู่)
+- สรุปก่อนเปิด: `--stats` ผ่าน `systemd-run` (forwarder/README.md หัวข้อ "สรุปจาก log จริง")
+
 ## F. blockchain (wallet ใหม่ของ cloud)
 
 ทำตาม README หัวข้อ **"ตั้ง blockchain เอง"** บนเครื่องนี้ทั้งหมด — wallet ใหม่ · ขอ POL จาก faucet · deploy contract ใหม่
