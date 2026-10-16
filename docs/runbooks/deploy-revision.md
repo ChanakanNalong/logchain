@@ -122,3 +122,53 @@ docker stop logchain-backend logchain-detection-consumer
 ย้อนกลับเต็ม: `cp ~/logchain-env-backup-<D>.env .env` → checkout commit ก่อน deploy → build + up ใหม่
 migration ใหม่ทั้ง 3 ตัวเพิ่มคอลัมน์/ตาราง/index อย่างเดียว ไม่ลบอะไร — backend รุ่นเก่าอ่าน DB นี้ได้ (คอลัมน์ใหม่ถูกเมิน)
 ถ้าต้องถอย schema จริง: restore จาก `~/logchain-backup-<D>.sql` (ไม่ใช้ migration down บน DB ที่มีข้อมูล)
+
+## 9. cloud (CT141) — ต่างจากซ้อมในเครื่อง (ทำจริง 2026-10-16)
+
+เครื่องเพื่อน NB-Lab (Proxmox LXC CT141) · ต่อผ่าน VPN `wg-friend` + `ssh -i ~/.ssh/nblab_ct141 root@172.16.40.141`
+repo `/home/logchain/logchain` เจ้าของ user `logchain` (uid 1000) · `COMPOSE_FILE=docker-compose.yml:docker-compose.cloud.yml`
+รัน compose เป็น logchain เสมอ: `runuser -u logchain -- sh -c "cd /home/logchain/logchain && HOST_UID=1000 HOST_GID=1000 docker compose …"`
+git เป็น root ต้องมี `-c safe.directory=/home/logchain/logchain` · ส่งโค้ดเข้าเครื่องด้วย **git bundle** (ไม่ push ตรง)
+
+สิ่งที่ต่างจากซ้อม — อ่านก่อน ไม่งั้นพลาดซ้ำ:
+
+- **dashboard อยู่บน CT141 (container `cylis-dashboard` หลัง Cloudflare Tunnel) ไม่ใช่ Vercel** — แก้ dashboard แล้วต้อง
+  build `cylis-dashboard` บนเครื่องนี้ (`NEXT_PUBLIC_*` ถูก inline ตอน build) แล้ว recreate ไม่ใช่ redeploy Vercel
+- **wallet + contract ของ cloud เป็นคนละชุดกับ local** — signer `0xA03e…1C59` · contract `0xF05D…8F0B` (signer เป็น owner)
+  อย่าเอา nonce/ยอด/contract ของ local มาเทียบ · ก่อน deploy จด nonce + ยอด POL ของ wallet cloud ไว้
+- **build ทีละ service** (เครื่องเล็ก) แล้วค่อย `up -d` ทั้ง stack ครั้งเดียว:
+  ```bash
+  for s in backend detection-api cylis-dashboard; do HOST_UID=1000 HOST_GID=1000 docker compose build $s; done
+  HOST_UID=1000 HOST_GID=1000 docker compose up -d
+  ```
+  (stack ถูกสั่งลงเพื่อทดสอบ local ก่อนหน้า จึงต้อง `up -d` ทั้งชุด ไม่ใช่แค่ `--no-deps backend`)
+- **detection-consumer ใช้ image ร่วมกับ detection-api** — build `detection-api` ให้ image `logchain-detection:dev` ใหม่
+  แล้ว consumer ถึงได้ของใหม่ (กับดักเดิมจากข้อ 4)
+- **Vault มีข้อมูลแล้ว = unseal เฉย ๆ** (ไม่ re-init · vault-init ใช้ secret_id เดิม) — ดู README "Vault user lockout" ถ้าโดนล็อก
+- **`logs/` ต้องอยู่ใน `.dockerignore`** — `logs/https-proxy` เป็น `2750 nobody:adm` (access log ของ Caddy) build context
+  ที่รันเป็น logchain อ่านไม่ได้ → `build backend` ล้ม `open logs/https-proxy: permission denied` (commit `bd3aa9b`)
+- backfill gas: รันใน **image ของ backend** บน network `logchain_default` (เครื่องนี้ map 127.0.0.1 เท่านั้น):
+  `docker run --rm --network logchain_default --env-file .env -v $PWD/scripts:/s logchain-backend:dev node /s/backfill-batch-gas.mjs --apply`
+
+### 9a. deploy เฉพาะ `/batches/:id/diff` รอบ NOT_ANCHORED (2026-10-16)
+
+batch ที่ไม่มี tx + status `FAILED`/`SEALED`/`PENDING` + root บน chain เป็นศูนย์ → `verdict: UNVERIFIABLE` + `NOT_ANCHORED`
+(เดิม FAILED 1,161 ใบของ cloud โชว์ `TAMPERED` ปลอม เพราะไม่มี mapping) · โค้ดล้วน ไม่แตะ DB · ดู `docs/api/batches-diff.md` 2i
+- build + recreate เฉพาะ backend: `docker compose build backend && docker compose up -d --no-deps backend` (เว็บหลุด ~5 วิ)
+- ตรวจ: diff ของ FAILED ใบใด ๆ (เช่น `ed34ebe2…`) ด้วย auditor → `untrustedReasons:["NOT_ANCHORED"]` · CONFIRMED/legacy ยัง INTACT
+
+### 9b. forwarder (web-proxy + sshd) — ติดตั้งแล้วยังไม่เปิด
+
+รายละเอียดเต็มใน `docs/runbooks/deploy-cloud.md` E3 + `forwarder/README.md` — ย่อ:
+- โค้ดอยู่ `/opt/logchain-forwarder/logchain_forwarder` (root, อ่านอย่างเดียว) · อัปเดตเมื่อแก้ forwarder:
+  ```bash
+  rm -rf /opt/logchain-forwarder/logchain_forwarder
+  cp -r /home/logchain/logchain/forwarder/logchain_forwarder /opt/logchain-forwarder/
+  find /opt/logchain-forwarder -name __pycache__ -type d -prune -exec rm -rf {} +
+  chown -R root:root /opt/logchain-forwarder && chmod -R a+rX,go-w /opt/logchain-forwarder
+  systemctl restart logchain-forwarder   # เฉพาะถ้าเปิดอยู่
+  ```
+- `/etc/logchain-forwarder.env` ไม่มี `HTTP_ALL_REQUESTS`/`HTTP_EXCLUDE_UA`/`RATE_RESERVE_WARNING` ก็ได้ — ใช้ค่าเริ่ม
+  (ส่งทุก request · ตัด Uptime-Kuma · กัน 60 ช่อง/ชม. ให้ WARNING)
+- เปิดจริง (เจ้าของเครื่องรันเอง): `systemctl enable --now logchain-forwarder` · ปิด: `systemctl disable --now logchain-forwarder`
+- ก่อนเปิดดู `--stats` (README) — log จริง 10 ชม. ส่ง ~21 บรรทัด/ชม. ไม่เข้า rule ของ detection
