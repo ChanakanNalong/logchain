@@ -1,7 +1,7 @@
 # LogChain VPS forwarder
 
-อ่าน log จริงบน VPS แล้วส่งเข้า `POST /api/v1/logs` — **เฉพาะบรรทัดที่เป็นหลักฐาน** (ทุก log ที่ส่งไปจะถูก seal เข้า batch
-แล้ว anchor ขึ้น chain = ค่า gas · ดู [docs/bench-anchor.md](../docs/bench-anchor.md))
+อ่าน log จริงบน VPS แล้วส่งเข้า `POST /api/v1/logs` — sshd เฉพาะบรรทัดที่เป็นหลักฐาน · access log **ทุก request** ยกเว้นขยะ
+(ทุก log ที่ส่งไปถูก seal เข้า batch แล้ว anchor ขึ้น chain · ค่า gas คิดต่อ batch ไม่ใช่ต่อ log — ดู [docs/bench-anchor.md](../docs/bench-anchor.md))
 
 Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip install บน VPS)
 
@@ -10,17 +10,28 @@ Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip
 | source | eventType | อ่านจาก | ส่งเมื่อ | severity |
 |---|---|---|---|---|
 | `vps-sshd` | `SSH_AUTH` | `journalctl -u ssh -f -o json` (หรือ tail `/var/log/auth.log`) | `Invalid user` · `Failed password` · `Accepted password/publickey/keyboard-interactive` · `Connection closed by invalid/authenticating user` · `Disconnected from authenticating user` | WARNING (Accepted = INFO) |
-| `web-proxy` | `HTTP_ACCESS` | access log ของ reverse proxy — Caddy (json) ของ https-proxy บน CT141 หรือ nginx (combined) | scanner UA · `../` (รวม `%2e%2e`) · SQL keyword (รวม URL-encode) · shell metachar · 4xx/5xx บน `/.env` `/.git/` `/wp-admin` `/wp-login.php` ฯลฯ | WARNING |
+| `web-proxy` | `HTTP_ACCESS` | access log ของ reverse proxy — Caddy (json) ของ https-proxy บน CT141 หรือ nginx (combined) | **ทุก request** (`HTTP_ALL_REQUESTS=true`) ยกเว้นที่ตัดด้านล่าง | INFO |
+| `web-proxy` | `HTTP_ACCESS` | 〃 | เข้า filter: scanner UA · `../` (รวม `%2e%2e`) · SQL keyword (รวม URL-encode) · shell metachar · 4xx/5xx บน `/.env` `/.git/` `/wp-admin` `/wp-login.php` ฯลฯ | WARNING |
 
 - ไม่ส่ง `pam_unix(sshd:auth)` — ซ้ำกับ `Failed password` ของ connection เดียวกัน
-- ไม่ส่ง request จาก IP ภายใน (`10.0.0.0/8` `172.16.0.0/12` `127.0.0.0/8` `::1`) และ health check (`/health` `/api/v1/health` `/healthz`)
+- ไม่ส่ง request จาก IP ภายใน (`10.0.0.0/8` `172.16.0.0/12` `127.0.0.0/8` `::1`) · `EXCLUDE_IPS` · health check (`/health` `/api/v1/health` `/healthz`)
+- request ปกติ (INFO) ไม่ส่งเพิ่ม: static asset (`/_next/static/` `/_next/image` `/favicon*` `manifest.json` · `.js` `.css` `.map` รูป font)
+  และ UA ของ monitor (`HTTP_EXCLUDE_UA`, ค่าเริ่ม `Uptime-Kuma` — ยิง `GET /` ทุกนาที) · **บรรทัดที่เข้า filter ส่งเสมอ** แม้เป็น static หรือ UA ของ monitor
+  (`/_next/static/../../.env` / ปลอม UA เป็น Uptime-Kuma แล้วยิง `/.env` = WARNING)
+- request ปกติ: ค่าของ query ที่เป็นความลับถูกแทนด้วย `***` (`code` `state` `session_state` `token` `id_token` `password` ฯลฯ — callback ของ OIDC)
+  เพราะ log ลบไม่ได้ · บรรทัด WARNING เก็บ query เต็ม (ค่าใน query คือ payload ของการโจมตี)
+- `HTTP_ALL_REQUESTS=false` = กลับไปแบบเดิม (ส่งเฉพาะ WARNING)
+- **`sourceIp` เก็บ IP เต็มของผู้เข้าเว็บ** (ไม่ mask) เพื่อความปลอดภัย — ใช้ระบุผู้โจมตีและนับ rule แยกตาม IP
+  (backend mask แค่ IP ที่อยู่ใน `message` เป็น `x.x.x.xxx` · ฟิลด์ `sourceIp` ไม่ถูก mask)
 - `message` = ข้อความหลัง `sshd[pid]: ` / `METHOD PATH STATUS "UA"` · `sourceIp` = IP ผู้กระทำ (`from <ip>` / `user <name> <ip> port`
   / client IP · `CF-Connecting-IP` เมื่อเปิด `TRUST_CF_CONNECTING_IP`) — rule ของ detection นับแยกตาม IP นี้
 - `classification: INTERNAL` · `cdeScope: false` · request ปกติถูกทิ้งที่ forwarder ไม่เข้า API
 
 ## กันเงินหมด / กันตาย
 
-- **rate cap** `RATE_PER_HOUR` (300) แบบหน้าต่างเลื่อน 1 ชม. รวมทุก source · **dedup** ข้อความเดียวกันภายใน `DEDUP_SECONDS` (10)
+- **rate cap** `RATE_PER_HOUR` (300) แบบหน้าต่างเลื่อน 1 ชม. รวมทุก source · **dedup** ข้อความเดียวกันจาก IP เดียวกันภายใน `DEDUP_SECONDS` (10)
+- INFO ใช้ cap ได้ไม่เกิน `RATE_PER_HOUR - RATE_RESERVE_WARNING` (300 − 60 = 240/ชม.) — traffic ปกติ (หรือผู้โจมตีปั่น request ปกติ)
+  ดันบรรทัด WARNING ตกไม่ได้ · ที่ทิ้งนับเป็น `dropped_info_cap`
 - ที่ทิ้ง (เกิน cap / ซ้ำ / API ปฏิเสธ / คิวเต็ม) นับไว้ แล้ว log สรุปทุก `SUMMARY_SECONDS` (600) — `journalctl -u logchain-forwarder | grep summary`
 - API ล่ม = backoff 1 → 2 → 4 … ≤ 300 วิ · คิวในหน่วยความจำ ≤ cap → **ดับนานแค่ไหนก็ไม่ส่ง backlog เกิน cap**
 - บรรทัดเสีย / JSON เสีย = ข้าม · `journalctl` ตาย = เปิดใหม่ · ไฟล์ถูก rotate (ย้าย / copytruncate) = เปิดไฟล์ใหม่
@@ -31,6 +42,8 @@ Python 3.10+ · stdlib อย่างเดียว (ไม่ต้อง pip
 
 - เส้นทางจริง: Cloudflare → cloudflared (container บน CT141) → `172.17.0.1:80` → https-proxy (Caddy) — ไม่มี proxy อื่นคั่น
 - `EXCLUDE_IPS=49.48.73.182` (IP ขาออกของ CT141 เอง — request ที่เรายิงจากในเครื่องวนกลับเข้ามาทาง Cloudflare)
+- log จริง 10 ชม. (2026-10-16): 926 request → static 131 · Uptime Kuma 585 → **ส่ง 208 บรรทัด (เฉลี่ย 21/ชม. · สูงสุด 159/ชม.)** ·
+  ไม่เข้า rule ของ detection เลย (เทียบด้วย RuleEngine ตัวจริง) · ชั่วโมงสูงสุด = ช่วงทำงานใน Keycloak admin console
 - `/home/logchain` เป็น 750 → drop-in `logchain-forwarder.ct141.conf` bind dir log แบบ read-only ไปที่ `/var/log/https-proxy`
   แล้วตั้ง `ACCESS_LOGS=/var/log/https-proxy/access.log`
 - access log: `infra/caddy/Caddyfile.cloud` `(access_log)` → `/home/logchain/logchain/logs/https-proxy/access.log`

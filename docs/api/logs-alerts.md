@@ -325,7 +325,12 @@ log หนึ่งตัวมี role เดียวต่อ alert (ตั�
 | source | eventType | คืออะไร |
 |---|---|---|
 | `vps-sshd` | `SSH_AUTH` | sshd ของเครื่อง (Invalid user / Failed password / Accepted … / Connection closed …) — Accepted = `INFO` นอกนั้น `WARNING` |
-| `web-proxy` | `HTTP_ACCESS` | access log ของ https-proxy (Caddy) เฉพาะ request น่าสงสัย · `message` = `METHOD PATH STATUS "UA"` · `sourceIp` = IP จริงของผู้ใช้ |
+| `web-proxy` | `HTTP_ACCESS` | access log ของ https-proxy (Caddy) **ทุก request** ยกเว้น static asset / health check / Uptime Kuma · request ปกติ = `INFO` · น่าสงสัย (scanner / traversal / SQLi / command injection / probe path) = `WARNING` · `message` = `METHOD PATH STATUS "UA"` (ค่า query ที่เป็นความลับของ request ปกติเป็น `***`) · `sourceIp` = IP จริงของผู้ใช้ |
 
 (เดิมในร่างใช้ `vps-nginx` — เปลี่ยนเป็น `web-proxy` แล้ว ไม่มี log ที่ใช้ชื่อเดิม)
+
+- **`sourceIp` เป็น IP เต็มของผู้เข้าเว็บ** (ไม่ mask) — เก็บไว้เพื่อความปลอดภัย (ระบุผู้โจมตี · rule นับแยกตาม IP)
+  ส่วน IP ที่อยู่ใน `message` backend mask เป็น `x.x.x.xxx` ตามเดิม · หน้า UI แสดง `sourceIp` ได้เฉพาะ role ที่เห็น log อยู่แล้ว
+- ตั้งแต่เปิด forwarder: `web-proxy` ราว 20 บรรทัด/ชม. ส่วนใหญ่ `INFO` — หน้า "Real logs" ควรมี filter `severity=WARNING`
+  ไว้ดูเฉพาะที่น่าสงสัย (ค่าเริ่มแสดงทั้งหมดได้)
 

@@ -11,7 +11,8 @@ import os
 import subprocess
 from datetime import datetime, timezone
 
-from .parsers import _internal, _suspicious, parse_access, parse_journal_json, parse_networks
+from .parsers import (HEALTH_PATHS, STATIC_ASSET, _internal, _suspicious, parse_access, parse_journal_json,
+                      parse_networks, parse_ua_list)
 
 
 def _access_files(path: str) -> list:
@@ -30,10 +31,11 @@ def _hour(ts) -> str:
         return "?"
 
 
-def access_stats(paths: list, trust_cf: bool, exclude) -> dict:
-    total = sent = 0
+def access_stats(paths: list, trust_cf: bool, exclude, all_requests: bool = True, exclude_ua=()) -> dict:
+    total = sent = static = monitor = 0
     per_hour = collections.Counter()
     sent_hour = collections.Counter()
+    severity = collections.Counter()
     ips = set()
     reasons = collections.Counter()
     sample = collections.Counter()
@@ -61,13 +63,22 @@ def access_stats(paths: list, trust_cf: bool, exclude) -> dict:
                     client = req.get("client_ip") or req.get("remote_ip")
                     if client and not _internal(client, exclude):
                         ips.add(client)
-                    p = parse_access(line, trust_cf, exclude)
-                    if p:
-                        sent += 1
-                        sent_hour[hour] += 1
+                    p = parse_access(line, trust_cf, exclude, all_requests, exclude_ua)
+                    bare = (req.get("uri") or "/").split("?")[0]
+                    if not p:
+                        if all_requests and client and not _internal(client, exclude) and bare not in HEALTH_PATHS:
+                            if STATIC_ASSET.match(bare):
+                                static += 1
+                            else:
+                                monitor += 1  # ที่เหลือที่ไม่ส่ง = UA ของ monitor (HTTP_EXCLUDE_UA)
+                        continue
+                    sent += 1
+                    sent_hour[hour] += 1
+                    severity[p["severity"]] += 1
+                    if p["severity"] == "WARNING":
                         ua = ((req.get("headers") or {}).get("User-Agent") or [""])[0]
                         reasons[_suspicious(req.get("uri") or "/", ua, int(e.get("status") or 0))] += 1
-                        sample[(req.get("method"), (req.get("uri") or "/").split("?")[0][:60], e.get("status"))] += 1
+                    sample[(req.get("method"), bare[:60], e.get("status"))] += 1
     hours = len(per_hour) or 1
     return {
         "files": files,
@@ -77,8 +88,13 @@ def access_stats(paths: list, trust_cf: bool, exclude) -> dict:
         "requests_per_hour_peak": max(per_hour.values()) if per_hour else 0,
         "unique_external_ips": len(ips),
         "hosts": dict(hosts.most_common(5)),
+        "all_requests": all_requests,
+        "dropped_static": static,
+        "dropped_monitor_ua": monitor,
         "would_send": sent,
+        "would_send_per_hour_avg": round(sent / hours, 1),
         "would_send_per_hour_peak": max(sent_hour.values()) if sent_hour else 0,
+        "severity": dict(severity),
         "reasons": dict(reasons.most_common()),
         "top_sent": [f"{m} {u} {s} ×{n}" for (m, u, s), n in sample.most_common(10)],
     }
@@ -108,9 +124,11 @@ def run(cfg: dict, since_hours: int) -> int:
     paths = [p.strip() for p in cfg["ACCESS_LOGS"].split(",") if p.strip()]
     report = {"exclude_ips": [str(n) for n in exclude]}
     if paths:
-        report["access"] = access_stats(paths, truthy(cfg["TRUST_CF_CONNECTING_IP"]), exclude)
+        report["access"] = access_stats(paths, truthy(cfg["TRUST_CF_CONNECTING_IP"]), exclude,
+                                        truthy(cfg["HTTP_ALL_REQUESTS"]), parse_ua_list(cfg["HTTP_EXCLUDE_UA"]))
     if truthy(cfg["SSH_ENABLED"]) and cfg["SSH_MODE"] == "journal":
         report["sshd"] = sshd_stats(cfg["SSH_JOURNAL_ARGS"], since_hours)
     report["rate_cap_per_hour"] = int(cfg["RATE_PER_HOUR"])
+    report["info_cap_per_hour"] = max(int(cfg["RATE_PER_HOUR"]) - int(cfg["RATE_RESERVE_WARNING"]), 0)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
