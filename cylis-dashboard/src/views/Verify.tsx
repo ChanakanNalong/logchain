@@ -213,7 +213,14 @@ export default function Verify() {
                 <div style={{ fontSize: 11, color: t.muted, marginTop: 6 }}>
                   tx: {result.batch?.txHash?.slice(0, 20) ?? "—"}… · status: {result.batch?.status}
                 </div>
-                {result.batch?.ifAnomaly != null && (
+                {result.batch?.ifStatus === "calibrating" ? (
+                  <div
+                    style={{ fontSize: 11, marginTop: 6, color: t.muted }}
+                    title="โมเดลฝึกจากข้อมูลจำลอง กำลังเก็บ traffic จริงเพื่อ retrain"
+                  >
+                    ML: calibrating
+                  </div>
+                ) : result.batch?.ifAnomaly != null && (
                   <div style={{ fontSize: 11, marginTop: 6, color: result.batch.ifAnomaly ? t.danger : t.muted }}>
                     Isolation Forest: {result.batch.ifAnomaly ? "batch flagged anomalous" : "batch normal"}
                     {result.batch.ifReason ? ` — ${result.batch.ifReason}` : ""}
@@ -283,9 +290,13 @@ export default function Verify() {
                           {b.merkleRoot?.slice(0, 12)}…
                         </Td>
                         <Td style={{ ...monoFont }}>{b.logCount}</Td>
-                        {/* Isolation Forest (ระดับที่ 3) — tooltip บอกเหตุผล */}
-                        <Td title={b.ifReason ?? (tone ? "" : "ยังไม่ได้จำแนก")}>
-                          {tone ? (
+                        {/* Isolation Forest (ระดับที่ 3) — calibrating = ซ่อนผลจำแนก (ฝึกจากข้อมูลจำลอง) */}
+                        <Td title={b.ifStatus === "calibrating"
+                          ? "โมเดลฝึกจากข้อมูลจำลอง กำลังเก็บ traffic จริงเพื่อ retrain"
+                          : (b.ifReason ?? (tone ? "" : "ยังไม่ได้จำแนก"))}>
+                          {b.ifStatus === "calibrating" ? (
+                            <Badge tone="neutral">ML: calibrating</Badge>
+                          ) : tone ? (
                             <Badge tone={tone}>{b.ifAnomaly ? "Anomaly" : "Normal"}</Badge>
                           ) : (
                             <span style={{ color: t.muted }}>—</span>

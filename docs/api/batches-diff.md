@@ -36,6 +36,7 @@ role: `analyst` `operator` `auditor` `admin`
       "logCount": 100,
       "sealedAt": "2026-10-15T09:40:00.031Z",
       "confirmedAt": "2026-10-15T09:40:06.880Z",
+      "ifStatus": "active",
       "ifAnomaly": false,
       "ifScore": 0.0412,
       "ifReason": "within normal range",
@@ -52,6 +53,7 @@ role: `analyst` `operator` `auditor` `admin`
       "logCount": 7,
       "sealedAt": "2026-10-12T17:12:00.038Z",
       "confirmedAt": "2026-10-12T17:12:07.120Z",
+      "ifStatus": "active",
       "ifAnomaly": null,
       "ifScore": null,
       "ifReason": null,
@@ -66,6 +68,20 @@ role: `analyst` `operator` `auditor` `admin`
 ```
 
 `hasSnapshot: false` = batch ที่ seal ก่อนมี snapshot (52 ใบเดิม) → diff ได้แค่ระดับ batch (ข้อ 2f)
+
+**Isolation Forest (ระดับที่ 3) · `ifStatus`:**
+- `ifStatus: "active"` — โหมดปกติ (local) · `ifAnomaly` = ผลจำแนกจริง (`true`/`false`/`null`=ยังไม่จำแนก) · `ifScore`/`ifReason` มีค่า
+- `ifStatus: "calibrating"` — โหมดเก็บข้อมูล (cloud, `IF_MODE=calibrating`) · **`ifAnomaly`/`ifScore`/`ifReason` เป็น `null` เสมอ**
+  (backend ยัง score + เก็บผลไว้ retrain แต่ไม่เปิดเผยคำตัดสิน) · `ifScoredAt` ยังมีค่าบอกว่าประเมินแล้ว
+
+```json
+{ "ifStatus": "calibrating", "ifAnomaly": null, "ifScore": null, "ifReason": null, "ifScoredAt": "2026-10-16T04:17:06.000Z" }
+```
+
+> **ถึง Com:** ใช้ `ifStatus` ตัดสินการแสดง ไม่ใช่ `ifAnomaly` ตรง ๆ
+> - `calibrating` → badge **สีเทา** "ML: calibrating" + tooltip "โมเดลฝึกจากข้อมูลจำลอง กำลังเก็บ traffic จริงเพื่อ retrain" · ห้ามแสดงแดง
+> - `active` → เหมือนเดิม: `ifAnomaly===true` แดง "Anomaly" · `false` เขียว "Normal" · `null` "—"
+> - cloud ตอนนี้เป็น `calibrating` (โมเดลฝึกจาก HDFS/ข้อมูลจำลอง · batch จริงเล็กจะถูก flag ผิดเกือบทุกใบ) จะสลับเป็น `active` หลัง retrain
 
 `400` (query ผิด): `{ "message": ["limit must not be greater than 100"], "error": "Bad Request", "statusCode": 400 }`
 

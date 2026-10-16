@@ -16,6 +16,7 @@ import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { explorerTxUrl } from '../blockchain/explorer';
 import { ethers } from 'ethers';
 import { readSealConfig, SealConfig, SealSkippedError } from './seal-config';
+import { readIfMode, IfMode } from './if-mode';
 
 /** alert ที่ guard ยอดเงินต่ำยกขึ้น (ไม่ผูก batch — batch ยังไม่ถูกสร้าง) */
 export const LOW_BALANCE_ALERT_TYPE = 'WALLET_LOW_BALANCE';
@@ -96,6 +97,8 @@ export class IntegrityService {
 
   /** ค่าตั้งของรอบ seal (SEAL_* env) — ดู seal-config.ts */
   readonly sealConfig: SealConfig = readSealConfig(process.env);
+  /** โหมด Isolation Forest — calibrating = ซ่อนผลจำแนกออก API ระหว่างเก็บ traffic จริงเพื่อ retrain */
+  readonly ifMode: IfMode = readIfMode(process.env);
 
   /** รอบ cron ก่อนหน้ายัง drain ไม่จบ — กันรอบซ้อน (seal ทีละ tx อาจนานกว่า 1 รอบ) */
   private drainInFlight = false;
@@ -442,11 +445,12 @@ export class IntegrityService {
       await this.batchesRepo.save(batch);
 
       if (result.isAnomaly) {
-        this.logger.warn(
-          `Isolation Forest จับ batch ${batch.id} เป็น anomaly (score ${result.score.toFixed(
-            4,
-          )}): ${result.reason}`,
-        );
+        // calibrating: ยังเก็บ if_* ไว้ retrain แต่ไม่ตีความเป็น anomaly จริง → debug ไม่ใช่ warn
+        const line = `Isolation Forest จับ batch ${batch.id} เป็น anomaly (score ${result.score.toFixed(
+          4,
+        )}): ${result.reason}`;
+        if (this.ifMode === 'calibrating') this.logger.debug(line);
+        else this.logger.warn(line);
       }
     } catch (err) {
       this.logger.warn(
@@ -957,6 +961,7 @@ export class IntegrityService {
       total = Number(counted[0]?.count ?? 0);
     }
 
+    const calibrating = this.ifMode === 'calibrating';
     return {
       items: rows.map((r) => ({
         id: r.id,
@@ -968,10 +973,12 @@ export class IntegrityService {
         logCount: r.log_count,
         sealedAt: new Date(r.sealed_at),
         confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
-        // ผลจำแนก Isolation Forest (ระดับที่ 3) — null = ยังไม่ได้จำแนก
-        ifAnomaly: r.if_anomaly,
-        ifScore: r.if_score,
-        ifReason: r.if_reason,
+        // ผลจำแนก Isolation Forest (ระดับที่ 3) · ifStatus = active | calibrating
+        // calibrating: ซ่อนผลจำแนก (ifAnomaly/score/reason = null) ระหว่างโมเดลยังฝึกจากข้อมูลจำลอง
+        ifStatus: this.ifMode,
+        ifAnomaly: calibrating ? null : r.if_anomaly,
+        ifScore: calibrating ? null : r.if_score,
+        ifReason: calibrating ? null : r.if_reason,
         ifScoredAt: r.if_scored_at ? new Date(r.if_scored_at) : null,
         hasSnapshot: r.has_snapshot,
       })),
