@@ -37,6 +37,8 @@ export class PiiMaskingService {
     {
       name: 'credit_card',
       // PAN (Primary Account Number) — PCI Req 3 critical
+      // จับ "16 หลักแบ่งเป็นกลุ่มละ 4" ก่อน แล้วค่อยกรองด้วย UUID + Luhn ใน maskCreditCards
+      // (ไม่ใช้ replacement ตรง ๆ — credit_card เดินผ่าน branch พิเศษใน mask())
       regex: /\b(?:\d{4}[\s-]?){3}\d{4}\b/g,
       replacement: '[PAN]',
     },
@@ -48,13 +50,21 @@ export class PiiMaskingService {
     },
   ];
 
+  // UUID (8-4-4-4-12 hex) — ไม่ใช่เลขบัตร แม้ 16 nibble ท้ายจะเป็นตัวเลขล้วน
+  // (เช่น batch id ใน URL ...-9420-211004614088 ที่ credit_card regex จับได้)
+  private static readonly UUID =
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
   mask(message: string): { masked: string; hadPii: boolean } {
     let masked = message;
     let hadPii = false;
 
     for (const { name, regex, replacement } of this.rules) {
       const before = masked;
-      masked = masked.replace(regex, replacement);
+      masked =
+        name === 'credit_card'
+          ? this.maskCreditCards(masked, regex)
+          : masked.replace(regex, replacement);
       if (masked !== before) {
         hadPii = true;
         this.logger.debug(`PII masked: ${name}`);
@@ -63,4 +73,40 @@ export class PiiMaskingService {
 
     return { masked, hadPii };
   }
+
+  /**
+   * mask เฉพาะเลขที่เป็น PAN จริง: ข้ามเลขที่อยู่ในก้อน UUID ทั้งก้อน แล้ว mask
+   * เฉพาะเลข 16 หลักที่ผ่าน Luhn — กัน UUID / id ยาว ๆ ในข้อความถูก mask เป็น [PAN] ผิด ๆ
+   * (เลขบัตรจริงผ่าน Luhn · ดู false positive 2026-10-16: UUID ใน URL → [PAN] → rule 90001)
+   */
+  private maskCreditCards(text: string, regex: RegExp): string {
+    const uuidSpans: Array<[number, number]> = [];
+    for (const m of text.matchAll(PiiMaskingService.UUID)) {
+      uuidSpans.push([m.index, m.index + m[0].length]);
+    }
+    regex.lastIndex = 0;
+    return text.replace(regex, (match: string, offset: number) => {
+      const end = offset + match.length;
+      const inUuid = uuidSpans.some(([s, e]) => offset < e && end > s);
+      if (inUuid) return match;
+      return isLuhnValid(match.replace(/[\s-]/g, '')) ? '[PAN]' : match;
+    });
+  }
+}
+
+/** Luhn (mod 10) — เลขบัตรจริงต้องผ่าน · ใช้กรองเลข 16 หลักที่บังเอิญหน้าตาเหมือนบัตร */
+function isLuhnValid(digits: string): boolean {
+  if (!/^\d+$/.test(digits)) return false;
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48;
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
 }

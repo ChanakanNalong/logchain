@@ -167,7 +167,7 @@ describe('LogService — rawHash coverage', () => {
       baseDto({ message: 'payment with card 4111 1111 1111 1111 failed' }),
     );
     const b = await service.ingest(
-      baseDto({ message: 'payment with card 5555 4444 3333 2222 failed' }),
+      baseDto({ message: 'payment with card 5555 5555 5555 4444 failed' }),
     );
 
     expect(a.message).toBe('payment with card [PAN] failed');
