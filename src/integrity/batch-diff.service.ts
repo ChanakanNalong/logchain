@@ -88,7 +88,7 @@ export interface BatchDiff {
   snapshotTrusted: boolean | null;
   trustBasis: 'chain' | 'db' | null;
   untrustedReasons: Array<
-    'SNAPSHOT_ROOT_MISMATCH' | 'SNAPSHOT_CONTENT_MISMATCH'
+    'SNAPSHOT_ROOT_MISMATCH' | 'SNAPSHOT_CONTENT_MISMATCH' | 'NOT_ANCHORED'
   >;
   legacy: boolean;
   checkedAt: Date;
@@ -104,6 +104,9 @@ export interface BatchDiff {
   };
   changes: BatchChange[];
 }
+
+/** status ที่ยังไม่ขึ้น chain ได้ (ไม่มี tx) — FAILED ไม่มี mapping โดยตั้งใจ (integrity.service.ts) */
+const PRE_ANCHOR_STATUSES = new Set(['FAILED', 'SEALED', 'PENDING']);
 
 const hex = (root: string) => ('0x' + root.replace(/^0x/, '')).toLowerCase();
 
@@ -168,6 +171,21 @@ export class BatchDiffService {
     const reference = anchoredOnChain ? chainRoot : dbRoot;
     // tx ส่งไปแล้วแต่อ่าน chain ไม่ได้ = root ใน DB อาจถูกแก้ตามได้ ยืนยันไม่ได้
     const unverifiable = chainError !== null && !!batch.txHash;
+    // ไม่มี tx + ไม่มี root บน chain = ไม่มีอะไรอ้างอิงนอก DB → UNVERIFIABLE ไม่ใช่ TAMPERED
+    // (batch FAILED ไม่มี log ผูก → currentRoot null ≠ dbRoot เสมอ = TAMPERED ปลอม)
+    // changes ยังคำนวณให้ดู แต่เทียบกับ DB ล้วน ตัดสินไม่ได้
+    const notAnchored =
+      !batch.txHash &&
+      PRE_ANCHOR_STATUSES.has(batch.status) &&
+      !anchoredOnChain;
+    const settle = (d: BatchDiff): BatchDiff =>
+      notAnchored
+        ? {
+            ...d,
+            untrustedReasons: [...d.untrustedReasons, 'NOT_ANCHORED'],
+            summary: { ...d.summary, verdict: 'UNVERIFIABLE' },
+          }
+        : d;
 
     const base = {
       batchId: batch.id,
@@ -198,7 +216,7 @@ export class BatchDiffService {
 
     // ── legacy: seal ก่อนมี snapshot ─────────────────────────
     if (snapshots.length === 0) {
-      return {
+      return settle({
         ...base,
         snapshotRoot: null,
         snapshotTrusted: null,
@@ -212,7 +230,7 @@ export class BatchDiffService {
           ...unknownCounts,
         },
         changes: [],
-      };
+      });
     }
 
     // ── 1-3: พิสูจน์ snapshot ก่อนเชื่อ ───────────────────────
@@ -229,7 +247,7 @@ export class BatchDiffService {
     const trustBasis = anchoredOnChain ? 'chain' : 'db';
 
     if (!trusted) {
-      return {
+      return settle({
         ...base,
         snapshotRoot,
         snapshotTrusted: false,
@@ -244,7 +262,7 @@ export class BatchDiffService {
           ...unknownCounts,
         },
         changes: [],
-      };
+      });
     }
 
     // ── 4: เทียบทีละตำแหน่ง ──────────────────────────────────
@@ -319,7 +337,7 @@ export class BatchDiffService {
     const count = (t: ChangeType) => changes.filter((c) => c.type === t).length;
     const intact =
       changes.length === 0 && currentRoot === reference && dbRoot === reference;
-    return {
+    return settle({
       ...base,
       snapshotRoot,
       snapshotTrusted: true,
@@ -341,7 +359,7 @@ export class BatchDiffService {
         unmappedOrInserted: count('UNMAPPED_OR_INSERTED'),
       },
       changes,
-    };
+    });
   }
 
   /** เนื้อใน snapshot ยัง hash ได้ raw_hash ที่เก็บไว้ไหม (รับ hash v1 ของ log เก่าด้วย เหมือน verify) */
