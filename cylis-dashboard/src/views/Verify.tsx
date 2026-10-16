@@ -104,6 +104,9 @@ export default function Verify() {
   // measured on a box that always exists (the root cards mount only once a tree is loaded)
   const treeBoxRef = useRef<HTMLDivElement>(null);
   const treeBoxWidth = useElementWidth(treeBoxRef);
+  // Recent batches + Verify a recent log — side by side or stacked, from the row's own width
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomWidth = useElementWidth(bottomRef);
 
   // สรุปสถานะ chain โหลดแยกจากฟอร์ม — ถ้าส่วนนี้ล่ม ฟอร์ม verify ต้องยังใช้ได้อยู่
   // แต่ละส่วนแสดงผลของตัวเอง (Promise.allSettled) · /batches กับ /logs ผ่าน lib/endpoints (สวิตช์ mock)
@@ -253,6 +256,19 @@ export default function Verify() {
   const roots = treeData ? treeRoots(treeData) : null;
   // 3 across, or 1 column when narrow — never 2 + 1
   const rootCols = treeBoxWidth >= 600 ? 3 : 1;
+  // stacked below ~1150px of window (sidebar 220 + main padding 56): only then the table may scroll
+  const bottomStacked = bottomWidth < 860;
+  const recentLogCol = bottomWidth >= 1100 ? 360 : 320;
+  // batches table width (card padding 2×20; side by side also minus gap 16) — stacked never below its 640 min width
+  const batchTableWidth = bottomStacked
+    ? Math.max(bottomWidth - 40, 640)
+    : bottomWidth - 16 - recentLogCol - 40;
+  // tight → "Sealed at" on 2 lines
+  const compactBatchTable = batchTableWidth < 640;
+  // room for the longest status label on one line ("Pending (รอส่งขึ้นเชน)") — otherwise it wraps to 2 lines
+  const statusColWidth = batchTableWidth >= 720 ? 176 : 120;
+  const clip = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
+  const cellPad = { padding: "10px 6px" };
 
   return (
     // minmax(0,1fr): wide content scrolls inside its own frame, never the page
@@ -465,15 +481,34 @@ export default function Verify() {
 
       {treeData && <CostCard tree={treeData} />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 16 }}>
+      <div
+        ref={bottomRef}
+        style={{
+          display: "grid",
+          gridTemplateColumns: bottomStacked ? "minmax(0, 1fr)" : `minmax(0, 1fr) minmax(0, ${recentLogCol}px)`,
+          gap: 16,
+          minWidth: 0,
+        }}
+      >
         {/* batch ล่าสุด — เห็นได้เลยว่ามีอะไรถูกผูกขึ้น chain ไปแล้วบ้าง · กดดู tree ได้ */}
         <Card style={{ minWidth: 0 }}>
           <SectionLabel dot={t.blue}>Recent batches</SectionLabel>
           {batches === null ? placeholder("Loading batches…")
             : batches.length === 0 ? placeholder("No batches sealed yet")
             : (
-              <div style={{ overflowX: "auto", marginTop: 6 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              // side by side: fixed columns that always fit (Merkle root / Tx shrink with ellipsis, full value in title)
+              // stacked: min width + scroll inside this frame only
+              <div style={{ overflowX: bottomStacked ? "auto" : "hidden", marginTop: 6 }}>
+                <table style={{ width: "100%", minWidth: bottomStacked ? 640 : undefined, tableLayout: "fixed", borderCollapse: "collapse", fontSize: 13 }}>
+                  <colgroup>
+                    <col style={{ width: statusColWidth }} />
+                    <col />
+                    <col style={{ width: 56 }} />
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: compactBatchTable ? 92 : 156 }} />
+                    <col />
+                    <col style={{ width: 66 }} />
+                  </colgroup>
                   <thead>
                     <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx", ""].map((h, i) => <Th key={h + i}>{h}</Th>)}</tr>
                   </thead>
@@ -482,24 +517,25 @@ export default function Verify() {
                       const tone = anomalyTone(b.ifAnomaly);
                       return (
                       <tr key={b.id}>
-                        <Td><BatchStatusBadge status={b.status} /></Td>
-                        <Td style={{ color: t.blue2, ...monoFont }} title={b.merkleRoot}>
-                          {b.merkleRoot?.slice(0, 12)}…
+                        {/* overflow hidden + wrap anywhere: a long label wraps inside its cell, never over Merkle root */}
+                        <Td style={{ ...cellPad, overflow: "hidden", overflowWrap: "anywhere" }}><BatchStatusBadge status={b.status} /></Td>
+                        <Td style={{ ...cellPad, ...clip, fontSize: 12, color: t.blue2, ...monoFont }} title={b.merkleRoot}>
+                          {b.merkleRoot}
                         </Td>
-                        <Td style={{ ...monoFont }}>{b.logCount}</Td>
+                        <Td style={{ ...cellPad, ...clip, fontSize: 12, ...monoFont }}>{b.logCount}</Td>
                         {/* Isolation Forest (ระดับที่ 3) — tooltip บอกเหตุผล */}
-                        <Td title={b.ifReason ?? (tone ? "" : "ยังไม่ได้จำแนก")}>
+                        <Td style={cellPad} title={b.ifReason ?? (tone ? "" : "ยังไม่ได้จำแนก")}>
                           {tone ? (
                             <Badge tone={tone}>{b.ifAnomaly ? "Anomaly" : "Normal"}</Badge>
                           ) : (
                             <span style={{ color: t.muted }}>—</span>
                           )}
                         </Td>
-                        <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
-                        <Td style={{ color: t.muted, ...monoFont }} title={b.txHash ?? ""}>
-                          {b.txHash ? `${b.txHash.slice(0, 10)}…` : "—"}
+                        <Td style={{ ...cellPad, fontSize: 12, color: t.muted, whiteSpace: compactBatchTable ? "normal" : "nowrap", ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
+                        <Td style={{ ...cellPad, ...clip, fontSize: 12, color: t.muted, ...monoFont }} title={b.txHash ?? ""}>
+                          {b.txHash ?? "—"}
                         </Td>
-                        <Td style={{ textAlign: "right" }}>
+                        <Td style={{ ...cellPad, textAlign: "right" }}>
                           <Button variant="subtle" small onClick={() => selectBatch(b.id)} title="ดู Merkle tree ของ batch นี้" ariaLabel={`Show tree of batch ${b.id}`}>
                             Tree
                           </Button>
