@@ -1,7 +1,8 @@
 """
 แปลงบรรทัดดิบ → payload ของ POST /api/v1/logs (หรือ None = ทิ้ง)
 
-ส่งเฉพาะบรรทัดที่เป็นหลักฐานการโจมตี/เข้าระบบ — ทุก log ที่ส่งไปคือค่า gas (ดู docs/bench-anchor.md)
+sshd: ส่งเฉพาะบรรทัดที่เป็นหลักฐานการเข้าระบบ/เดารหัส · access log: ส่งทุก request (ปกติ = INFO, เข้า filter = WARNING)
+ยกเว้น IP ภายใน / EXCLUDE_IPS / health check / static asset — ทุก log ที่ส่งไปคือค่า gas (ดู docs/bench-anchor.md)
 ฟิลด์ตาม src/logs/dto/create-log.dto.ts: source / sourceIp / eventType / severity / message / classification / cdeScope
 """
 import ipaddress
@@ -104,6 +105,18 @@ PROBE_PATH = re.compile(
 INTERNAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8", "::1/128")]
 # health check — path ตรงตัว (ไม่สน query) ไม่ส่งไม่ว่าจะมาจากไหน
 HEALTH_PATHS = {"/health", "/api/v1/health", "/healthz"}
+# static asset ของหน้าเว็บ (Next.js bundle / รูป / font) — 1 page view = หลายสิบบรรทัด ไม่ใช่หลักฐาน
+# ตัดเฉพาะ request ที่ไม่เข้า filter (`/_next/static/../../.env` ยังส่งเป็น WARNING)
+STATIC_ASSET = re.compile(
+    r"(?i)^(?:/_next/(?:static/|image\b)|/favicon[^/]*$|/(?:site\.webmanifest|manifest\.json)$"
+    r"|.*\.(?:js|mjs|css|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|eot|otf)$)"
+)
+# query ของ request ปกติที่เป็นความลับ (OIDC callback ของ Keycloak / dashboard) — log อยู่ถาวรบน chain-anchored DB
+# แทนค่าด้วย *** · บรรทัด WARNING เก็บเต็ม (ค่าใน query คือตัว payload ของการโจมตี)
+SECRET_QUERY = re.compile(
+    r"(?i)([?&](?:code|state|session_state|nonce|token|access_token|id_token|refresh_token|client_secret|"
+    r"password|code_verifier|code_challenge|key|signature)=)[^&#\s]*"
+)
 
 
 def parse_networks(raw: str) -> list:
@@ -145,39 +158,56 @@ def _suspicious(path: str, ua: str, status: int) -> Optional[str]:
     return None
 
 
-def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip, exclude=()) -> Optional[dict]:
+def parse_ua_list(raw: str) -> tuple:
+    """HTTP_EXCLUDE_UA="Uptime-Kuma, Pingdom" → ("uptime-kuma", "pingdom") · เทียบแบบ substring ไม่สนตัวพิมพ์"""
+    return tuple(p.strip().lower() for p in (raw or "").split(",") if p.strip())
+
+
+def _http_payload(ip, method, path, status, ua, trust_cf, cf_ip, exclude=(), all_requests=True,
+                  exclude_ua=()) -> Optional[dict]:
     try:
         code = int(status)
     except (TypeError, ValueError):
         return None
+    path = path or "/"
     client = (_ip(cf_ip) if (trust_cf and cf_ip) else None) or _ip(ip)
-    if _internal(client, exclude) or (path or "").split("?", 1)[0] in HEALTH_PATHS:
+    bare = path.split("?", 1)[0]
+    if _internal(client, exclude) or bare in HEALTH_PATHS:
         return None
-    if not _suspicious(path, ua or "", code):
-        return None
+    suspicious = _suspicious(path, ua or "", code)
+    if not suspicious:
+        if not all_requests or STATIC_ASSET.match(bare):
+            return None
+        # monitor ภายนอก (Uptime Kuma ยิง GET / ทุกนาที) = health check · ปลอม UA แล้วโจมตีก็ยังเข้า filter ข้างบน
+        if exclude_ua and any(m in (ua or "").lower() for m in exclude_ua):
+            return None
+        path = SECRET_QUERY.sub(r"\1***", path)
     message = f'{method} {path} {code} "{ua or "-"}"'
     return {
         "source": HTTP_SOURCE,
         "sourceIp": client,
         "eventType": "HTTP_ACCESS",
-        "severity": "WARNING",
+        "severity": "WARNING" if suspicious else "INFO",
         "message": message[:MAX_MESSAGE],
         "classification": "INTERNAL",
         "cdeScope": False,
     }
 
 
-def parse_access(line: str, trust_cf: bool = False, exclude=()) -> Optional[dict]:
+def parse_access(line: str, trust_cf: bool = False, exclude=(), all_requests: bool = True,
+                 exclude_ua=()) -> Optional[dict]:
     """
     nginx combined (ถ้า log_format ต่อท้ายด้วย "<CF-Connecting-IP>" ให้เปิด trust_cf)
     หรือ Caddy JSON (`log { format json }`) — แยกจากตัวอักษรแรก
     Caddy: ใช้ request.client_ip (IP จริงหลัง trusted_proxies ของ Caddy) — https-proxy บน CT141 ใช้แบบนี้ (trust_cf=False)
+    all_requests=False = แบบเดิม: ส่งเฉพาะที่เข้า filter (HTTP_ALL_REQUESTS=false)
+    exclude_ua = UA ของ monitor (parse_ua_list) — ตัดเฉพาะ request ปกติ
     """
     if not line:
         return None
     line = line.strip()
     if line.startswith("{"):
-        return _parse_caddy(line, trust_cf, exclude)
+        return _parse_caddy(line, trust_cf, exclude, all_requests, exclude_ua)
     m = COMBINED.match(line)
     if not m:
         return None
@@ -186,10 +216,10 @@ def parse_access(line: str, trust_cf: bool = False, exclude=()) -> Optional[dict
         extra = re.findall(r'"([^"]*)"', m.group("rest") or "")
         cf_ip = extra[-1] if extra else None
     return _http_payload(m.group("ip"), m.group("method"), m.group("path"), m.group("status"),
-                         m.group("ua"), trust_cf, cf_ip, exclude)
+                         m.group("ua"), trust_cf, cf_ip, exclude, all_requests, exclude_ua)
 
 
-def _parse_caddy(line: str, trust_cf: bool, exclude=()) -> Optional[dict]:
+def _parse_caddy(line: str, trust_cf: bool, exclude=(), all_requests: bool = True, exclude_ua=()) -> Optional[dict]:
     try:
         e = json.loads(line)
         req = e.get("request") or {}
@@ -197,6 +227,7 @@ def _parse_caddy(line: str, trust_cf: bool, exclude=()) -> Optional[dict]:
         first = lambda k: (headers.get(k) or [None])[0]  # noqa: E731 — header ของ Caddy เป็น list
         ip = req.get("client_ip") or req.get("remote_ip")
         return _http_payload(ip, req.get("method"), req.get("uri") or "/", e.get("status"),
-                             first("User-Agent"), trust_cf, first("Cf-Connecting-Ip"), exclude)
+                             first("User-Agent"), trust_cf, first("Cf-Connecting-Ip"), exclude, all_requests,
+                             exclude_ua)
     except (ValueError, TypeError, AttributeError):
         return None

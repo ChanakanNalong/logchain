@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 from typing import Callable, Optional
 
-from .parsers import parse_access, parse_journal_json, parse_networks, parse_sshd
+from .parsers import parse_access, parse_journal_json, parse_networks, parse_sshd, parse_ua_list
 
 log = logging.getLogger("logchain-forwarder")
 
@@ -45,7 +45,13 @@ DEFAULTS = {
     "TRUST_CF_CONNECTING_IP": "false",
     # IP/CIDR ของเราเอง (เช่น IP ขาออกของเครื่อง) ที่ไม่ส่งจาก access log · IP ภายในตัดให้เสมออยู่แล้ว
     "EXCLUDE_IPS": "",
+    # true = ส่งทุก request ของ access log (ปกติ INFO · เข้า filter WARNING) · false = เฉพาะที่เข้า filter
+    "HTTP_ALL_REQUESTS": "true",
+    # UA ของ monitor ที่ไม่ส่ง (substring, คั่นด้วย ,) — เฉพาะ request ปกติ · บรรทัดที่เข้า filter ส่งเสมอ
+    "HTTP_EXCLUDE_UA": "Uptime-Kuma",
     "RATE_PER_HOUR": "300",
+    # ช่องท้ายของ cap ที่กันไว้ให้ WARNING — traffic ปกติ (INFO) ใช้ได้ไม่เกิน RATE_PER_HOUR - ค่านี้
+    "RATE_RESERVE_WARNING": "60",
     "DEDUP_SECONDS": "10",
     "SUMMARY_SECONDS": "600",
     "STATE_FILE": "/var/lib/logchain-forwarder/state.json",
@@ -78,10 +84,15 @@ def truthy(v: str) -> bool:
 
 
 class Gate:
-    """ด่านก่อนเข้าคิว — rate cap แบบหน้าต่างเลื่อน 1 ชม. + dedup ข้อความซ้ำช่วงสั้น + ตัวนับที่ทิ้ง"""
+    """
+    ด่านก่อนเข้าคิว — rate cap แบบหน้าต่างเลื่อน 1 ชม. + dedup ข้อความซ้ำช่วงสั้น + ตัวนับที่ทิ้ง
+    INFO ใช้ได้ไม่เกิน per_hour - reserve_warning — คนกดเว็บถี่ ๆ (หรือผู้โจมตีปั่น request ปกติ) ดันบรรทัดโจมตีตกไม่ได้
+    """
 
-    def __init__(self, per_hour: int, dedup_seconds: float, clock: Callable[[], float] = time.monotonic):
+    def __init__(self, per_hour: int, dedup_seconds: float, clock: Callable[[], float] = time.monotonic,
+                 reserve_warning: int = 0):
         self.per_hour = per_hour
+        self.info_cap = max(per_hour - max(reserve_warning, 0), 0)
         self.dedup_seconds = dedup_seconds
         self.clock = clock
         self.sent = collections.deque()  # เวลาที่ปล่อยผ่านในชั่วโมงล่าสุด
@@ -90,7 +101,10 @@ class Gate:
 
     def admit(self, payload: dict) -> bool:
         now = self.clock()
-        key = hashlib.sha256(f'{payload.get("source")}|{payload.get("message")}'.encode()).hexdigest()
+        # sourceIp อยู่ใน key — ผู้เข้าเว็บ 2 คนเปิดหน้าเดียวกันพร้อมกันไม่ถูกรวมเป็นบรรทัดเดียว
+        key = hashlib.sha256(
+            f'{payload.get("source")}|{payload.get("sourceIp")}|{payload.get("message")}'.encode()
+        ).hexdigest()
         last = self.recent.get(key)
         self.recent[key] = now
         if len(self.recent) > 5000:  # กันโตไม่หยุด
@@ -103,6 +117,9 @@ class Gate:
             self.sent.popleft()
         if len(self.sent) >= self.per_hour:
             self.counts["dropped_rate_cap"] += 1
+            return False
+        if payload.get("severity") == "INFO" and len(self.sent) >= self.info_cap:
+            self.counts["dropped_info_cap"] += 1
             return False
         self.sent.append(now)
         self.counts["admitted"] += 1
@@ -364,7 +381,7 @@ def main(argv=None) -> int:
         return 2
 
     per_hour = int(cfg["RATE_PER_HOUR"])
-    gate = Gate(per_hour, float(cfg["DEDUP_SECONDS"]))
+    gate = Gate(per_hour, float(cfg["DEDUP_SECONDS"]), reserve_warning=int(cfg["RATE_RESERVE_WARNING"]))
     sender = Sender(None if dry else ApiClient(cfg), gate, max_queue=per_hour, dry_run=dry)
     state = State(cfg["STATE_FILE"])
     stop = threading.Event()
@@ -383,9 +400,11 @@ def main(argv=None) -> int:
             threads.append(threading.Thread(target=follow_journal, args=(cfg["SSH_JOURNAL_ARGS"], state, stop, sender.offer), daemon=True))
     trust_cf = truthy(cfg["TRUST_CF_CONNECTING_IP"])
     exclude = parse_networks(cfg["EXCLUDE_IPS"])
+    all_http = truthy(cfg["HTTP_ALL_REQUESTS"])
+    skip_ua = parse_ua_list(cfg["HTTP_EXCLUDE_UA"])
     for path in filter(None, (p.strip() for p in cfg["ACCESS_LOGS"].split(","))):
-        def on_http(line, _cf=trust_cf, _ex=exclude):
-            p = parse_access(line, _cf, _ex)
+        def on_http(line, _cf=trust_cf, _ex=exclude, _all=all_http, _ua=skip_ua):
+            p = parse_access(line, _cf, _ex, _all, _ua)
             if p:
                 sender.offer(p)
         threads.append(threading.Thread(target=follow_file, args=(path, state, stop, on_http), daemon=True))

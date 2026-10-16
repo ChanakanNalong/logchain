@@ -161,6 +161,9 @@ login dashboard จะได้ 400 → เพิ่มเองใน `https://
 - **เปิดจริง:** `systemctl enable --now logchain-forwarder` · ปิด: `systemctl disable --now logchain-forwarder`
 - อัปเดตโค้ด forwarder: `cp -r /home/logchain/logchain/forwarder/logchain_forwarder /opt/logchain-forwarder/` แล้ว restart (ถ้าเปิดอยู่)
 - สรุปก่อนเปิด: `--stats` ผ่าน `systemd-run` (forwarder/README.md หัวข้อ "สรุปจาก log จริง")
+- web-proxy ส่งทุก request (INFO) + ที่น่าสงสัย (WARNING) · ตัด static / health / `HTTP_EXCLUDE_UA=Uptime-Kuma` — log จริง 10 ชม.
+  ได้ 208 บรรทัด (~21/ชม.) · ค่า gas ไม่เพิ่มตามจำนวน log (1 tx ต่อ batch ต่อชั่วโมง ถ้า ≤ `SEAL_BATCH_SIZE` 500)
+- `/etc/logchain-forwarder.env` เดิมไม่มี `HTTP_*` / `RATE_RESERVE_WARNING` → ใช้ค่าเริ่ม (ส่งทุก request · ตัด Uptime-Kuma · กัน 60 ช่องให้ WARNING)
 
 ## F. blockchain (wallet ใหม่ของ cloud)
 
