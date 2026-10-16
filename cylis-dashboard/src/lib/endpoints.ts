@@ -62,10 +62,11 @@ export async function getAlert(id: string): Promise<AlertDetail> {
   return r.data;
 }
 
-export async function resolveAlert(id: string): Promise<void> {
+export async function resolveAlert(id: string, note?: string): Promise<void> {
   const mock = await loadMock();
   if (mock) return mock.resolveAlert(id);
-  await api.patch(`/alerts/${id}/resolve`);
+  const body = note && note.trim() ? { note: note.trim() } : {};
+  await api.patch(`/alerts/${id}/resolve`, body);
 }
 
 /** GET /batches — `status` goes out comma-joined */

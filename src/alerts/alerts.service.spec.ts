@@ -398,4 +398,90 @@ describe('AlertsService', () => {
       expect.objectContaining({ renotifyMinutes: expected }),
     );
   });
+
+  describe('resolve', () => {
+    it('sets RESOLVED and records note + by + at under detail.resolution', async () => {
+      mockRepo.findOne.mockResolvedValue(
+        asAlert({ id: 'a1', status: 'OPEN', detail: { rule_id: 90001 } }),
+      );
+
+      await service.resolve(
+        'a1',
+        'false positive: UUID masked',
+        'operator-user',
+      );
+
+      const saved = savedAlert();
+      expect(saved.status).toBe('RESOLVED');
+      const detail = saved.detail as {
+        rule_id: number;
+        resolution: { note: string; by: string; at: string };
+      };
+      expect(detail.rule_id).toBe(90001); // keeps the existing detail
+      expect(detail.resolution.note).toBe('false positive: UUID masked');
+      expect(detail.resolution.by).toBe('operator-user');
+      expect(typeof detail.resolution.at).toBe('string');
+    });
+
+    it('resolving without a note stores a null note (by still recorded)', async () => {
+      mockRepo.findOne.mockResolvedValue(asAlert({ id: 'a2', status: 'OPEN' }));
+
+      await service.resolve('a2', undefined, 'admin-user');
+
+      const detail = savedAlert().detail as {
+        resolution: { note: string | null; by: string };
+      };
+      expect(detail.resolution.note).toBeNull();
+      expect(detail.resolution.by).toBe('admin-user');
+    });
+
+    it('re-resolving an already RESOLVED alert updates the note (back-fill)', async () => {
+      mockRepo.findOne.mockResolvedValue(
+        asAlert({
+          id: 'a3',
+          status: 'RESOLVED',
+          detail: {
+            resolution: { note: null, by: 'x', at: '2026-10-16T00:00:00.000Z' },
+          },
+        }),
+      );
+
+      await service.resolve('a3', 'added later', 'operator-user');
+
+      const detail = savedAlert().detail as {
+        resolution: { note: string | null };
+      };
+      expect(detail.resolution.note).toBe('added later');
+    });
+
+    it('re-resolving without a note keeps the existing note', async () => {
+      mockRepo.findOne.mockResolvedValue(
+        asAlert({
+          id: 'a4',
+          status: 'RESOLVED',
+          detail: {
+            resolution: {
+              note: 'keep me',
+              by: 'x',
+              at: '2026-10-16T00:00:00.000Z',
+            },
+          },
+        }),
+      );
+
+      await service.resolve('a4', undefined, 'admin-user');
+
+      const detail = savedAlert().detail as {
+        resolution: { note: string | null };
+      };
+      expect(detail.resolution.note).toBe('keep me');
+    });
+
+    it('throws NotFoundException when the alert does not exist', async () => {
+      mockRepo.findOne.mockResolvedValue(null);
+      await expect(service.resolve('missing')).rejects.toThrow(
+        'Alert not found',
+      );
+    });
+  });
 });

@@ -363,6 +363,14 @@ export default function BatchDiffDrawer({
                 <div style={{ marginTop: 4, fontSize: 11, color: t.muted, ...monoFont }}>{d.untrustedReasons.join(" · ")}</div>
               </Banner>
             )}
+            {/* NOT_ANCHORED อยู่ใน untrustedReasons เสมอเมื่อ batch ยังไม่ขึ้น chain แต่ list
+                ด้านบนโชว์เฉพาะตอน snapshotTrusted===false — legacy/no-snapshot (snapshotTrusted
+                null) จึงต้องมีบรรทัดนี้แยก ไม่งั้น FAILED ที่เป็น legacy จะไม่บอกว่า "ไม่เคย anchor" */}
+            {d.untrustedReasons.includes("NOT_ANCHORED") && d.snapshotTrusted !== false && (
+              <Banner tone="info" icon={Info}>
+                {untrustedReasonText("NOT_ANCHORED", roots.referenceName)}
+              </Banner>
+            )}
             {d.legacy && (
               <Banner tone="info" icon={Info}>
                 batch นี้เกิดก่อนมีระบบ snapshot — ตรวจได้แค่ระดับ batch (เทียบ root) ไม่มีรายละเอียดรายตำแหน่ง

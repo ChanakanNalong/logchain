@@ -110,6 +110,13 @@ export interface LogDetail {
 }
 
 /** One row of `GET /alerts` (a bare array, not paged) */
+/** PATCH /alerts/:id/resolve writes this under AlertItem.detail.resolution */
+export interface AlertResolution {
+  note: string | null;
+  by: string | null;
+  at: string;
+}
+
 export interface AlertItem {
   id: string;
   logId: string | null;
@@ -244,7 +251,7 @@ export interface BatchDiff {
   snapshotTrusted: boolean | null;
   /** what the snapshot was checked against · null for legacy */
   trustBasis: "chain" | "db" | null;
-  untrustedReasons: ("SNAPSHOT_ROOT_MISMATCH" | "SNAPSHOT_CONTENT_MISMATCH")[];
+  untrustedReasons: ("SNAPSHOT_ROOT_MISMATCH" | "SNAPSHOT_CONTENT_MISMATCH" | "NOT_ANCHORED")[];
   legacy: boolean;
   checkedAt: string;
   summary: {

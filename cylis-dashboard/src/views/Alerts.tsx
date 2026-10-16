@@ -12,7 +12,7 @@ import { fmtTime, shortId } from "@/lib/format";
 import { QUERY_KEYS, useReplaceQuery } from "@/lib/nav";
 import { canDo } from "@/lib/roles";
 import { useElementWidth } from "@/lib/useElementWidth";
-import type { AlertDetail, AlertItem as AlertRow } from "@/types/api";
+import type { AlertDetail, AlertItem as AlertRow, AlertResolution } from "@/types/api";
 
 const ALL_STATUSES = "All statuses";
 const ALL_SEVERITIES = "All severities";
@@ -47,6 +47,9 @@ export default function Alerts() {
   const [openLog, setOpenLog] = useState<{ id: string; seed: LogDrawerSeed } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  // alert id whose Resolve composer (optional note) is open, and the note draft
+  const [notingId, setNotingId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
 
   function load() {
     return getAlerts()
@@ -107,11 +110,24 @@ export default function Alerts() {
 
   const closeDrawer = useCallback(() => setOpenLog(null), []);
 
-  async function resolveAlert(id: string) {
+  // open the Resolve composer (optional note) for this alert
+  function startResolve(id: string) {
+    setActionError("");
+    setNoteDraft("");
+    setNotingId(id);
+  }
+  function cancelResolve() {
+    setNotingId(null);
+    setNoteDraft("");
+  }
+
+  async function resolveAlert(id: string, note?: string) {
     setResolving(id);
     setActionError("");
     try {
-      await resolveAlertApi(id);
+      await resolveAlertApi(id, note);
+      setNotingId(null);
+      setNoteDraft("");
       // อ่านกลับจาก server แทนการแก้ state ในมือ — สถานะจริงมาจาก DB เสมอ
       await load();
     } catch (e: any) {
@@ -310,7 +326,7 @@ export default function Alerts() {
                                 variant="subtle"
                                 small
                                 disabled={resolving === a.id}
-                                onClick={() => resolveAlert(a.id)}
+                                onClick={() => { setExpanded(a.id); startResolve(a.id); }}
                               >
                                 {resolving === a.id ? "Resolving…" : "Resolve"}
                               </Button>
@@ -338,6 +354,41 @@ export default function Alerts() {
                                     ? ` · fired ${a.occurrenceCount}× · first ${fmtTime(a.createdAt)}`
                                     : ""}
                                 </div>
+                                {(() => {
+                                  const resolution = (a.detail as { resolution?: AlertResolution } | null)?.resolution;
+                                  if (a.status !== "RESOLVED" || !resolution) return null;
+                                  return (
+                                    <div style={{ color: t.good, overflowWrap: "anywhere", ...sansFont }}>
+                                      Resolved
+                                      {resolution.by ? ` by ${resolution.by}` : ""}
+                                      {resolution.at ? ` · ${fmtTime(resolution.at)}` : ""}
+                                      {resolution.note ? ` · “${resolution.note}”` : " · (no note)"}
+                                    </div>
+                                  );
+                                })()}
+                                {a.status === "OPEN" && canResolve && notingId === a.id && (
+                                  <div style={{ display: "grid", gap: 8 }}>
+                                    <textarea
+                                      value={noteDraft}
+                                      maxLength={500}
+                                      onChange={(e) => setNoteDraft(e.target.value)}
+                                      placeholder="หมายเหตุการปิด (ไม่บังคับ) เช่น false positive เพราะ…"
+                                      rows={2}
+                                      style={{
+                                        width: "100%", boxSizing: "border-box", resize: "vertical",
+                                        background: t.surface, color: t.text, border: `1px solid ${t.border}`,
+                                        borderRadius: 8, padding: "8px 10px", fontSize: 12.5, ...sansFont,
+                                      }}
+                                    />
+                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                      <Button small disabled={resolving === a.id} onClick={() => resolveAlert(a.id, noteDraft)}>
+                                        {resolving === a.id ? "Resolving…" : "ยืนยัน Resolve"}
+                                      </Button>
+                                      <Button variant="ghost" small disabled={resolving === a.id} onClick={cancelResolve}>ยกเลิก</Button>
+                                      <span style={{ fontSize: 11, color: t.muted }}>{noteDraft.length}/500</span>
+                                    </div>
+                                  </div>
+                                )}
                                 <RelatedLogs
                                   state={details[a.id]}
                                   onRetry={() => loadDetail(a.id)}

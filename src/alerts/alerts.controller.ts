@@ -7,11 +7,13 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
+import { ResolveAlertDto } from './dto/resolve-alert.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard, Roles } from '../auth/guards/roles.guard';
 
@@ -65,7 +67,9 @@ export class AlertsController {
   /** ปิด alert = การกระทำเชิง triage ไม่ใช่การอ่าน — analyst จึงไม่อยู่ในลิสต์ */
   @Patch(':id/resolve')
   @Roles('operator', 'admin')
-  @ApiOperation({ summary: 'Mark an alert as RESOLVED' })
+  @ApiOperation({
+    summary: 'Mark an alert as RESOLVED, optionally recording a note',
+  })
   resolve(
     @Param(
       'id',
@@ -75,7 +79,11 @@ export class AlertsController {
       }),
     )
     id: string,
+    @Body() dto: ResolveAlertDto | undefined,
+    @Req() req: { user?: { userId?: string; username?: string } },
   ) {
-    return this.alertsService.resolve(id);
+    // AuthGuard has already run, so req.user is set; fall back to the subject id
+    const by = req.user?.username ?? req.user?.userId ?? null;
+    return this.alertsService.resolve(id, dto?.note, by);
   }
 }

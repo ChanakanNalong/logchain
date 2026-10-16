@@ -309,6 +309,24 @@ log หนึ่งตัวมี role เดียวต่อ alert (ตั�
 
 ---
 
+## 6. `PATCH /alerts/:id/resolve` — ปิด alert พร้อม note (ไม่บังคับ)
+
+`@Roles('operator', 'admin')` · body เป็น option:
+
+```jsonc
+{ "note": "false positive: UUID ใน URL ถูก mask เป็น [PAN]" }  // note ≤ 500 ตัวอักษร · ไม่ส่ง body ก็ได้
+```
+
+- เก็บผลลง `detail.resolution` (jsonb · ไม่มีคอลัมน์/migration ใหม่): `{ note, by, at }`
+  - `by` = username จาก token (operator/admin ที่กดปิด) · `at` = ISO timestamp
+  - ไม่ส่ง `note` มา = เก็บ note เดิมไว้ (resolve ซ้ำเพื่อ **เติม note ย้อนหลัง** ได้) · ส่ง `""` = ล้าง note
+- เรียกซ้ำบน alert ที่ `RESOLVED` แล้วได้ — อัปเดต `detail.resolution` โดยไม่เปลี่ยน status
+- คืน alert ใบที่อัปเดต (รวม `detail.resolution`)
+
+**ถึง frontend:** แถว `RESOLVED` ที่ขยายให้แสดง `detail.resolution` เป็น "Resolved by `<by>` · `<at>` · `<note>`" · ปุ่ม Resolve เปิดช่องใส่ note (ไม่บังคับ) ก่อนยืนยัน
+
+---
+
 ## หมายเหตุสำหรับ mock
 
 - role ที่ไม่มีสิทธิ์ = `403 {"message":"Forbidden resource","error":"Forbidden","statusCode":403}` · ไม่มี token = 401

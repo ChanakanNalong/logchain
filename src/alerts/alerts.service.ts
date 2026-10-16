@@ -437,13 +437,37 @@ export class AlertsService {
     }));
   }
 
-  async resolve(id: string): Promise<Alert> {
+  /**
+   * ปิด alert เป็น RESOLVED พร้อมบันทึก resolution ลง detail (jsonb) — ไม่มี
+   * migration/คอลัมน์ใหม่ · resolve ซ้ำบน RESOLVED ได้ (อัปเดต resolution ไว้
+   * เติม note ย้อนหลัง) · ไม่ส่ง note มา = เก็บ note เดิมไว้
+   */
+  async resolve(id: string, note?: string, by?: string | null): Promise<Alert> {
     // findOneOrFail โยน EntityNotFoundError ซึ่ง AllExceptionsFilter แปลงเป็น 500
     // ทั้งที่เป็นเรื่อง input ผิด — หน้า Alerts จะได้แยก "ไม่เจอ" ออกจาก "ระบบพัง"
     const alert = await this.alertRepo.findOne({ where: { id } });
     if (!alert) throw new NotFoundException('Alert not found');
 
+    const detail: Record<string, unknown> =
+      alert.detail && typeof alert.detail === 'object'
+        ? { ...(alert.detail as Record<string, unknown>) }
+        : {};
+    const prev =
+      detail.resolution && typeof detail.resolution === 'object'
+        ? (detail.resolution as { note?: string | null })
+        : null;
+    // note ที่ไม่ได้ส่งมา (undefined) = เก็บของเดิม · ส่ง "" มา = ล้าง note
+    const nextNote = note !== undefined ? note : (prev?.note ?? null);
+
     alert.status = 'RESOLVED';
+    alert.detail = {
+      ...detail,
+      resolution: {
+        note: nextNote && nextNote.length > 0 ? nextNote : null,
+        by: by ?? null,
+        at: new Date().toISOString(),
+      },
+    };
     return this.alertRepo.save(alert);
   }
 }
