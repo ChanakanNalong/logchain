@@ -12,3 +12,5 @@ test
 infra/vault/.secrets
 infra/kafka/certs
 *.log
+# host-mounted runtime logs (Caddy access log on CT141: dir 2750 nobody:adm, unreadable by the build user)
+logs
