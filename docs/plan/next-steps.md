@@ -28,6 +28,9 @@
 > 6. **(เจ้าของ)** เปลี่ยนรหัส `admin-user` (local + cloud — ไม่มีตัวเลขตาม policy + เคยพิมพ์ในแชท) → แก้ `.env` → อัปเดต Secure Note `.env`
 >    (มีรหัส user ทดสอบ 4 บรรทัดใหม่จาก `seed-test-users.sh` ด้วย)
 > 7. (ไม่บังคับ) bind MySQL `:3306` เป็น 127.0.0.1 (MySQL ของเครื่อง ไม่ใช่ของ LogChain) · ลบ clone `~/clone_logchain` (sudo)
+> 8. **(2026-10-16) retrain Isolation Forest จาก batch จริงบน cloud** — ตอนนี้ cloud `IF_MODE=calibrating` (ซ่อนผลจำแนก · โมเดลฝึกจาก HDFS/จำลอง ทำให้ batch จริงเล็กถูก flag อนุมานผิดเกือบทุกใบ) ·
+>    หลัง forwarder เก็บ traffic จริง **3–5 วัน** → เขียน `scripts/retrain-isoforest.*` ดึง batch จริง (`if_scored_at` ไม่ null) มาเป็น training set ·
+>    **เกณฑ์สลับเป็น `active`:** มี batch จริง ≥ ~200 ใบครอบคลุมช่วงโหลดปกติ และ FP บน hold-out ของ traffic จริง < ~5% · อัปเดต `IF_MODE=active` ใน `.env` ของ cloud แล้ว restart backend
 >    (alert เก่า 3 ใบบน cloud RESOLVED แล้ว — worklog 10-05 หัวข้อ 3)
 >
 > **🔒 FREEZE ตั้งแต่ 2026-10-05:** **ห้ามแก้โค้ดทุกส่วน** (backend · dashboard · detection · infra · script · เทส) จนสอบเสร็จ
