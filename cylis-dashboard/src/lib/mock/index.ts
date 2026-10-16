@@ -4,9 +4,10 @@
  * Errors are thrown in the axios shape (`e.response.status` / `.data`) so the
  * views handle them exactly like real API failures.
  */
-import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, LogAlertRef, LogDetail, LogsPage, LogsQuery } from "@/types/api";
+import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, BatchTree, LogAlertRef, LogDetail, LogProofResult, LogsPage, LogsQuery } from "@/types/api";
 import { MOCK_ALERTS, MOCK_LOGS } from "./data";
 import { MOCK_BATCH_LIST, buildDiff, diffChainIsDown } from "./batches";
+import { buildProof, buildTree, treeChainIsDown } from "./trees";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLE_ORDER = { trigger: 0, window: 1, prior: 2, repeat: 3 } as const;
@@ -75,11 +76,13 @@ export async function getLogDetail(id: string): Promise<LogDetail> {
   if (!found) throw httpError(404, "Log not found", "Not Found");
 
   const { batchId: _b, batchStatus: _s, txHash: _t, blockNumber: _n, polygonscanUrl: _p, ...log } = found.item;
+  // same Merkle proof as GET /logs/:id/proof (lib/mock/trees.ts) — the drawer and Verify must agree
+  const real = found.batch ? buildProof(id) : null;
   const checkedAt = new Date().toISOString();
   return {
     log,
     batch: found.batch?.info ?? null,
-    proof: found.proof,
+    proof: real ? { verified: real.verify, path: real.proof } : found.proof,
     alerts: alertsForLog(id),
     chainCheck: found.batch ? { ...found.batch.chainCheck, checkedAt } : null,
   };
@@ -137,4 +140,21 @@ export async function getBatchDiff(id: string): Promise<BatchDiff> {
   const diff = buildDiff(id);
   if (!diff) throw httpError(404, "Batch not found", "Not Found");
   return diff;
+}
+
+export async function getBatchTree(id: string): Promise<BatchTree> {
+  if (!UUID_RE.test(id)) throw httpError(400, "Batch ID must be a UUID", "Bad Request");
+  await delay(treeChainIsDown(id) ? 3000 : 900);
+  const tree = buildTree(id);
+  if (!tree) throw httpError(404, "Batch not found", "Not Found");
+  return tree;
+}
+
+export async function getLogProof(id: string): Promise<LogProofResult> {
+  requireUuid(id, "Log");
+  await delay(400);
+  const proof = buildProof(id);
+  // unsealed or unknown log — the backend answers 404 for both
+  if (!proof) throw httpError(404, "Log not found or not yet sealed", "Not Found");
+  return proof;
 }

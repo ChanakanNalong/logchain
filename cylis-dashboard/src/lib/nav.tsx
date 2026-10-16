@@ -28,7 +28,7 @@ export const PAGE_QUERY_KEYS: Record<string, readonly string[]> = {
   // a_ prefix: every key belongs to exactly one page, or leaving a page would
   // carry its filters into another one that reads the same name
   alerts: [QUERY_KEYS.alert, "a_q", "a_status", "a_sev", "a_type"],
-  verify: [QUERY_KEYS.proofLog],
+  verify: [QUERY_KEYS.proofLog, "v_batch"],
   batches: ["b_status", "b_offset", "b_limit", "b_diff"],
 };
 

@@ -22,6 +22,7 @@ import { keycloak, logout } from "@/lib/keycloak";
 import { canAccessPage } from "@/lib/roles";
 import { NavContext, PAGE_QUERY_KEYS, QUERY_KEYS, readViewFromUrl, replaceQuery, type QueryUpdate } from "@/lib/nav";
 import { USE_MOCK } from "@/lib/endpoints";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { Badge } from "@/components/ui";
 import Dashboard from "@/views/Dashboard";
 import Logs from "@/views/Logs";
@@ -93,6 +94,8 @@ export default function App() {
     return fromUrl && canAccessPage(fromUrl) ? fromUrl : firstAllowedId ?? "dashboard";
   });
   const [mode, setModeState] = useState<"dark" | "light">(readTheme);
+  // header only: below ~1100px the clock and button captions drop so Logout stays on screen
+  const compactHeader = useMediaQuery("(max-width: 1100px)");
   const setMode = (next: "dark" | "light") => { setModeState(next); saveTheme(next); };
 
   // Every page switch goes through here (sidebar, bell, drawer links). Drops the
@@ -256,8 +259,8 @@ export default function App() {
 
           {/* Main content */}
           <main style={{ flex: 1, padding: "24px 28px 60px", overflowY: "auto", height: "100%", minWidth: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-              <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22, gap: 12, minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
                 <div
                   style={{
                     fontSize: 10.5,
@@ -271,21 +274,27 @@ export default function App() {
                   LogChain{active && ` · ${active.label}`}
                 </div>
                 {active && PAGE_TITLES[active.id] && (
-                  <h1 style={{ margin: "3px 0 0", fontSize: 24, fontWeight: 700, letterSpacing: "-0.015em", ...sansFont }}>
+                  <h1 style={{ margin: "3px 0 0", fontSize: 24, fontWeight: 700, letterSpacing: "-0.015em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...sansFont }}>
                   {PAGE_TITLES[active.id]}
                 </h1>
                   )}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: compactHeader ? 8 : 12, flexShrink: 0 }}>
                 {/* NEXT_PUBLIC_USE_MOCK=1 — Logs/Alerts are not real data */}
-                {USE_MOCK && <Badge tone="orange" title="Logs, Alerts และ drawer ใช้ข้อมูลจำลอง หน้าอื่นใช้ข้อมูลจริง">MOCK DATA</Badge>}
-                <Clock size={14} color={theme.muted} />
-                <span style={{ fontSize: 12, color: theme.muted, ...monoFont, letterSpacing: "0.02em" }}>
-                  {clockLabel}
-                </span>
+                {USE_MOCK && <Badge tone="orange" title="Logs, Alerts, Batch audit, Verify และ drawer ใช้ข้อมูลจำลอง (ยกเว้น Chain status) หน้าอื่นใช้ข้อมูลจริง">MOCK DATA</Badge>}
+                {!compactHeader && (
+                  <>
+                    <Clock size={14} color={theme.muted} />
+                    <span style={{ fontSize: 12, color: theme.muted, ...monoFont, letterSpacing: "0.02em" }}>
+                      {clockLabel}
+                    </span>
+                  </>
+                )}
                 <button
                   onClick={() => setMode(isDark ? "light" : "dark")}
+                  title={isDark ? "Light mode" : "Dark mode"}
+                  aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -305,12 +314,12 @@ export default function App() {
                   {isDark ? (
                     <>
                       <Sun size={13} color="#f59e0b" />
-                      <span style={{ color: theme.text }}>Light</span>
+                      {!compactHeader && <span style={{ color: theme.text }}>Light</span>}
                     </>
                   ) : (
                     <>
                       <Moon size={13} color="#6366f1" />
-                      <span style={{ color: theme.text }}>Dark</span>
+                      {!compactHeader && <span style={{ color: theme.text }}>Dark</span>}
                     </>
                   )}
                 </button>
@@ -327,12 +336,13 @@ export default function App() {
                   </button>
                 )}
                 {username && (
-                  <span style={{ fontSize: 12, color: theme.text, fontWeight: 600, ...sansFont }}>{username}</span>
+                  <span title={username} style={{ fontSize: 12, color: theme.text, fontWeight: 600, maxWidth: compactHeader ? 90 : 180, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...sansFont }}>{username}</span>
                 )}
                 <button
                   type="button"
                   onClick={logout}
                   title="Log out"
+                  aria-label="Log out"
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -350,7 +360,7 @@ export default function App() {
                   }}
                 >
                   <LogOut size={13} />
-                  <span style={{ color: theme.text }}>Logout</span>
+                  {!compactHeader && <span style={{ color: theme.text }}>Logout</span>}
                 </button>
               </div>
             </div>

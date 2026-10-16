@@ -6,7 +6,8 @@
  * src/integrity/batch-diff.service.ts.
  */
 import type { BatchChange, BatchDiff, BatchListItem, BatchStatus, SnapshotLog } from "@/types/api";
-import { MOCK_BATCHES, MOCK_LOGS, at, hex, logId, uuid } from "./data";
+import { MOCK_BATCHES, MOCK_LOGS, TAMPERED_SEALED_RAW, at, hex, logId, mappedLeaves, uuid } from "./data";
+import { buildLayers } from "./merkleMock";
 
 type Gas = { gasUsed: string | number; gwei: string | number } | null;
 
@@ -15,8 +16,14 @@ interface AuditSpec {
   chainRoot: string | null;
   chainError: string | null;
   dbRoot: string;
-  /** root rebuilt from the logs mapped now */
-  currentRoot: string;
+  /** root rebuilt from the logs mapped now · null when none are mapped */
+  currentRoot: string | null;
+  /** logs mapped to the batch now, in seal order — the tree on the Verify page */
+  leaves: { logId: string; rawHash: string }[];
+  /** gas for the tree's cost block (same as the list's) */
+  gas: Gas;
+  /** set rates for ETH / THB conversion? (false = the "rate not configured" case) */
+  rates: boolean;
   /** null = legacy (no snapshot) */
   snapshot: { root: string; contentIntact: boolean; logs: number } | null;
   mappedLogs: number;
@@ -51,11 +58,18 @@ function listItem(
 function fromLogsMock(
   key: keyof typeof MOCK_BATCHES,
   gas: Gas,
-  extra: Partial<Pick<AuditSpec, "currentRoot" | "snapshot" | "mappedLogs" | "changes">> & { logCount?: number } = {},
+  extra: Partial<Pick<AuditSpec, "snapshot" | "mappedLogs" | "changes">> & { logCount?: number } = {},
 ): AuditSpec {
   const b = MOCK_BATCHES[key];
   const i = b.info;
-  const logCount = extra.logCount ?? MOCK_LOGS.filter((l) => l.item.batchId === i.id).length;
+  let leaves = mappedLeaves(i.id);
+  if (leaves.length === 0 && extra.logCount) {
+    // PENDING: no Logs-mock row maps to it (mapping is written after the anchor), but the
+    // tree/diff still need its sealed logs — synthetic ones, and the root built from them
+    leaves = Array.from({ length: extra.logCount }, (_, n) => ({ logId: uuid(`log:${key}:${n}`), rawHash: hex(`raw:${key}:${n}`) }));
+    i.merkleRoot = buildLayers(leaves.map((l) => l.rawHash)).root!.slice(2);
+  }
+  const logCount = extra.logCount ?? leaves.length;
   const dbRoot = "0x" + i.merkleRoot;
   const chainRoot = "error" in b.chainCheck ? null : b.chainCheck.chainRoot;
   return {
@@ -63,9 +77,12 @@ function fromLogsMock(
     chainRoot,
     chainError: "error" in b.chainCheck ? b.chainCheck.error : null,
     dbRoot,
-    currentRoot: extra.currentRoot ?? dbRoot,
+    currentRoot: buildLayers(leaves.map((l) => l.rawHash)).root,
+    leaves,
+    gas,
+    rates: true,
     snapshot: extra.snapshot ?? { root: dbRoot, contentIntact: true, logs: logCount },
-    mappedLogs: extra.mappedLogs ?? logCount,
+    mappedLogs: extra.mappedLogs ?? leaves.length,
     changes: extra.changes ?? [],
   };
 }
@@ -77,9 +94,11 @@ function listOnly(
   minutesAgo: number,
   logCount: number,
   gas: Gas,
-  opts: { legacy?: boolean; snapshotContentIntact?: boolean; snapshotRootRewritten?: boolean; tamperedRows?: boolean } = {},
+  opts: { legacy?: boolean; snapshotContentIntact?: boolean; snapshotRootRewritten?: boolean; rates?: boolean } = {},
 ): AuditSpec {
-  const merkleRoot = hex(`root:${key}`);
+  // synthetic logs — real hashes, so the tree and its root are consistent
+  const leaves = Array.from({ length: logCount }, (_, n) => ({ logId: uuid(`log:${key}:${n}`), rawHash: hex(`raw:${key}:${n}`) }));
+  const merkleRoot = buildLayers(leaves.map((l) => l.rawHash)).root!.slice(2);
   const txHash = "0x" + hex(`tx:${key}`);
   const dbRoot = "0x" + merkleRoot;
   return {
@@ -90,7 +109,10 @@ function listOnly(
     chainRoot: dbRoot,
     chainError: null,
     dbRoot,
-    currentRoot: opts.tamperedRows ? "0x" + hex(`current:${key}`) : dbRoot,
+    currentRoot: dbRoot,
+    leaves,
+    gas,
+    rates: opts.rates ?? true,
     snapshot: opts.legacy ? null : {
       root: opts.snapshotRootRewritten ? "0x" + hex(`snapshot:${key}`) : dbRoot,
       contentIntact: opts.snapshotContentIntact ?? true,
@@ -119,7 +141,7 @@ const TAMPERED_CHANGES: BatchChange[] = [
     position: 1,
     logId: logId("priv-esc"),
     type: "HASH_MODIFIED",
-    fields: [{ field: "rawHash", before: hex("raw:priv-esc"), after: "f".repeat(64) }],
+    fields: [{ field: "rawHash", before: TAMPERED_SEALED_RAW.privEsc, after: "f".repeat(64) }],
   },
   {
     position: 2,
@@ -134,7 +156,7 @@ const TAMPERED_CHANGES: BatchChange[] = [
           "query SELECT * FROM card_holders WHERE region IN ('TH','SG','MY') ORDER BY updated_at DESC",
         after: cardLog.message,
       },
-      { field: "rawHash", before: hex("raw:card:sealed"), after: cardLog.rawHash },
+      { field: "rawHash", before: TAMPERED_SEALED_RAW.card, after: cardLog.rawHash },
     ],
   },
   {
@@ -145,20 +167,20 @@ const TAMPERED_CHANGES: BatchChange[] = [
     snapshot: {
       id: logId("deleted"), createdAt: at(34, 20), source: "app-svc-1", sourceIp: "10.0.4.30", eventType: "DATA_ACCESS",
       severity: "CRITICAL", message: "user jdoe downloaded card_holders.csv (2,400 rows) to 203.0.113.77",
-      classification: "CONFIDENTIAL", cdeScope: true, rawHash: hex("raw:deleted"),
+      classification: "CONFIDENTIAL", cdeScope: true, rawHash: TAMPERED_SEALED_RAW.deleted,
     },
   },
   { position: 3, logId: insertedLog.id, type: "UNMAPPED_OR_INSERTED", current: asSnapshot(insertedLog) },
 ];
 
 /** Newest first after sorting in getBatches */
-const AUDITS: AuditSpec[] = [
+export const AUDITS: AuditSpec[] = [
   fromLogsMock("confirmed", { gasUsed: "71240", gwei: "25" }),
   // chain unreadable + tx sent → UNVERIFIABLE (matches the "ติดต่อเชนไม่ได้" chain check in Logs)
   fromLogsMock("confirmedRpcDown", { gasUsed: 70110, gwei: 25.5 }),
   // the Logs mock's tampered batch: stored root still equals the chain, rows changed
   fromLogsMock("tampered", { gasUsed: "72001", gwei: "26" }, {
-    logCount: 4, mappedLogs: 4, currentRoot: "0x" + hex("current:tampered"), changes: TAMPERED_CHANGES,
+    logCount: 4, mappedLogs: 4, changes: TAMPERED_CHANGES,
   }),
   // the Logs mock's "status disagrees" batch: its stored root no longer equals the chain
   // (chain check mismatch). Root, snapshot and logs were rewritten together, so by the
@@ -170,7 +192,8 @@ const AUDITS: AuditSpec[] = [
   fromLogsMock("failed", null),
   fromLogsMock("pending", null, { logCount: 3 }),
   // list-only cases
-  listOnly("single", "CONFIRMED", 60 * 3, 1, { gasUsed: "52310", gwei: "30.5" }),
+  // rates not configured → ETH / THB null on the Verify cost card
+  listOnly("single", "CONFIRMED", 60 * 3, 1, { gasUsed: "52310", gwei: "30.5" }, { rates: false }),
   listOnly("hundred", "CONFIRMED", 60 * 6, 100, { gasUsed: "78156", gwei: "25.000000031" }),
   listOnly("no-gas", "CONFIRMED", 60 * 20, 33, null),
   // only snapshot rows were edited (raw_hash left alone): roots all still match the chain
@@ -195,6 +218,7 @@ export function buildDiff(batchId: string): BatchDiff | null {
   const a = AUDITS.find((x) => x.item.id === batchId);
   if (!a) return null;
   const { item } = a;
+  // a batch with nothing mapped any more rebuilds no root — never equal to the reference
   const anchoredOnChain = a.chainRoot !== null && !isZero(a.chainRoot);
   const reference = anchoredOnChain ? a.chainRoot! : a.dbRoot;
   const unverifiable = a.chainError !== null && !!item.txHash;

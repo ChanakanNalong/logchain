@@ -161,6 +161,8 @@ export interface BatchListItem {
   logCount: number;
   sealedAt: string;
   confirmedAt: string | null;
+  /** Isolation Forest mode: "calibrating" hides the verdict (ifAnomaly/score/reason null) while the model retrains on real traffic */
+  ifStatus?: "active" | "calibrating" | null;
   ifAnomaly?: boolean | null;
   ifScore?: number | null;
   ifReason?: string | null;
@@ -257,4 +259,84 @@ export interface BatchDiff {
     unmappedOrInserted: number | null;
   };
   changes: BatchChange[];
+}
+
+/* ── Merkle tree + proof — docs/api/merkle-tree.md ──────────────────── */
+
+/** Decimal as text (backend) — the worksheet example sends numbers, so both are accepted */
+export type Decimalish = string | number;
+
+export interface CostTriple {
+  batch: Decimalish;
+  perLog: Decimalish;
+  oneTxPerLog: Decimalish;
+}
+
+export interface TreeCost {
+  gasUsed: Decimalish;
+  effectiveGasPriceGwei: Decimalish;
+  batchCostPol: Decimalish;
+  perLogCostPol: Decimalish;
+  /** logCount × batchCostPol — anchoring one log per tx */
+  oneTxPerLogCostPol: Decimalish;
+  savingFactor: Decimalish;
+  /** POL value converted at the configured rate — null when the rate is unset */
+  eth: CostTriple | null;
+  thb: CostTriple | null;
+  rates: {
+    polEth: Decimalish | null;
+    polThb: Decimalish | null;
+    asOf: string | null;
+    source: "config";
+  };
+}
+
+/** GET /batches/:id/tree — built from the logs mapped to the batch now */
+export interface BatchTree {
+  batchId: string;
+  status: BatchStatus;
+  logCount: number;
+  txHash: string | null;
+  blockNumber: number | null;
+  polygonscanUrl: string | null;
+  /** root stored at seal (0x…) */
+  dbRoot: string;
+  /** root rebuilt from `layers` */
+  computedRoot: string;
+  rootMatchesDb: boolean;
+  /** null = chain unreadable · 0x000… = not anchored */
+  chainRoot: string | null;
+  chainError: string | null;
+  checkedAt: string;
+  /** createdAt ASC, id ASC */
+  leaves: { index: number; logId: string; rawHash: string; leafHash: string }[];
+  /** layers[0] = leaf hashes … layers[last] = [root]; 2k and 2k+1 make node k above */
+  layers: string[][];
+  /** odd last node of a layer, moved up unchanged to floor(index/2) */
+  promoted: { layer: number; index: number }[];
+  cost: TreeCost | null;
+}
+
+/** GET /logs/:id/proof */
+export interface LogProofResult {
+  logId: string;
+  /** hex 64, no 0x */
+  rawHash: string;
+  /** = leaves[].index of the tree */
+  leafIndex: number;
+  leafHash: string;
+  batch: {
+    id: string;
+    /** hex 64, no 0x */
+    merkleRoot: string;
+    txHash: string | null;
+    blockNumber: number | null;
+    status: BatchStatus;
+    ifStatus?: "active" | "calibrating" | null;
+    ifAnomaly?: boolean | null;
+    ifReason?: string | null;
+  };
+  proof: ProofStep[];
+  /** proof rebuilds batch.merkleRoot (the DB root, not the chain) */
+  verify: boolean;
 }

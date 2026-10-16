@@ -27,6 +27,12 @@ export function isZeroRoot(root: string | null | undefined): boolean {
   return !root || /^(0x)?0*$/i.test(root);
 }
 
+/**
+ * Significant digits for every cost amount (POL / ETH / THB) on every page —
+ * Batch audit and Verify must print the same number for the same batch.
+ */
+export const COST_SIG = 5;
+
 const WEI_DECIMALS = 18;
 const GWEI_DECIMALS = 9;
 // tsconfig targets ES2017, which has no `10n` literal syntax — build BigInts by call
@@ -79,8 +85,8 @@ export function polCost(
   if (gas === null || priceWei === null) return null;
   const wei = gas * priceWei;
   return {
-    batch: formatUnits(wei, WEI_DECIMALS),
-    perLog: logCount > 0 ? formatUnits(wei / BigInt(logCount), WEI_DECIMALS) : null,
+    batch: formatUnits(wei, WEI_DECIMALS, COST_SIG),
+    perLog: logCount > 0 ? formatUnits(wei / BigInt(logCount), WEI_DECIMALS, COST_SIG) : null,
   };
 }
 
@@ -89,4 +95,41 @@ export function fmtInt(v: string | number | null | undefined): string {
   if (v == null) return "—";
   const n = toUnits(v, 0);
   return n === null ? "—" : n.toLocaleString("en-US");
+}
+
+/**
+ * A decimal from the API as plain text: strings pass through, numbers are
+ * written out without exponent notation (8e-8 → "0.00000008").
+ */
+export function plainDecimal(v: string | number | null | undefined): string {
+  if (v == null) return "—";
+  if (typeof v === "string") return v;
+  if (!Number.isFinite(v)) return "—";
+  const s = Math.abs(v) < 1e-6 || Math.abs(v) >= 1e21 ? v.toFixed(20) : String(v);
+  return s.includes(".") ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+}
+
+/**
+ * A decimal (string or number) shortened to `sig` significant digits after
+ * the leading zeros — still plain text, never exponent notation. The full
+ * value belongs in a tooltip.
+ */
+export function fmtDecimal(v: string | number | null | undefined, sig = COST_SIG): string {
+  const text = plainDecimal(v);
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m) return text;
+  const frac = m[3] ?? "";
+  return formatUnits(BigInt(m[1] + m[2] + frac), frac.length, sig);
+}
+
+/** Gas price in gwei, at most 2 decimals: 25.000000031 → "25", 30.5 → "30.5" */
+export function fmtGwei(v: string | number | null | undefined): string {
+  const text = plainDecimal(v);
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m) return text;
+  // round half up at the 2nd decimal, in BigInt so long strings stay exact
+  const frac = (m[2] ?? "").padEnd(3, "0");
+  let cents = BigInt(m[1]) * BigInt(100) + BigInt(frac.slice(0, 2));
+  if (Number(frac[2]) >= 5) cents += BigInt(1);
+  return formatUnits(cents, 2, 64);
 }

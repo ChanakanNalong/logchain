@@ -8,7 +8,7 @@ import BatchDiffDrawer, { type DiffState } from "@/components/BatchDiffDrawer";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
 import { IdCell, PolygonscanLink } from "@/components/LogTable";
 import { getBatchDiff, getBatches } from "@/lib/endpoints";
-import { fmtInt, fmtTime, polCost } from "@/lib/format";
+import { fmtGwei, fmtInt, fmtTime, polCost } from "@/lib/format";
 import { useReplaceQuery } from "@/lib/nav";
 import type { BatchListItem, BatchStatus } from "@/types/api";
 
@@ -197,7 +197,7 @@ export default function Batches() {
                         <Td style={{ textAlign: "right", ...monoFont }}>{fmtInt(b.gasUsed)}</Td>
                         <Td
                           style={{ textAlign: "right", whiteSpace: "nowrap", ...monoFont }}
-                          title={cost ? `${b.gasUsed} gas × ${b.effectiveGasPriceGwei} gwei` : undefined}
+                          title={cost ? `${fmtInt(b.gasUsed)} gas × ${fmtGwei(b.effectiveGasPriceGwei)} gwei` : undefined}
                         >
                           {cost ? cost.batch : "—"}
                         </Td>
