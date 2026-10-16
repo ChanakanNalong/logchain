@@ -59,7 +59,13 @@ export default function Batches() {
   const replaceQuery = useReplaceQuery();
 
   // own query keys use the b_ prefix (lib/nav.tsx PAGE_QUERY_KEYS.batches)
-  const [status, setStatus] = useState(() => splitList(searchParams.get("b_status")));
+  // No b_status in the URL → hide FAILED by default (the cloud carries ~1,161
+  // never-anchored FAILED batches that read as NOT_ANCHORED, not tampering).
+  // An auditor adds FAILED back from the dropdown to inspect them.
+  const [status, setStatus] = useState(() => {
+    const raw = searchParams.get("b_status");
+    return raw !== null ? splitList(raw) : STATUSES.filter((s) => s !== "FAILED");
+  });
   const [limit, setLimit] = useState(() => {
     const n = Number(searchParams.get("b_limit"));
     return Number.isInteger(n) && n >= 1 && n <= 100 ? n : DEFAULT_LIMIT;

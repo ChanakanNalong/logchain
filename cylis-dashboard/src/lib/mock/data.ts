@@ -159,15 +159,15 @@ const SEEDS: Seed[] = [
   },
   // web scanner on nginx
   {
-    key: "scan-env", minutesAgo: 41, source: "vps-nginx", sourceIp: SCAN_IP,
+    key: "scan-env", minutesAgo: 41, source: "web-proxy", sourceIp: SCAN_IP,
     eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /.env 404 "zgrab/0.x"', batch: "confirmedRpcDown",
   },
   {
-    key: "scan-git", minutesAgo: 41, seconds: 2, source: "vps-nginx", sourceIp: SCAN_IP,
+    key: "scan-git", minutesAgo: 41, seconds: 2, source: "web-proxy", sourceIp: SCAN_IP,
     eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /.git/config 404 "zgrab/0.x"', batch: "confirmedRpcDown",
   },
   {
-    key: "scan-sqli", minutesAgo: 36, source: "vps-nginx", sourceIp: SCAN_IP,
+    key: "scan-sqli", minutesAgo: 36, source: "web-proxy", sourceIp: SCAN_IP,
     eventType: "HTTP_ACCESS", severity: "WARNING",
     message: "GET /item?id=1%20UNION%20SELECT%20password%20FROM%20users 400 \"sqlmap/1.8\"", batch: "tampered",
   },
@@ -216,7 +216,7 @@ const SEEDS: Seed[] = [
     eventType: "SSH_AUTH", severity: "WARNING", message: "Invalid user oracle from 2001:db8::1 port 40022", batch: null,
   },
   {
-    key: "nginx-wp", minutesAgo: 0, seconds: -20, source: "vps-nginx", sourceIp: "198.51.100.77",
+    key: "nginx-wp", minutesAgo: 0, seconds: -20, source: "web-proxy", sourceIp: "198.51.100.77",
     eventType: "HTTP_ACCESS", severity: "WARNING", message: 'GET /wp-login.php 404 "Mozilla/5.0"', batch: null,
   },
 ];
@@ -340,7 +340,7 @@ export const MOCK_ALERTS: MockAlert[] = [
     "scanner",
     {
       logId: logId("scan-git"), batchId: null, alertType: "RULE_MATCH", ruleId: "31151", severity: "WARNING",
-      source: "vps-nginx", sourceIp: SCAN_IP, title: "Web scanner probing sensitive paths",
+      source: "web-proxy", sourceIp: SCAN_IP, title: "Web scanner probing sensitive paths",
       detail: { rule_id: 31151, reason: "Requests for /.env and /.git from one IP", event_type: "HTTP_ACCESS" },
       status: "RESOLVED", occurrenceCount: 1, createdAt: at(41, 3), lastSeenAt: at(41, 3), lastNotifiedAt: at(41, 3),
     },
@@ -353,7 +353,7 @@ export const MOCK_ALERTS: MockAlert[] = [
     "sqli",
     {
       logId: logId("scan-sqli"), batchId: null, alertType: "RULE_MATCH", ruleId: "31103", severity: "HIGH",
-      source: "vps-nginx", sourceIp: SCAN_IP, title: "SQL injection attempt",
+      source: "web-proxy", sourceIp: SCAN_IP, title: "SQL injection attempt",
       detail: { rule_id: 31103, reason: "UNION SELECT in query string", event_type: "HTTP_ACCESS" },
       status: "OPEN", occurrenceCount: 1, createdAt: at(36, 1), lastSeenAt: at(36, 1), lastNotifiedAt: at(36, 1),
     },

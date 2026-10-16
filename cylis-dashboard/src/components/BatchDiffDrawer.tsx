@@ -42,6 +42,8 @@ function untrustedReasonText(reason: string, referenceName: string): string {
       return `root ที่สร้างจาก raw hash ใน snapshot ไม่ตรงกับ ${referenceName} — ชุด hash ใน snapshot ไม่ใช่ชุดที่ถูก seal`;
     case "SNAPSHOT_CONTENT_MISMATCH":
       return "บางแถวใน snapshot ถูกแก้เนื้อ — hash เนื้อแล้วไม่ได้ raw hash ที่เก็บไว้ในแถวนั้น";
+    case "NOT_ANCHORED":
+      return "batch นี้ไม่เคยถูก anchor ขึ้น chain (ไม่มี root อ้างอิงบนเชน) — ยืนยันกับเชนไม่ได้ ไม่ได้แปลว่าข้อมูลถูกแก้";
     default:
       return "snapshot ไม่ผ่านการตรวจ";
   }
@@ -183,9 +185,9 @@ function ChangeRow({ c, onOpenLog }: { c: BatchChange; onOpenLog: (id: string) =
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {c.type === "UNMAPPED_OR_INSERTED" ? (
           // its position counts in the set mapped now, not in the snapshot — a number here would collide
-          <span title={`ไม่อยู่ใน snapshot — ลำดับในชุดที่ผูกอยู่ตอนนี้ #${c.position}`} style={{ fontSize: 12, color: t.warn, fontWeight: 600 }}>ใหม่</span>
+          <span title={`ไม่อยู่ใน snapshot — ลำดับในชุดที่ผูกอยู่ตอนนี้ #${c.position + 1}`} style={{ fontSize: 12, color: t.warn, fontWeight: 600 }}>ใหม่</span>
         ) : (
-          <span title="ลำดับ leaf ใน Merkle tree ตอน seal (เริ่มที่ 0)" style={{ fontSize: 12, color: t.muted, ...monoFont }}>#{c.position}</span>
+          <span title="ลำดับ leaf ใน Merkle tree ตอน seal (position 0-based ในสัญญา · แสดงเริ่มที่ 1)" style={{ fontSize: 12, color: t.muted, ...monoFont }}>#{c.position + 1}</span>
         )}
         {openable ? (
           <button type="button" onClick={() => onOpenLog(c.logId)} title={`Open log ${c.logId}`} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: t.blue2, fontSize: 12.5, ...monoFont }}>

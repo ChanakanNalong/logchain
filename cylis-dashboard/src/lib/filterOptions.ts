@@ -8,8 +8,8 @@
 /** CreateLogDto enum (src/logs/dto/create-log.dto.ts) — the only values a log can hold */
 export const LOG_SEVERITIES = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] as const;
 
-/** The VPS log forwarder (forwarder/README.md) */
-export const VPS_SOURCES = ["vps-sshd", "vps-nginx"] as const;
+/** The VPS log forwarder (forwarder/README.md) — sshd journal + web-proxy all-requests */
+export const VPS_SOURCES = ["vps-sshd", "web-proxy"] as const;
 
 export const LOG_SOURCES = [
   ...VPS_SOURCES,

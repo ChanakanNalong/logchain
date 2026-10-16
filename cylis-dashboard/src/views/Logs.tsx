@@ -185,7 +185,7 @@ export default function Logs() {
             }}
           >
             <Server size={13} />
-            Real logs (VPS)
+            Real logs
             {realLogsOn && <X size={12} />}
           </button>
           <MultiSelectDropdown label="sources" options={LOG_SOURCES} value={source} onChange={updateSource} allowCustom />
@@ -201,7 +201,7 @@ export default function Logs() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <SectionLabel>{anyFilter ? "Matching logs" : "All logs"} ({total.toLocaleString()})</SectionLabel>
-            {realLogsOn && <Badge tone="good">กำลังกรอง: Real logs (VPS)</Badge>}
+            {realLogsOn && <Badge tone="good">กำลังกรอง: Real logs</Badge>}
           </div>
           <FilterDropdown value={`${limit} / page`} onChange={updateLimit} options={LIMITS.map((n) => `${n} / page`)} />
         </div>
