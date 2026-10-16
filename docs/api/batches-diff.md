@@ -335,6 +335,13 @@ batch ที่ **ไม่มี `txHash`** + status `FAILED` / `SEALED` / `PEN
 - ไม่มี `txHash` ใน DB แต่ root อยู่บน chain แล้ว = anchor แล้ว → ตัดสินตามปกติ (ไม่ใส่ `NOT_ANCHORED`)
 - batch `CONFIRMED` ที่ root ไม่ตรง → ยัง `TAMPERED` ตามเดิม
 
+**ข้อจำกัด (ยังไม่แก้ — ตั้งใจ):** anchor สำเร็จแต่ commit ฝั่ง DB ล้ม (เช่น เขียน snapshot ไม่ได้) → batch เป็น `FAILED`
+มี root จริงบน chain แต่ไม่มี mapping (log ชุดนั้นถูก seal ใหม่ใน batch ถัดไป) → ไม่เข้าเงื่อนไข `NOT_ANCHORED`
+เพราะ chain มี root แล้ว → `currentRoot: null` ≠ `chainRoot` → ได้ **`TAMPERED`** ทั้งที่ log ไม่ได้ถูกแก้
+เกิดได้เฉพาะ DB ล้มหลังส่ง tx (ไม่ใช่กรณีเงินหมด) · cloud ไม่มี batch แบบนี้ (FAILED 1,161 ใบไม่มี tx ทุกใบ) ·
+ดูว่าใช่กรณีนี้ไหม: status `FAILED` + `mappedLogs: 0` + `chainRoot` ไม่เป็นศูนย์ · เทสต์: `test/tamper-diff.integration.spec.ts`
+("a snapshot that cannot be written leaves no mapping")
+
 ```json
 {
   "batchId": "ed34ebe2-a1b6-454a-98cf-971f08b020ed",
