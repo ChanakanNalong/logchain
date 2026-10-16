@@ -347,10 +347,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="LogChain VPS log forwarder")
     ap.add_argument("--config", default=os.environ.get("LOGCHAIN_FORWARDER_ENV", "/etc/logchain-forwarder.env"))
     ap.add_argument("--dry-run", action="store_true", help="พิมพ์ payload แทนการส่ง")
+    ap.add_argument("--stats", action="store_true",
+                    help="อ่าน log ย้อนหลังแล้วพิมพ์สรุป (ไม่ส่ง ไม่เขียน state)")
+    ap.add_argument("--since-hours", type=int, default=24, help="ช่วงย้อนหลังของ journald สำหรับ --stats")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     cfg = load_config(a.config)
+    if a.stats:
+        from .stats import run as run_stats  # noqa: PLC0415
+
+        return run_stats(cfg, a.since_hours)
     dry = a.dry_run or truthy(cfg["DRY_RUN"])
     if not dry and not (cfg["LOGCHAIN_API_URL"] and cfg["LOGCHAIN_TOKEN_URL"] and cfg["LOGCHAIN_CLIENT_SECRET"]):
         log.error("LOGCHAIN_API_URL / LOGCHAIN_TOKEN_URL / LOGCHAIN_CLIENT_SECRET required (%s)", a.config)
