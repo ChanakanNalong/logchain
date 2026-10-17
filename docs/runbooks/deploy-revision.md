@@ -39,12 +39,12 @@ cp .env ~/logchain-env-backup-$D.env && chmod 600 ~/logchain-env-backup-$D.env
 | `SEAL_BATCH_SIZE` | `500` | 30 นาที × 300 log/ชม. = 150 log → 1 tx ต่อรอบ (ดู docs/bench-anchor.md) |
 | `SEAL_MIN_BALANCE_TX` | `5` | ยอดไม่พอจ่าย storeRoot 5 ครั้ง → ไม่สร้าง batch + alert `WALLET_LOW_BALANCE` |
 | `BLOCKCHAIN_EXPLORER_TX_URL` | `https://amoy.polygonscan.com/tx/` | ลิงก์ `polygonscanUrl` |
-| `PRICE_POL_ETH` | `0.0000419` | มูลค่า POL → ETH ใน `/batches/:id/tree` (ไม่ใช่ gas บน Ethereum) |
-| `PRICE_POL_THB` | `3.32` | มูลค่า POL → บาท |
+| `PRICE_POL_ETH` | `0.0000395` | มูลค่า POL → ETH ใน `/batches/:id/tree` (ไม่ใช่ gas บน Ethereum) |
+| `PRICE_POL_THB` | `3.21` | มูลค่า POL → บาท |
 | `PRICE_AS_OF` | `2026-10-15` | วันที่ของราคา (แสดงใน `cost.rates.asOf`) |
 
-ที่มาของราคา (2026-10-15): POL ≈ $0.0989 (MetaMask, 14 ต.ค.) · ETH ≈ $2,362.68 (MetaMask, 15 ต.ค.) · USD/THB ≈ 33.566 (Pluang mid-market, 15 ต.ค.)
-→ POL/ETH = 0.0989 / 2362.68 ≈ 0.0000419 · POL/THB = 0.0989 × 33.566 ≈ 3.32 · **อัปเดตเองเมื่อราคาเปลี่ยน** (ไม่ดึงสด)
+ที่มาของราคา (2026-10-15, CoinGecko history API `coins/polygon-ecosystem-token/history?date=15-10-2026`): POL = $0.095396 · POL→ETH = 0.000039475 · POL→THB = 3.20747
+→ ปัดเป็นเลขนัยสำคัญ 3 ตัว: `PRICE_POL_ETH` = 0.0000395 · `PRICE_POL_THB` = 3.21 · **อัปเดตเองเมื่อราคาเปลี่ยน** (ไม่ดึงสด)
 POL บน Amoy เป็น testnet ไม่มีมูลค่าจริง — ตัวเลขนี้คือ "ถ้าจ่ายด้วย POL จริงจะเท่าไร"
 
 ค่าที่มีอยู่แล้วและต้องถูก: `BLOCKCHAIN_RPC_URL` (Amoy) · `CONTRACT_ADDRESS` · `BLOCKCHAIN_MAX_PRIORITY_FEE_GWEI=50`
