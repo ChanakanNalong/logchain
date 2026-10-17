@@ -36,6 +36,10 @@ NGINX = {
     "probe_git": '192.0.2.8 - - [15/Oct/2026:21:00:05 +0700] "GET /.git/config HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     "probe_wp": '192.0.2.8 - - [15/Oct/2026:21:00:06 +0700] "POST /wp-login.php HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     "probe_wpadmin": '192.0.2.8 - - [15/Oct/2026:21:00:06 +0700] "GET /wp-admin/setup-config.php HTTP/1.1" 403 0 "-" "Mozilla/5.0"',
+    # proxy ตัด ../ ทิ้งแล้ว → มาถึง origin เป็น /etc/passwd ตรง ๆ (ไม่มี .. ให้ TRAVERSAL จับ)
+    # status 200 = ไฟล์หลุดจริง ยิ่งต้องเตือน (sensitive-file ไม่ขึ้นกับ status ต่างจาก probe-path)
+    "sensitive_passwd": '198.51.100.3 - - [15/Oct/2026:21:00:08 +0700] "GET /etc/passwd HTTP/1.1" 200 1512 "-" "curl/8.0"',
+    "sensitive_shadow": '198.51.100.3 - - [15/Oct/2026:21:00:09 +0700] "GET /etc/shadow HTTP/1.1" 403 0 "-" "curl/8.0"',
 }
 # request ปกติ → INFO (HTTP_ALL_REQUESTS=true) · ทิ้งเมื่อ all_requests=False
 NGINX_NORMAL = [
@@ -43,6 +47,8 @@ NGINX_NORMAL = [
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /missing HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /.environment/status HTTP/1.1" 404 0 "-" "Mozilla/5.0"',
     '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /search?q=select+a+plan HTTP/1.1" 200 0 "-" "Mozilla/5.0"',
+    # "fetch" มี "etc" แต่ไม่ใช่ "/etc/" — SENSITIVE_FILE ต้องไม่จับ (ยัง INFO)
+    '203.0.113.9 - - [15/Oct/2026:21:00:07 +0700] "GET /fetch/report HTTP/1.1" 200 0 "-" "Mozilla/5.0"',
 ]
 # ไม่ใช่ access log / static asset → ทิ้งเสมอ
 NGINX_DROPPED = [
@@ -121,6 +127,19 @@ class AccessParserTest(unittest.TestCase):
         p = parse_access(NGINX["scanner"])
         self.assertEqual(p["message"], 'GET /.env 404 "Mozilla/5.0 zgrab/0.x"')
         self.assertEqual(p["sourceIp"], "203.0.113.5")
+
+    def test_sensitive_file_without_traversal_is_warning(self):
+        # reverse proxy normalize ../ ทิ้ง → /etc/passwd ไม่มี .. ให้ TRAVERSAL จับ
+        # แต่ยิงอ่านไฟล์ลับ = ต้อง WARNING (เดิมขึ้น INFO · กฎ 60002 ฝั่ง detection ยังจับได้)
+        from logchain_forwarder.parsers import TRAVERSAL, SENSITIVE_FILE
+        for name in ("sensitive_passwd", "sensitive_shadow"):
+            with self.subTest(name):
+                path = "/etc/passwd" if "passwd" in name else "/etc/shadow"
+                self.assertIsNone(TRAVERSAL.search(path))  # ไม่มี .. จริง
+                self.assertIsNotNone(SENSITIVE_FILE.search(path))
+                self.assertEqual(parse_access(NGINX[name])["severity"], "WARNING")
+        # /etc/shadow ส่งแม้ status 403 (ไม่ขึ้นกับ status) · /etc/passwd แม้ 200
+        self.assertEqual(parse_access(NGINX["sensitive_passwd"])["severity"], "WARNING")
 
     def test_normal_requests_are_info(self):
         for line in NGINX_NORMAL:

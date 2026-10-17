@@ -99,6 +99,12 @@ PROBE_PATH = re.compile(
     r"(?i)^/(?:\.env\b|\.git/|wp-admin\b|wp-login\.php|xmlrpc\.php|phpmyadmin|\.aws/|\.ssh/|server-status|"
     r"cgi-bin/|vendor/phpunit|actuator\b|boaform|HNAP1)"
 )
+# ไฟล์ระบบที่ไม่มีเว็บแอปไหนให้บริการ — reverse proxy มัก normalize `../../etc/passwd`
+# เหลือ `/etc/passwd` (ไม่มี `..` ให้ TRAVERSAL จับ) · ยิง path แบบนี้ = พยายามอ่านไฟล์ลับเสมอ
+SENSITIVE_FILE = re.compile(
+    r"(?i)/(?:etc/(?:passwd|shadow|gshadow|master\.passwd)|proc/self/(?:environ|cmdline)"
+    r"|windows/win\.ini|winnt/win\.ini)\b"
+)
 
 
 # ไม่ส่ง: IP ภายใน (เราเอง / container / health check จาก docker) — ไม่ใช่ผู้โจมตีจาก internet
@@ -149,6 +155,8 @@ def _suspicious(path: str, ua: str, status: int) -> Optional[str]:
         return "scanner-ua"
     if TRAVERSAL.search(path) or TRAVERSAL.search(decoded):
         return "traversal"
+    if SENSITIVE_FILE.search(path) or SENSITIVE_FILE.search(decoded):
+        return "sensitive-file"
     if SQLI.search(decoded):
         return "sqli"
     if SHELL_META.search(decoded):
