@@ -239,3 +239,19 @@ def _parse_caddy(line: str, trust_cf: bool, exclude=(), all_requests: bool = Tru
                              exclude_ua)
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+def is_cors_preflight(payload: Optional[dict]) -> bool:
+    """
+    CORS preflight = web-proxy OPTIONS ที่ตอบ 2xx และเป็น request ปกติ (severity INFO)
+    — browser ยิงก่อน request จริงทุกครั้ง ไม่ใช่หลักฐานอะไร → ตัดทิ้งเพื่อลด log/ค่า gas
+    OPTIONS ที่ไม่ใช่ 2xx (เช่น 403 โดน CORS block) หรือเข้า filter (WARNING) ไม่ใช่ preflight → ส่งตามเดิม
+    อ่าน method/status จาก message ที่ _http_payload สร้างเอง: '<METHOD> <path> <code> "<ua>"' (path ไม่มีช่องว่าง)
+    """
+    if not payload or payload.get("source") != HTTP_SOURCE or payload.get("severity") != "INFO":
+        return False
+    parts = (payload.get("message") or "").split(" ", 2)
+    if len(parts) < 3 or parts[0] != "OPTIONS":
+        return False
+    code = parts[2].split(" ", 1)[0]
+    return code.isdigit() and 200 <= int(code) < 300
