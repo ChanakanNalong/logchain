@@ -14,6 +14,7 @@ import { Card, SectionLabel, Badge } from "@/components/ui";
 import LogTable from "@/components/LogTable";
 import { api } from "@/lib/api";
 import { mapLog, unwrapLogs } from "@/lib/logRows";
+import { useAutoRefresh } from "@/lib/useAutoRefresh";
 
 /** Shape of GET /api/v1/stats/overview */
 interface Overview {
@@ -205,6 +206,21 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [range]);
 
+  // auto-refresh ทั้งหน้าทุก 60 วิ (KPI + recent logs + กราฟช่วงที่เลือกอยู่) แบบเงียบ:
+  // อัปเดตเฉพาะ state ข้อมูล ไม่แตะ loading/remount จึงคง range/scroll/การ์ดเดิมไว้
+  // throw ต่อให้ hook จับ = รอบที่พลาดไม่ขยับ "อัปเดตล่าสุด" และไม่ล้างข้อมูลเดิม
+  const { lastUpdated } = useAutoRefresh(async () => {
+    const [statsRes, logsRes, trafficRes] = await Promise.all([
+      api.get("/stats/overview"),
+      api.get("/logs", { params: { limit: 5 } }),
+      api.get("/stats/traffic", { params: { range } }),
+    ]);
+    setOverview(statsRes.data);
+    setRecentLogs(unwrapLogs(logsRes.data).slice(0, 5).map(mapLog));
+    setTraffic(trafficRes.data);
+    setTrafficError("");
+  }, 60_000);
+
   const placeholder = (text: string) => (
     <div style={{ color: t.muted, padding: 20, textAlign: "center", fontSize: 13 }}>{text}</div>
   );
@@ -301,6 +317,15 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
+      {/* อัปเดตล่าสุดจาก auto-refresh (60 วิ) — มุมขวาบน เล็ก ๆ */}
+      {lastUpdated && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: -8 }}>
+          <span style={{ fontSize: 11, color: t.muted, ...monoFont }}>
+            อัปเดตล่าสุด {lastUpdated.toLocaleTimeString()}
+          </span>
+        </div>
+      )}
+
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14 }}>
         {kpis.map((k) => (
