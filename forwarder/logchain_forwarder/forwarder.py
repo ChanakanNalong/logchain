@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 from typing import Callable, Optional
 
-from .parsers import parse_access, parse_journal_json, parse_networks, parse_sshd, parse_ua_list
+from .parsers import is_cors_preflight, parse_access, parse_journal_json, parse_networks, parse_sshd, parse_ua_list
 
 log = logging.getLogger("logchain-forwarder")
 
@@ -85,7 +85,7 @@ def truthy(v: str) -> bool:
 
 class Gate:
     """
-    ด่านก่อนเข้าคิว — rate cap แบบหน้าต่างเลื่อน 1 ชม. + dedup ข้อความซ้ำช่วงสั้น + ตัวนับที่ทิ้ง
+    ด่านก่อนเข้าคิว — ตัด CORS preflight + rate cap แบบหน้าต่างเลื่อน 1 ชม. + dedup ข้อความซ้ำช่วงสั้น + ตัวนับที่ทิ้ง
     INFO ใช้ได้ไม่เกิน per_hour - reserve_warning — คนกดเว็บถี่ ๆ (หรือผู้โจมตีปั่น request ปกติ) ดันบรรทัดโจมตีตกไม่ได้
     """
 
@@ -101,6 +101,10 @@ class Gate:
 
     def admit(self, payload: dict) -> bool:
         now = self.clock()
+        # CORS preflight (OPTIONS + 2xx, ไม่เข้า filter) — ตัดก่อน ไม่ให้กิน slot ของ dedup/rate cap
+        if is_cors_preflight(payload):
+            self.counts["dropped_preflight"] += 1
+            return False
         # sourceIp อยู่ใน key — ผู้เข้าเว็บ 2 คนเปิดหน้าเดียวกันพร้อมกันไม่ถูกรวมเป็นบรรทัดเดียว
         key = hashlib.sha256(
             f'{payload.get("source")}|{payload.get("sourceIp")}|{payload.get("message")}'.encode()

@@ -13,7 +13,7 @@ import urllib.error
 from pathlib import Path
 
 from logchain_forwarder.forwarder import ApiClient, Gate, Sender, State, follow_file, follow_journal, load_config
-from logchain_forwarder.parsers import parse_access, parse_journal_json, parse_sshd
+from logchain_forwarder.parsers import is_cors_preflight, parse_access, parse_journal_json, parse_sshd
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -280,6 +280,57 @@ class GateTest(unittest.TestCase):
         p = lambda ip: {"source": "web-proxy", "sourceIp": ip, "severity": "INFO", "message": 'GET / 200 "x"'}  # noqa: E731
         self.assertEqual([g.admit(p("203.0.113.5")), g.admit(p("198.51.100.9")), g.admit(p("203.0.113.5"))],
                          [True, True, False])
+
+
+class CorsPreflightTest(unittest.TestCase):
+    """OPTIONS + 2xx (CORS preflight) ถูกตัดที่ Gate และนับเป็น dropped_preflight
+    OPTIONS ที่ไม่ใช่ 2xx · request ปกติ · OPTIONS ที่เข้า filter — ยังส่งตามเดิม"""
+
+    def caddy(self, method, uri, status, ua="Mozilla/5.0"):
+        return json.dumps({
+            "logger": "http.log.access", "status": status,
+            "request": {"client_ip": "203.0.113.5", "method": method, "uri": uri,
+                        "headers": {"User-Agent": [ua]}},
+        })
+
+    def gate(self):
+        return Gate(per_hour=1000, dedup_seconds=0, clock=lambda: 0.0)
+
+    def test_options_2xx_is_dropped_as_preflight(self):
+        for status in (200, 204):
+            with self.subTest(status):
+                p = parse_access(self.caddy("OPTIONS", "/api/v1/logs", status))
+                self.assertEqual((p["source"], p["severity"]), ("web-proxy", "INFO"))
+                self.assertTrue(is_cors_preflight(p))
+                g = self.gate()
+                self.assertFalse(g.admit(p))  # ถูกทิ้ง
+                self.assertEqual(dict(g.counts), {"dropped_preflight": 1})  # ไม่กิน slot dedup/rate
+
+    def test_options_403_is_not_dropped(self):
+        # OPTIONS ที่โดน CORS block (403) = สัญญาณน่าสนใจ → ส่งตามเดิม ไม่นับ preflight
+        for status in (403, 401, 405, 301):
+            with self.subTest(status):
+                p = parse_access(self.caddy("OPTIONS", "/api/v1/logs", status))
+                self.assertFalse(is_cors_preflight(p))
+                g = self.gate()
+                self.assertTrue(g.admit(p))
+                self.assertEqual(g.counts["dropped_preflight"], 0)
+
+    def test_normal_get_is_not_dropped(self):
+        p = parse_access(self.caddy("GET", "/api/v1/logs", 200))
+        self.assertFalse(is_cors_preflight(p))
+        g = self.gate()
+        self.assertTrue(g.admit(p))
+        self.assertEqual(g.counts["dropped_preflight"], 0)
+
+    def test_suspicious_options_is_not_dropped(self):
+        # OPTIONS ที่มี pattern น่าสงสัย → WARNING แม้ status 2xx → ไม่ใช่ preflight → ส่งเสมอ
+        p = parse_access(self.caddy("OPTIONS", "/../../etc/passwd", 200, ua="curl/8.0"))
+        self.assertEqual(p["severity"], "WARNING")
+        self.assertFalse(is_cors_preflight(p))
+        g = self.gate()
+        self.assertTrue(g.admit(p))
+        self.assertEqual(g.counts["dropped_preflight"], 0)
 
 
 class FakeClient:
