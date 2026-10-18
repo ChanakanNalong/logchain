@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+# Hardhat test account #0 (0xf39Fd6e5…2266) — public deterministic key จาก Hardhat/Anvil ไม่ใช่ secret จริง
+[[allowlists]]
+description = "Public Hardhat test account #0 private key"
+regexes = ['''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''']
