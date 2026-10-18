@@ -12,6 +12,7 @@ import { fmtTime, shortId } from "@/lib/format";
 import { QUERY_KEYS, useReplaceQuery } from "@/lib/nav";
 import { canDo } from "@/lib/roles";
 import { useElementWidth } from "@/lib/useElementWidth";
+import { useAutoRefresh } from "@/lib/useAutoRefresh";
 import type { AlertDetail, AlertItem as AlertRow, AlertResolution } from "@/types/api";
 
 const ALL_STATUSES = "All statuses";
@@ -66,6 +67,16 @@ export default function Alerts() {
   }
 
   useEffect(() => { void load(); }, []);
+
+  // auto-refresh เงียบ ๆ ทุก 30 วิ: อัปเดตเมื่อสำเร็จ · โยน error ให้ hook จับเอง จึงไม่ล้างตารางเดิม
+  // ตอน network กระตุก (ต่างจาก load() ตอน mount ที่ตั้ง alerts=[] + error) — คง filter/แถวที่กาง/scroll ไว้
+  const refresh = useCallback(async () => {
+    const data = await getAlerts();
+    setAlerts(data);
+    setError("");
+  }, []);
+  // หยุดระหว่างฟอร์ม Resolve เปิดอยู่หรือกำลังพิมพ์ note (notingId != null) ไม่ให้ตารางขยับใต้มือ
+  const { lastUpdated } = useAutoRefresh(refresh, 30_000, { enabled: notingId === null });
 
   useEffect(() => {
     if (!linkedAlert) return;
@@ -227,7 +238,14 @@ export default function Alerts() {
 
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <SectionLabel>Alert triage</SectionLabel>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <SectionLabel>Alert triage</SectionLabel>
+            {lastUpdated && (
+              <span style={{ fontSize: 11, color: t.muted, ...monoFont }}>
+                อัปเดตล่าสุด {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <FilterDropdown value={status} onChange={setStatus} options={[ALL_STATUSES, "OPEN", "RESOLVED"]} />
             <FilterDropdown value={severity} onChange={setSeverity} options={severities} />
