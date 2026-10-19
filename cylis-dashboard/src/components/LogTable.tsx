@@ -145,9 +145,11 @@ export default function LogTable({ logs, showChain = false, onRowClick }: LogTab
               <Td>{r.source}</Td>
               <Td style={{ ...monoFont }}>{r.ip}</Td>
               {/* one line; the full message is in the tooltip and the drawer.
-                  max-width on a <td> is not reliable in auto table layout — cap a div instead */}
+                  max-width on a <td> is not reliable in auto table layout — cap a div instead.
+                  `pre`, not `nowrap`: runs of spaces stay as they are, so a copied message
+                  still matches the log it came from in the search box */}
               <Td>
-                <div title={r.event} style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div title={r.event} style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" }}>
                   {r.event}
                 </div>
               </Td>

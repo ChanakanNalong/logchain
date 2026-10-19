@@ -207,13 +207,14 @@ export default function App() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 22px" }}>
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 7,
-                  background: `linear-gradient(135deg,${theme.blue},${theme.cyan})`,
-                }}
+              {/* public/logchain-logo-dark@2x.png (810×510): the logo cropped to the mark, white
+                  made transparent and the navy link lightened — the sidebar is dark in both themes */}
+              <img
+                src="/logchain-logo-dark@2x.png"
+                alt="LogChain"
+                width={38}
+                height={24}
+                style={{ display: "block", width: 38, height: 24, flexShrink: 0 }}
               />
               <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.01em", color: "#f1f5f9", ...sansFont }}>
                 Cylis

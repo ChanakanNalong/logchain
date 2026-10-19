@@ -5,6 +5,7 @@
  * views handle them exactly like real API failures.
  */
 import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, BatchTree, LogAlertRef, LogDetail, LogProofResult, LogsPage, LogsQuery } from "@/types/api";
+import { normalizeSearch } from "@/lib/searchText";
 import { MOCK_ALERTS, MOCK_LOGS } from "./data";
 import { MOCK_BATCH_LIST, buildDiff, diffChainIsDown } from "./batches";
 import { buildProof, buildTree, treeChainIsDown } from "./trees";
@@ -36,7 +37,8 @@ export async function getLogs(query: LogsQuery): Promise<LogsPage> {
   if (!Number.isInteger(offset) || offset < 0) {
     throw httpError(400, ["offset must not be less than 0"], "Bad Request");
   }
-  const q = query.q?.toLowerCase();
+  // same cleaning as the search box (lib/searchText.ts), then a case-insensitive substring like ILIKE
+  const q = normalizeSearch(query.q ?? "").toLowerCase();
   const inList = (list: string[] | undefined, v: string) => !list?.length || list.includes(v);
   const rows = MOCK_LOGS.map((l) => l.item).filter(
     (l) =>
