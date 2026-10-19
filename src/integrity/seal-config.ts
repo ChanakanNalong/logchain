@@ -116,8 +116,10 @@ export class SealSkippedError extends Error {
   }
 }
 
-/** เหตุผลที่ seal (ใช้ใน log + เก็บลง batches.seal_reason) */
+/** เหตุผลที่ hybrid สั่ง seal (ใช้ใน log + เก็บลง batches.seal_reason) */
 export type SealTrigger = 'count' | 'age';
+/** เหตุผลของการ seal ที่เก็บลง batches.seal_reason · null = batch ก่อนมีคอลัมน์นี้ */
+export type SealReason = SealTrigger | 'manual' | 'cron';
 /** เหตุผลที่ข้ามรอบ hybrid */
 export type SealSkipReason = 'idle' | 'in_flight' | 'backoff';
 

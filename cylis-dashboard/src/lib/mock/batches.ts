@@ -44,9 +44,11 @@ function listItem(
   confirmedAt: string | null,
   gas: Gas,
   hasSnapshot = true,
+  sealReason: BatchListItem["sealReason"] = "cron",
 ): BatchListItem {
   return {
     id, merkleRoot, txHash, blockNumber, polygonscanUrl, status, logCount, sealedAt, confirmedAt,
+    sealReason,
     ifAnomaly: null, ifScore: null, ifReason: null, ifScoredAt: null,
     hasSnapshot,
     gasUsed: gas?.gasUsed ?? null,

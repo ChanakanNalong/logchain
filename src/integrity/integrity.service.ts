@@ -22,6 +22,7 @@ import {
   SealSkippedError,
   decideSeal,
   SealTrigger,
+  SealReason,
 } from './seal-config';
 import { readIfMode, IfMode } from './if-mode';
 
@@ -57,6 +58,7 @@ interface BatchListRow {
   effective_gas_price: string | number | null;
   status: string;
   log_count: number;
+  seal_reason: string | null;
   sealed_at: Date;
   confirmed_at: Date | null;
   if_anomaly: boolean | null;
@@ -142,9 +144,9 @@ export class IntegrityService {
    * ทำงานได้โดยไม่ต้องมี blockchain: ถ้า chain ไม่พร้อมจะปิด batch เป็น SEALED
    * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
-  sealBatch(): Promise<Batch | null> {
+  sealBatch(reason: SealReason = 'cron'): Promise<Batch | null> {
     const run = this.sealQueue
-      .then(() => this.sealBatchNow())
+      .then(() => this.sealBatchNow(reason))
       .then(
         (batch) => {
           if (batch) this.recordSealOutcome(batch.status !== 'FAILED');
@@ -319,13 +321,12 @@ export class IntegrityService {
     reason: SealTrigger,
     maxBatches: number,
   ): Promise<SealRunResult> {
-    void reason; // ผูกเป็น seal_reason ใน commit ถัดไป — รอบนี้ reason อยู่ใน log ของ tick แล้ว
     const batches: Batch[] = [];
     const cap = Math.min(maxBatches, MAX_BATCHES_PER_TICK);
     for (let i = 0; i < cap; i++) {
       let batch: Batch | null;
       try {
-        batch = await this.sealBatch();
+        batch = await this.sealBatch(reason);
       } catch (err) {
         if (err instanceof SealSkippedError) {
           return { batches, skipped: err.reason };
@@ -460,7 +461,7 @@ export class IntegrityService {
     }
   }
 
-  private async sealBatchNow(): Promise<Batch | null> {
+  private async sealBatchNow(reason: SealReason): Promise<Batch | null> {
     // 1. หา log_id ที่ถูก map แล้ว (เพื่อ exclude)
     const mapped = await this.mappingRepo.find({ select: { logId: true } });
     const mappedIds = mapped.map((m) => m.logId);
@@ -490,6 +491,7 @@ export class IntegrityService {
         merkleRoot: root.replace('0x', ''),
         logCount: pendingLogs.length,
         status: 'PENDING',
+        sealReason: reason,
       }),
     );
 
@@ -1069,7 +1071,7 @@ export class IntegrityService {
 
     const rows: BatchListRow[] = await this.batchesRepo.query(
       `SELECT b.id, b.merkle_root, b.tx_hash, b.block_number, b.gas_used, b.effective_gas_price,
-              b.status, b.log_count,
+              b.status, b.log_count, b.seal_reason,
               b.sealed_at, b.confirmed_at, b.if_anomaly, b.if_score, b.if_reason, b.if_scored_at,
               EXISTS (SELECT 1 FROM batch_log_snapshot s WHERE s.batch_id = b.id) AS has_snapshot,
               COUNT(*) OVER () AS total
@@ -1106,6 +1108,8 @@ export class IntegrityService {
         polygonscanUrl: explorerTxUrl(r.tx_hash),
         status: r.status,
         logCount: r.log_count,
+        // เหตุผลที่ปิด batch: count | age | manual | cron · null = ปิดก่อนมีคอลัมน์นี้
+        sealReason: r.seal_reason,
         sealedAt: new Date(r.sealed_at),
         confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
         // ผลจำแนก Isolation Forest (ระดับที่ 3) · ifStatus = active | calibrating

@@ -168,6 +168,8 @@ export interface BatchListItem {
   logCount: number;
   sealedAt: string;
   confirmedAt: string | null;
+  /** why the batch was sealed: count | age | manual | cron · null = sealed before the column existed */
+  sealReason?: "count" | "age" | "manual" | "cron" | null;
   /** Isolation Forest mode: "calibrating" hides the verdict (ifAnomaly/score/reason null) while the model retrains on real traffic */
   ifStatus?: "active" | "calibrating" | null;
   ifAnomaly?: boolean | null;

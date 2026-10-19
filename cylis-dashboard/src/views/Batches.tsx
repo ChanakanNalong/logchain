@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { useTheme, monoFont, sansFont, type Theme } from "@/theme";
-import { Card, SectionLabel, Button, FilterDropdown, Th, Td } from "@/components/ui";
+import { Card, SectionLabel, Button, FilterDropdown, Th, Td, Badge } from "@/components/ui";
 import BatchStatusBadge from "@/components/BatchStatusBadge";
 import BatchDiffDrawer, { type DiffState } from "@/components/BatchDiffDrawer";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
@@ -34,6 +34,14 @@ function stickyRight(t: Theme) {
 function splitList(v: string | null): string[] {
   return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
 }
+
+// เหตุผลที่ batch ถูกปิด (hybrid: count/age · manual: seal-now · cron: รอบเวลา) · NULL = ไม่แสดง
+const SEAL_REASON_META: Record<string, { tone: string; title: string }> = {
+  count: { tone: "blue", title: "ปิดเพราะ log ค้างครบ batch size" },
+  age: { tone: "warn", title: "ปิดเพราะ log เก่าสุดค้างเกินเวลาที่ตั้งไว้" },
+  manual: { tone: "cyan", title: "ปิดด้วยปุ่ม Seal ทันที (admin)" },
+  cron: { tone: "neutral", title: "ปิดตามรอบเวลา (SEAL_CRON)" },
+};
 
 function listError(e: any): string {
   const status = e?.response?.status;
@@ -290,7 +298,16 @@ export default function Batches() {
                     return (
                       <tr key={b.id}>
                         <Td style={{ ...monoFont }}><IdCell id={b.id} /></Td>
-                        <Td><BatchStatusBadge status={b.status} /></Td>
+                        <Td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <BatchStatusBadge status={b.status} />
+                            {b.sealReason && SEAL_REASON_META[b.sealReason] && (
+                              <Badge tone={SEAL_REASON_META[b.sealReason].tone} title={SEAL_REASON_META[b.sealReason].title}>
+                                {b.sealReason}
+                              </Badge>
+                            )}
+                          </div>
+                        </Td>
                         <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{fmtTime(b.sealedAt)}</Td>
                         <Td style={{ textAlign: "right", ...monoFont }}>{b.logCount.toLocaleString()}</Td>
                         <Td style={{ textAlign: "right", ...monoFont }}>{fmtInt(b.gasUsed)}</Td>
