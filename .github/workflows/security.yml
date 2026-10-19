@@ -59,11 +59,18 @@ jobs:
       - name: ClamAV (blocking)
         if: ${{ !cancelled() }}
         run: |
-          git ls-files > "$RUNNER_TEMP/files.lst"
+          # core.quotePath=false + -z: ชื่อไฟล์ non-ASCII (เช่น .md ชื่อไทย) ออกมาดิบ คั่นด้วย NUL
+          # เดิม `git ls-files` escape ชื่อเป็น octal + ใส่ quote -> clamscan เปิด path ไม่ได้ -> exit 2
+          # (scan error ทั้งที่ไม่มีมัลแวร์) · ไฟล์ที่สแกนยังเป็นชุดเดิม (ทุกไฟล์ที่ git track)
+          git -c core.quotePath=false ls-files -z > "$RUNNER_TEMP/files.lst"
+          echo "tracked files to scan: $(tr -cd '\0' < "$RUNNER_TEMP/files.lst" | wc -c)"
+          # xargs -0 อ่าน NUL · -r ไม่รัน clamscan ถ้า list ว่าง · อาจแบ่งเรียกหลายรอบตาม ARG_MAX
+          # xargs คืน 123 ถ้ารอบใด clamscan ออก 1 (เจอมัลแวร์) หรือ 2 (error) -> docker run ไม่ใช่ 0 -> job แดง
+          # (bash -e ของ step ทำให้ล้มทันที · ไม่มี || true / continue-on-error)
           docker run --rm -v "$PWD":/scan:ro -v "$RUNNER_TEMP/files.lst":/files.lst:ro -w /scan \
             clamav/clamav:stable sh -c '
               freshclam --stdout --quiet || echo "::warning::freshclam ไม่ได้ — ใช้ฐานข้อมูลที่มากับ image"
-              clamscan --infected --file-list=/files.lst'
+              xargs -0 -r clamscan --infected < /files.lst'
 
       # ── ด่านที่ทำให้ build แดงจริง ──
       # secret หลุดเข้า repo คือเคสที่เกิดมาแล้ว (.env backup ถูก commit ขึ้น public

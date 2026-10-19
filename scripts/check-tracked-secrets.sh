@@ -4,7 +4,9 @@
 # (พิสูจน์แล้วกับไฟล์ .env.bak ที่หลุดขึ้น public repo จริง — Trivy เงียบสนิท)
 set -uo pipefail
 
-bad=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.(pem|key|p12|jks|keystore)$' \
+# core.quotePath=false: ชื่อไฟล์ non-ASCII ออกมาดิบ (ไม่ octal-escape/ใส่ quote) ไม่งั้น secret ที่ชื่อ
+# มีอักขระ non-ASCII + ลงท้าย .key/.pem ฯลฯ อาจหลุด filter เพราะ `\.key$` ไม่แมตช์ (มี quote ต่อท้าย)
+bad=$(git -c core.quotePath=false ls-files | grep -E '(^|/)\.env($|\.)|\.(pem|key|p12|jks|keystore)$' \
       | grep -vE '\.(example|template|sample)$|\.env\.example$' || true)
 
 if [ -n "$bad" ]; then
