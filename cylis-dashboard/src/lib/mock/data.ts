@@ -258,6 +258,13 @@ const SEEDS: Seed[] = [
     // ever shows a PENDING batch — these stay unsealed (batchStatus null)
     batch: null,
   })),
+  // syslog line with a double space ("Oct  5") — copy it from the table and search for it
+  {
+    key: "syslog-disconnect", minutesAgo: 3, source: "vps-sshd", sourceIp: "203.0.113.5",
+    eventType: "SSH_AUTH", severity: "INFO",
+    message: "Oct  5 10:12:01 vps sshd[812]: Received disconnect from 203.0.113.xxx port 52611:11: Bye Bye [preauth]",
+    batch: null,
+  },
   {
     key: "ssh-invalid", minutesAgo: 1, source: "vps-sshd", sourceIp: "2001:db8::1",
     eventType: "SSH_AUTH", severity: "WARNING", message: "Invalid user oracle from 2001:db8::1 port 40022", batch: null,

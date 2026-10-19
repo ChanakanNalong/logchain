@@ -160,11 +160,18 @@ export default function LogDrawer({
   seed,
   onClose,
   diff: diffProp,
+  initialDetail,
 }: {
   /** null = closed */
   logId: string | null;
   seed?: LogDrawerSeed;
   onClose: () => void;
+  /**
+   * Detail the caller already fetched for this log (Logs: a pasted log ID) — used
+   * once instead of fetching again, since GET /logs/:id/detail reads the chain live.
+   * Retry / re-check still fetch.
+   */
+  initialDetail?: LogDetail | null;
   /**
    * The batch diff already on screen (opened on top of BatchDiffDrawer) — the
    * compare uses it and never fetches again. Left out (Logs, Alerts, Verify): the
@@ -180,6 +187,8 @@ export default function LogDrawer({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // which initialDetail was shown, and for which reloadKey — a re-check fetches, a strict-mode re-run does not
+  const usedInitial = useRef<{ detail: LogDetail; reloadKey: number } | null>(null);
   // ── compare with the seal-time snapshot ──
   const [compareOpen, setCompareOpen] = useState(false);
   const [ownDiff, setOwnDiff] = useState<(DiffLoad | { status: "ok"; data: BatchDiff }) & { batchId: string } | null>(null);
@@ -197,6 +206,17 @@ export default function LogDrawer({
 
   useEffect(() => {
     if (!logId) return;
+    const used = usedInitial.current;
+    if (
+      initialDetail && initialDetail.log.id === logId
+      && (!used || used.detail !== initialDetail || used.reloadKey === reloadKey)
+    ) {
+      usedInitial.current = { detail: initialDetail, reloadKey };
+      setLoaded(initialDetail);
+      setError("");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoaded(null);
     setError("");
@@ -210,6 +230,8 @@ export default function LogDrawer({
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
+    // initialDetail is read only when the log changes — a new object for the same log must not refetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logId, reloadKey]);
 
   // focus moves into the panel so Esc works right after opening
@@ -297,7 +319,8 @@ export default function LogDrawer({
   };
   // the last four only exist once the detail is here
   const DETAIL_ONLY: CompareKey[] = ["classification", "cdeScope", "retentionDays", "rawHash"];
-  const nowCopy: Partial<Record<CompareKey, string | null | undefined>> = { sourceIp: shown.sourceIp, rawHash: log?.rawHash };
+  // message copies exactly (spaces and all) — what the Logs search box needs to find it again
+  const nowCopy: Partial<Record<CompareKey, string | null | undefined>> = { sourceIp: shown.sourceIp, message: shown.message, rawHash: log?.rawHash };
 
   const nowField = (f: (typeof COMPARE_FIELDS)[number]) => {
     if (!log && DETAIL_ONLY.includes(f.key)) return null;
