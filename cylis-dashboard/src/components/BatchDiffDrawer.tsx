@@ -439,7 +439,7 @@ export default function BatchDiffDrawer({
       </div>
 
       {/* rendered last so it stacks above this drawer */}
-      <LogDrawer logId={openLog} onClose={closeLog} />
+      <LogDrawer logId={openLog} onClose={closeLog} diff={d} />
     </div>
   );
 }

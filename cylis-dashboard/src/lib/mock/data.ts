@@ -104,6 +104,10 @@ export const MOCK_BATCHES = {
   // the usual tamper case: a row was edited after seal (caught by its raw hash)
   // while the stored root was left alone — so the stored root still matches the chain
   tampered: batch("tampered", "TAMPERED", 35, { anchored: true, chain: "match" }),
+  // every kind of change in one batch, for the "at seal | now" compare (lib/mock/batches.ts):
+  // content edited with and without re-hashing, hash only, row deleted, mapping deleted,
+  // a log inserted, one log left alone — the stored root still matches the chain
+  tamperedFull: batch("tampered-full", "TAMPERED", 31, { anchored: true, chain: "match" }),
   // status from an older round disagrees with the live check → drawer shows the "recheck" note
   confirmedMismatch: batch("confirmed-mismatch", "CONFIRMED", 25, { anchored: true, chain: "mismatch" }),
   // tx was sent but verify found no root on chain (backend `MISSING`)
@@ -130,6 +134,12 @@ interface Seed {
   cdeScope?: boolean;
   /** override the stored hash (a HASH_MODIFIED row in the batch diff mock) */
   rawHash?: string;
+}
+
+/** The same hash with a few digits rewritten — the HASH_MODIFIED row of tamperedFull */
+function rewriteHex(h: string): string {
+  const flip = (c: string) => ((parseInt(c, 16) + 7) % 16).toString(16);
+  return h.split("").map((c, i) => (i === 9 || i === 10 || i === 11 || i === 40 || i === 63 ? flip(c) : c)).join("");
 }
 
 const BRUTE_IP = "203.0.113.5";
@@ -190,6 +200,43 @@ const SEEDS: Seed[] = [
     key: "inserted", minutesAgo: 34, seconds: 40, source: "app-svc-1", sourceIp: "10.0.4.30",
     eventType: "USER_ACTIVITY", severity: "INFO", message: "card_holders export approved by admin (ticket CHG-1042)",
     batch: "tampered",
+  },
+  // ── tamperedFull: lib/mock/batches.ts holds the seal-time values ──
+  // untouched since seal
+  {
+    key: "tf-ok", minutesAgo: 33, source: "pos-gw-2", sourceIp: "10.0.6.11",
+    eventType: "PAYMENT_AUTH", severity: "INFO", message: "authorization approved at terminal T-0442 (1,250.00 THB)",
+    batch: "tamperedFull", cdeScope: true,
+  },
+  // edited and re-hashed: sourceIp → null, severity, message, cdeScope / classification
+  {
+    key: "tf-multi", minutesAgo: 33, seconds: 10, source: "pos-gw-2", sourceIp: null,
+    eventType: "PAYMENT_AUTH", severity: "INFO", message: "authorization retried at terminal T-0442",
+    batch: "tamperedFull",
+  },
+  // edited without touching raw_hash: sourceIp null → value, message
+  {
+    key: "tf-content", minutesAgo: 33, seconds: 20, source: "report-svc", sourceIp: "198.51.100.23",
+    eventType: "DATA_EXPORT", severity: "WARNING", message: "export of settlement_report.csv cancelled by user mchan",
+    batch: "tamperedFull",
+  },
+  // only raw_hash rewritten (a few hex digits) — content as sealed
+  {
+    key: "tf-hash", minutesAgo: 33, seconds: 30, source: "auth-service", sourceIp: "10.0.6.20",
+    eventType: "AUTH_SUCCESS", severity: "INFO", message: "login ok for user ops-admin (mfa)",
+    batch: "tamperedFull", rawHash: rewriteHex(hex("raw:tf-hash")),
+  },
+  // the row is still here but its mapping to the batch was deleted (DELETED · MAPPING_MISSING)
+  {
+    key: "tf-mapping", minutesAgo: 32, source: "app-svc-2", sourceIp: "10.0.6.40",
+    eventType: "CONFIG_CHANGE", severity: "WARNING", message: "firewall rule fw-17 (allow 0.0.0.0/0 to 10.0.6.0/24:22) added by ops-bot",
+    batch: null,
+  },
+  // not in the snapshot, mapped to the batch later (UNMAPPED_OR_INSERTED)
+  {
+    key: "tf-inserted", minutesAgo: 32, seconds: 40, source: "app-svc-2", sourceIp: "10.0.6.40",
+    eventType: "CONFIG_CHANGE", severity: "INFO", message: "firewall change CHG-2077 approved by security team",
+    batch: "tamperedFull",
   },
   ...Array.from({ length: 8 }, (_, i): Seed => ({
     key: `web-${i}`, minutesAgo: 30 - i, source: "app-web-1", sourceIp: `192.0.2.${10 + i}`,
@@ -265,6 +312,16 @@ export const TAMPERED_SEALED_RAW = {
   deleted: hex("raw:deleted"),
 };
 
+/** raw_hash values of tamperedFull at seal, in seal order (createdAt ASC) */
+export const TAMPERED_FULL_SEALED_RAW = {
+  ok: hex("raw:tf-ok"),
+  multi: hex("raw:tf-multi:sealed"),
+  content: hex("raw:tf-content"),
+  hash: hex("raw:tf-hash"),
+  mapping: hex("raw:tf-mapping"),
+  deleted: hex("raw:tf-deleted"),
+};
+
 /** Leaves in seal order (createdAt ASC, id ASC) of the logs mapped to a batch now */
 export function mappedLeaves(batchId: string): { logId: string; rawHash: string }[] {
   return MOCK_LOGS.map((l) => l.item)
@@ -283,6 +340,11 @@ function finalizeBatchRoots() {
     if (key === "tampered") {
       // seal order: scan-sqli, priv-esc, card, deleted
       sealed = [hex("raw:scan-sqli"), TAMPERED_SEALED_RAW.privEsc, TAMPERED_SEALED_RAW.card, TAMPERED_SEALED_RAW.deleted];
+    }
+    if (key === "tamperedFull") {
+      // seal order: tf-ok, tf-multi, tf-content, tf-hash, tf-mapping, tf-deleted
+      const r = TAMPERED_FULL_SEALED_RAW;
+      sealed = [r.ok, r.multi, r.content, r.hash, r.mapping, r.deleted];
     }
     const root = buildLayers(sealed).root;
     if (!root) continue; // no logs mapped (PENDING) — keep the placeholder root
