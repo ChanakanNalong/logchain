@@ -9,7 +9,33 @@
  * Mock mode still signs in through Keycloak; roles come from the real token.
  */
 import { api } from "@/lib/api";
-import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, BatchTree, LogDetail, LogProofResult, LogsPage, LogsQuery } from "@/types/api";
+import type { AlertDetail, AlertItem, BatchDiff, BatchesPage, BatchesQuery, BatchStatus, BatchTree, LogDetail, LogProofResult, LogsPage, LogsQuery } from "@/types/api";
+
+/** POST /logs/seal-now — on success the sealed batch, or { message } when nothing was pending */
+export interface SealNowResult {
+  message?: string;
+  id?: string;
+  status?: BatchStatus;
+  logCount?: number;
+  merkleRoot?: string;
+}
+/** POST /logs/verify-now */
+export interface VerifyNowResult {
+  ok: boolean;
+  verifiedAt: string;
+}
+
+/** POST /logs/seal-now — admin: seal pending logs now + anchor on-chain (costs real gas) */
+export async function sealNow(): Promise<SealNowResult> {
+  const r = await api.post<SealNowResult>("/logs/seal-now");
+  return r.data;
+}
+
+/** POST /logs/verify-now — admin: re-anchor + verify integrity now (no gas) */
+export async function verifyNow(): Promise<VerifyNowResult> {
+  const r = await api.post<VerifyNowResult>("/logs/verify-now");
+  return r.data;
+}
 
 /** For a "mock data" marker in the UI */
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
