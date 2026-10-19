@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { useTheme, monoFont, sansFont, type Theme } from "@/theme";
 import { Card, SectionLabel, Button, FilterDropdown, Th, Td } from "@/components/ui";
 import BatchStatusBadge from "@/components/BatchStatusBadge";
 import BatchDiffDrawer, { type DiffState } from "@/components/BatchDiffDrawer";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
 import { IdCell, PolygonscanLink } from "@/components/LogTable";
-import { getBatchDiff, getBatches } from "@/lib/endpoints";
-import { fmtGwei, fmtInt, fmtTime, polCost } from "@/lib/format";
+import { getBatchDiff, getBatches, sealNow, verifyNow } from "@/lib/endpoints";
+import { fmtGwei, fmtInt, fmtTime, polCost, shortId } from "@/lib/format";
+import { canDo } from "@/lib/roles";
 import { useReplaceQuery } from "@/lib/nav";
 import type { BatchListItem, BatchStatus } from "@/types/api";
 
@@ -146,6 +147,52 @@ export default function Batches() {
     setDiff(null);
   }, []);
 
+  // ── admin: สั่ง seal-now / verify-now (endpoint มีอยู่แล้ว, @Roles('admin')) ──
+  const canSealNow = canDo("sealNow");
+  const canVerifyNow = canDo("verifyNow");
+  const showAdminTools = canSealNow || canVerifyNow;
+  const [confirmSeal, setConfirmSeal] = useState(false);
+  const [actionRunning, setActionRunning] = useState<null | "seal" | "verify">(null);
+  const [actionMsg, setActionMsg] = useState("");
+  const [actionErr, setActionErr] = useState("");
+
+  const actionErrText = (e: any, verb: string) => {
+    const s = e?.response?.status;
+    if (s === 403) return `ต้องเป็น admin ถึงจะ${verb}ได้`;
+    if (s === 503) return "ยอดเงินในวอลเล็ตต่ำเกินไป ยังไม่ส่ง root ขึ้นเชน (เติม POL แล้วลองใหม่)";
+    return `${verb}ไม่สำเร็จ ลองใหม่อีกครั้ง`;
+  };
+
+  const doSeal = async () => {
+    setActionRunning("seal"); setActionErr(""); setActionMsg("");
+    try {
+      const r = await sealNow();
+      setActionMsg(
+        r.message ??
+          `Seal แล้ว: batch ${r.id ? shortId(r.id) : "?"} · ${r.status ?? "?"} · ${(r.logCount ?? 0).toLocaleString()} logs`,
+      );
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setActionErr(actionErrText(e, "Seal"));
+    } finally {
+      setActionRunning(null);
+      setConfirmSeal(false);
+    }
+  };
+
+  const doVerify = async () => {
+    setActionRunning("verify"); setActionErr(""); setActionMsg("");
+    try {
+      const r = await verifyNow();
+      setActionMsg(`ตรวจ integrity แล้ว · ${r.verifiedAt ? fmtTime(r.verifiedAt) : "เรียบร้อย"}`);
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setActionErr(actionErrText(e, "Verify"));
+    } finally {
+      setActionRunning(null);
+    }
+  };
+
   const diffLoading = diff?.status === "loading";
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.floor(offset / limit) + 1;
@@ -166,6 +213,46 @@ export default function Batches() {
             />
           </div>
         </div>
+
+        {showAdminTools && (
+          <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+            {canSealNow && !confirmSeal && (
+              <Button
+                variant="subtle"
+                small
+                icon={PackageCheck}
+                disabled={!!actionRunning}
+                onClick={() => { setActionErr(""); setActionMsg(""); setConfirmSeal(true); }}
+                title="ปิด batch ของ log ที่ค้างทันที แล้ว anchor root ขึ้นบล็อกเชน (เสียค่า gas จริง)"
+              >
+                {actionRunning === "seal" ? "กำลัง Seal…" : "Seal ทันที"}
+              </Button>
+            )}
+            {canSealNow && confirmSeal && (
+              <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5, color: t.text, ...sansFont }}>
+                จะบันทึก root ลง blockchain ใช้ค่า gas ประมาณ 0.0023 POL ยืนยันไหม
+                <Button variant="primary" small disabled={!!actionRunning} onClick={doSeal}>
+                  {actionRunning === "seal" ? "กำลัง Seal…" : "ยืนยัน Seal"}
+                </Button>
+                <Button variant="ghost" small disabled={!!actionRunning} onClick={() => setConfirmSeal(false)}>ยกเลิก</Button>
+              </span>
+            )}
+            {canVerifyNow && (
+              <Button
+                variant="subtle"
+                small
+                icon={RefreshCw}
+                disabled={!!actionRunning}
+                onClick={doVerify}
+                title="re-anchor batch ที่ค้าง + ตรวจ integrity ของทุก batch ทันที (ไม่เสียค่า gas)"
+              >
+                {actionRunning === "verify" ? "กำลัง Verify…" : "Verify ทันที"}
+              </Button>
+            )}
+            {actionMsg && <span style={{ fontSize: 12, color: t.good, ...sansFont }}>{actionMsg}</span>}
+            {actionErr && <span style={{ fontSize: 12, color: t.danger, ...sansFont }}>{actionErr}</span>}
+          </div>
+        )}
 
         {error ? (
           <div style={{ color: t.danger, padding: 20, textAlign: "center", fontSize: 13 }}>

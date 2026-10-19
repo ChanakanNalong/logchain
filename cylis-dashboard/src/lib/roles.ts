@@ -27,6 +27,10 @@ export const PAGE_ROLES: Record<string, readonly AppRole[]> = {
 export const ACTION_ROLES = {
   // PATCH /alerts/:id/resolve
   resolveAlert: ['operator', 'admin'],
+  // POST /logs/seal-now  (@Roles('admin'))
+  sealNow: ['admin'],
+  // POST /logs/verify-now  (@Roles('admin'))
+  verifyNow: ['admin'],
 } as const satisfies Record<string, readonly AppRole[]>;
 
 export type AppAction = keyof typeof ACTION_ROLES;
