@@ -272,7 +272,13 @@ export default function Batches() {
                 <thead>
                   <tr>
                     {["Batch", "Status", "Sealed at", "Logs", "Gas used", "POL / batch", "POL / log", "Tx"].map((h) => (
-                      <Th key={h}>{h}</Th>
+                      // คอลัมน์ตัวเลขชิดขวาให้ตรงกับค่าใน Td (ที่ใช้ textAlign:right)
+                      <Th
+                        key={h}
+                        style={["Logs", "Gas used", "POL / batch", "POL / log"].includes(h) ? { textAlign: "right" } : undefined}
+                      >
+                        {h}
+                      </Th>
                     ))}
                     <th style={stickyRight(t)} />
                   </tr>

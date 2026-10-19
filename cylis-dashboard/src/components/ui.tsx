@@ -119,7 +119,7 @@ export function Button({ children, variant = "primary", icon: Icon, onClick, sma
 }
 
 /** Table header cell */
-export function Th({ children }: any) {
+export function Th({ children, style }: any) {
   const t = useTheme();
   return (
     <th
@@ -132,6 +132,8 @@ export function Th({ children }: any) {
         letterSpacing: "0.08em",
         fontWeight: 600,
         ...sansFont,
+        // ผู้เรียกทับ align/อื่น ๆ ได้ (เช่น หัวคอลัมน์ตัวเลขชิดขวาให้ตรงกับค่า) · ไม่ส่ง = เหมือนเดิม
+        ...style,
       }}
     >
       {children}

@@ -14,6 +14,7 @@ import { DetectionService } from './detection.service';
 import { isRawHashIntact, rawHashCanonical } from '../logs/services/log-hash';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { explorerTxUrl } from '../blockchain/explorer';
+import { formatDec, fromUnits } from '../common/decimal';
 import { ethers } from 'ethers';
 import { readSealConfig, SealConfig, SealSkippedError } from './seal-config';
 import { readIfMode, IfMode } from './if-mode';
@@ -46,6 +47,8 @@ interface BatchListRow {
   merkle_root: string;
   tx_hash: string | null;
   block_number: string | number | null;
+  gas_used: string | number | null;
+  effective_gas_price: string | number | null;
   status: string;
   log_count: number;
   sealed_at: Date;
@@ -941,7 +944,8 @@ export class IntegrityService {
     const filter = statuses.length ? statuses : null;
 
     const rows: BatchListRow[] = await this.batchesRepo.query(
-      `SELECT b.id, b.merkle_root, b.tx_hash, b.block_number, b.status, b.log_count,
+      `SELECT b.id, b.merkle_root, b.tx_hash, b.block_number, b.gas_used, b.effective_gas_price,
+              b.status, b.log_count,
               b.sealed_at, b.confirmed_at, b.if_anomaly, b.if_score, b.if_reason, b.if_scored_at,
               EXISTS (SELECT 1 FROM batch_log_snapshot s WHERE s.batch_id = b.id) AS has_snapshot,
               COUNT(*) OVER () AS total
@@ -968,6 +972,13 @@ export class IntegrityService {
         merkleRoot: r.merkle_root,
         txHash: r.tx_hash,
         blockNumber: r.block_number === null ? null : Number(r.block_number),
+        // pg คืน bigint เป็น string อยู่แล้ว — polCost ฝั่งหน้า (toUnits) รับ string ได้
+        gasUsed: r.gas_used,
+        // DB เก็บ effective_gas_price เป็น wei → หน้าเว็บคาด gwei (เหมือน /tree) แปลงเป็นทศนิยม exact
+        effectiveGasPriceGwei:
+          r.effective_gas_price == null
+            ? null
+            : formatDec(fromUnits(BigInt(r.effective_gas_price), 9)),
         polygonscanUrl: explorerTxUrl(r.tx_hash),
         status: r.status,
         logCount: r.log_count,

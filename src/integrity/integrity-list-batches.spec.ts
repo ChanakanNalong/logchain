@@ -25,12 +25,15 @@ const ROW = {
   if_reason: 'batch ผิดปกติ (Isolation Forest): IP ต้นทาง 2 IP',
   if_scored_at: new Date('2026-10-16T04:17:06Z'),
   has_snapshot: true,
+  // pg คืน bigint เป็น string · effective_gas_price เก็บเป็น wei (30 gwei)
+  gas_used: '78156',
+  effective_gas_price: '30000000063',
   total: 1,
 };
 
-function makeService(): IntegrityService {
+function makeService(rows: unknown[] = [ROW]): IntegrityService {
   const batchesRepo = {
-    query: jest.fn().mockResolvedValue([ROW]),
+    query: jest.fn().mockResolvedValue(rows),
   } as unknown as Repository<Batch>;
   return new IntegrityService(
     {} as Repository<Log>,
@@ -72,5 +75,22 @@ describe('IntegrityService.listBatches — IF_MODE', () => {
     });
     // ยังบอกได้ว่าประเมินไปแล้วเมื่อไหร่ (เก็บไว้ retrain) — แค่ไม่เปิดเผยคำตัดสิน
     expect(r.items[0].ifScoredAt).toBeInstanceOf(Date);
+  });
+
+  it('exposes gasUsed (string) and effectiveGasPriceGwei (wei → gwei, exact)', async () => {
+    const r = await makeService().listBatches({});
+    expect(r.items[0]).toMatchObject({
+      gasUsed: '78156',
+      // 30000000063 wei = 30.000000063 gwei (ทศนิยม exact ไม่ปัดทิ้ง)
+      effectiveGasPriceGwei: '30.000000063',
+    });
+  });
+
+  it('gasUsed / effectiveGasPriceGwei เป็น null เมื่อ batch ไม่มีค่า gas (ไม่มี tx / ยังไม่ backfill)', async () => {
+    const r = await makeService([
+      { ...ROW, gas_used: null, effective_gas_price: null },
+    ]).listBatches({});
+    expect(r.items[0].gasUsed).toBeNull();
+    expect(r.items[0].effectiveGasPriceGwei).toBeNull();
   });
 });
