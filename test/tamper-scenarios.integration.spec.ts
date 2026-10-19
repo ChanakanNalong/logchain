@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
+// ชุดทดลอง: อ่าน body ของ supertest และผล ds.query ซึ่งเป็น any โดยธรรมชาติ — ปิด unsafe-any เฉพาะไฟล์นี้
 /**
  * Tamper scenarios on environment hh — REAL Hardhat chain (127.0.0.1:8545) + hh Postgres.
  *
@@ -44,7 +46,8 @@ const describeHh = runHh ? describe : describe.skip;
 const RUN = randomBytes(3).toString('hex');
 const SOURCE = `tamper-exp-${RUN}`;
 const ALL_ROLES = 'admin,auditor,analyst,operator,ingestor';
-const OUT = process.env.TAMPER_RESULTS_FILE ?? join(tmpdir(), 'tamper-results.json');
+const OUT =
+  process.env.TAMPER_RESULTS_FILE ?? join(tmpdir(), 'tamper-results.json');
 
 interface LogRow {
   id: string;
@@ -66,12 +69,20 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
   let ds: DataSource;
   let batchId: string;
   let rows: LogRow[]; // 8 logs ของ batch เรียงตาม snapshot position 0..7
-  const results: Record<string, unknown> = { run: RUN, source: SOURCE, scenarios: [] };
+  const results: Record<string, unknown> = {
+    run: RUN,
+    source: SOURCE,
+    scenarios: [],
+  };
 
   const http = () => app.getHttpServer() as App;
-  const get = (p: string) => request(http()).get(p).set({ 'x-test-roles': ALL_ROLES });
+  const get = (p: string) =>
+    request(http()).get(p).set({ 'x-test-roles': ALL_ROLES });
   const post = (p: string, body?: unknown) =>
-    request(http()).post(p).set({ 'x-test-roles': ALL_ROLES }).send(body ?? {});
+    request(http())
+      .post(p)
+      .set({ 'x-test-roles': ALL_ROLES })
+      .send(body ?? {});
 
   /** ปิด trigger ชั่วคราวแล้ว ENABLE คืนเสมอใน finally (แม้ query ล้ม) */
   const noUpdate = async (fn: () => Promise<void>) => {
@@ -113,7 +124,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
   const proof = async (logId: string) => {
     const r = await get(`/api/v1/logs/${logId}/proof`);
     if (r.status !== 200) return { status: r.status };
-    return { status: 200, verify: r.body.verify, batchStatus: r.body.batch?.status };
+    return {
+      status: 200,
+      verify: r.body.verify,
+      batchStatus: r.body.batch?.status,
+    };
   };
   const diffNow = async () => {
     const r = await get(`/api/v1/batches/${batchId}/diff`);
@@ -132,11 +147,13 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
         position: c.position,
         type: c.type,
         reason: c.reason,
-        fields: (c.fields as Array<Record<string, unknown>> | undefined)?.map((f) => ({
-          field: f.field,
-          before: f.before,
-          after: f.after,
-        })),
+        fields: (c.fields as Array<Record<string, unknown>> | undefined)?.map(
+          (f) => ({
+            field: f.field,
+            before: f.before,
+            after: f.after,
+          }),
+        ),
       })),
     };
   };
@@ -154,7 +171,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
   const detailChainCheck = async (logId: string) => {
     const r = await get(`/api/v1/logs/${logId}/detail`);
     return r.status === 200
-      ? { status: 200, proofVerified: r.body.proof?.verified, chainCheck: r.body.chainCheck }
+      ? {
+          status: 200,
+          proofVerified: r.body.proof?.verified,
+          chainCheck: r.body.chainCheck,
+        }
       : { status: r.status };
   };
 
@@ -166,7 +187,9 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     diff: await diffNow(),
     proofSubject: subjectId ? await proof(subjectId) : null,
     proofUntouched: await proof(rows[0].id),
-    detailSubjectChainCheck: subjectId ? await detailChainCheck(subjectId) : null,
+    detailSubjectChainCheck: subjectId
+      ? await detailChainCheck(subjectId)
+      : null,
     alerts: await alertsOf(),
   });
 
@@ -189,7 +212,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
       name,
       desc,
       observed,
-      restored: { verifyHttp: afterVerify, batchStatus: afterStatus, diffVerdict: afterDiff.verdict },
+      restored: {
+        verifyHttp: afterVerify,
+        batchStatus: afterStatus,
+        diffVerdict: afterDiff.verdict,
+      },
     });
   };
 
@@ -205,12 +232,18 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
         }>();
         const h = req.headers['x-test-roles'];
         if (h === undefined) throw new UnauthorizedException();
-        req.user = { userId: 'tamper-exp', username: 'tamper-exp', roles: h.split(',').filter(Boolean) };
+        req.user = {
+          userId: 'tamper-exp',
+          username: 'tamper-exp',
+          roles: h.split(',').filter(Boolean),
+        };
         return true;
       }
     }
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
       .overrideGuard(AuthGuard('jwt'))
       .useClass(HeaderRolesGuard)
       .overrideProvider(KafkaProducerService)
@@ -222,7 +255,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     await app.init();
     ds = app.get(DataSource);
@@ -230,7 +267,7 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     // หยุด cron ทั้งหมด (seal/verify อัตโนมัติ) — ควบคุมจังหวะเอง
     const registry = app.get(SchedulerRegistry);
     for (const [cronName, job] of registry.getCronJobs()) {
-      await (job as { stop: () => void }).stop();
+      (job as { stop: () => void }).stop();
       registry.deleteCronJob(cronName);
     }
   }, 120_000);
@@ -251,7 +288,8 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     for (const url of ['/api/v1/logs/seal-now']) {
       for (let i = 0; i < 60; i++) {
         const r = await post(url);
-        if (r.status !== 200 || r.body?.message === 'No pending logs to seal') break;
+        if (r.status !== 200 || r.body?.message === 'No pending logs to seal')
+          break;
       }
     }
 
@@ -294,7 +332,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     expect(rows).toHaveLength(8);
 
     // 3b) backup logs + mapping ของ batch นี้ลงไฟล์ (ใช้ restore)
-    const mapping: Array<{ log_id: string; batch_id: string; mapped_at: string }> = await ds.query(
+    const mapping: Array<{
+      log_id: string;
+      batch_id: string;
+      mapped_at: string;
+    }> = await ds.query(
       'SELECT log_id, batch_id, mapped_at FROM log_batch_mapping WHERE batch_id = $1',
       [batchId],
     );
@@ -322,92 +364,168 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
 
     // A — แก้ message อย่างเดียว ไม่แตะ raw_hash
     await runScenario(
-      'A', 'แก้ message ของ log ตัวที่ 3 (ไม่แตะ raw_hash)', r3.id,
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET message = $2 WHERE id = $1', [r3.id, 'TAMPERED message A — injected']);
-      }),
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET message = $2 WHERE id = $1', [r3.id, r3.message]);
-      }),
+      'A',
+      'แก้ message ของ log ตัวที่ 3 (ไม่แตะ raw_hash)',
+      r3.id,
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET message = $2 WHERE id = $1', [
+            r3.id,
+            'TAMPERED message A — injected',
+          ]);
+        }),
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET message = $2 WHERE id = $1', [
+            r3.id,
+            r3.message,
+          ]);
+        }),
     );
 
     // B — แก้ message + คำนวณ raw_hash ใหม่ให้ตรงเนื้อหาใหม่
     const forgedMsg = 'FORGED B — attacker recomputed raw_hash';
     const forgedHash = computeRawHash({
-      id: r3.id, source: r3.source, sourceIp: r3.source_ip, eventType: r3.event_type,
-      severity: r3.severity, message: forgedMsg, classification: r3.classification,
-      cdeScope: r3.cde_scope, createdAt: new Date(r3.created_at),
+      id: r3.id,
+      source: r3.source,
+      sourceIp: r3.source_ip,
+      eventType: r3.event_type,
+      severity: r3.severity,
+      message: forgedMsg,
+      classification: r3.classification,
+      cdeScope: r3.cde_scope,
+      createdAt: new Date(r3.created_at),
     });
     await runScenario(
-      'B', 'แก้ message ของ log ตัวที่ 3 + raw_hash ใหม่ให้ตรง (จำลองผู้โจมตีรู้สูตร)', r3.id,
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1', [r3.id, forgedMsg, forgedHash]);
-      }),
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1', [r3.id, r3.message, r3.raw_hash]);
-      }),
+      'B',
+      'แก้ message ของ log ตัวที่ 3 + raw_hash ใหม่ให้ตรง (จำลองผู้โจมตีรู้สูตร)',
+      r3.id,
+      () =>
+        noUpdate(async () => {
+          await ds.query(
+            'UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1',
+            [r3.id, forgedMsg, forgedHash],
+          );
+        }),
+      () =>
+        noUpdate(async () => {
+          await ds.query(
+            'UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1',
+            [r3.id, r3.message, r3.raw_hash],
+          );
+        }),
     );
 
     // C — แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)
     await runScenario(
-      'C', 'แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)', r5.id,
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET source_id = $2::inet WHERE id = $1', [r5.id, '8.8.8.8']);
-      }),
-      () => noUpdate(async () => {
-        await ds.query('UPDATE logs SET source_id = $2::inet WHERE id = $1', [r5.id, r5.source_ip]);
-      }),
+      'C',
+      'แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)',
+      r5.id,
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET source_id = $2::inet WHERE id = $1', [
+            r5.id,
+            '8.8.8.8',
+          ]);
+        }),
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET source_id = $2::inet WHERE id = $1', [
+            r5.id,
+            r5.source_ip,
+          ]);
+        }),
     );
 
     // D — ลบ log ตัวที่ 4 (logs + log_batch_mapping)
     await runScenario(
-      'D', 'ลบ log ตัวที่ 4 ทั้งแถว (logs + log_batch_mapping)', r4.id,
-      () => noDelete(async () => {
-        await ds.query('DELETE FROM log_batch_mapping WHERE log_id = $1', [r4.id]);
-        await ds.query('DELETE FROM logs WHERE id = $1', [r4.id]);
-      }),
-      () => noDelete(async () => {
-        await ds.query(
-          `INSERT INTO logs (id, source, source_id, event_type, severity, message, raw_hash,
+      'D',
+      'ลบ log ตัวที่ 4 ทั้งแถว (logs + log_batch_mapping)',
+      r4.id,
+      () =>
+        noDelete(async () => {
+          await ds.query('DELETE FROM log_batch_mapping WHERE log_id = $1', [
+            r4.id,
+          ]);
+          await ds.query('DELETE FROM logs WHERE id = $1', [r4.id]);
+        }),
+      () =>
+        noDelete(async () => {
+          await ds.query(
+            `INSERT INTO logs (id, source, source_id, event_type, severity, message, raw_hash,
                              classification, cde_scope, retention_days, created_at)
            VALUES ($1,$2,$3::inet,$4,$5,$6,$7,$8,$9,$10,$11)`,
-          [r4.id, r4.source, r4.source_ip, r4.event_type, r4.severity, r4.message, r4.raw_hash,
-           r4.classification, r4.cde_scope, r4.retention_days, r4.created_at],
-        );
-        await ds.query(
-          'INSERT INTO log_batch_mapping (log_id, batch_id, mapped_at) VALUES ($1,$2, now())',
-          [r4.id, batchId],
-        );
-      }),
+            [
+              r4.id,
+              r4.source,
+              r4.source_ip,
+              r4.event_type,
+              r4.severity,
+              r4.message,
+              r4.raw_hash,
+              r4.classification,
+              r4.cde_scope,
+              r4.retention_days,
+              r4.created_at,
+            ],
+          );
+          await ds.query(
+            'INSERT INTO log_batch_mapping (log_id, batch_id, mapped_at) VALUES ($1,$2, now())',
+            [r4.id, batchId],
+          );
+        }),
     );
 
     // E — เพิ่ม log ปลอม 1 ตัวแล้ว map เข้า batch นี้
-    const fakeId = (await ds.query('SELECT gen_random_uuid() AS id'))[0].id as string;
+    const fakeId = (await ds.query('SELECT gen_random_uuid() AS id'))[0]
+      .id as string;
     const fakeHash = computeRawHash({
-      id: fakeId, source: SOURCE, sourceIp: '66.66.66.66', eventType: 'SYSLOG',
-      severity: 'CRITICAL', message: 'FAKE E — injected after seal', classification: 'INTERNAL',
-      cdeScope: false, createdAt: new Date(),
+      id: fakeId,
+      source: SOURCE,
+      sourceIp: '66.66.66.66',
+      eventType: 'SYSLOG',
+      severity: 'CRITICAL',
+      message: 'FAKE E — injected after seal',
+      classification: 'INTERNAL',
+      cdeScope: false,
+      createdAt: new Date(),
     });
     await runScenario(
-      'E', 'เพิ่ม log ปลอม 1 ตัว แล้ว map เข้า batch', fakeId,
-      () => noUpdate(async () => {
-        // insert ไม่ถูก trigger บล็อก แต่กันไว้ใน finally อยู่ดี
-        await ds.query(
-          `INSERT INTO logs (id, source, source_id, event_type, severity, message, raw_hash,
+      'E',
+      'เพิ่ม log ปลอม 1 ตัว แล้ว map เข้า batch',
+      fakeId,
+      () =>
+        noUpdate(async () => {
+          // insert ไม่ถูก trigger บล็อก แต่กันไว้ใน finally อยู่ดี
+          await ds.query(
+            `INSERT INTO logs (id, source, source_id, event_type, severity, message, raw_hash,
                              classification, cde_scope, retention_days, created_at)
            VALUES ($1,$2,$3::inet,$4,$5,$6,$7,$8,$9,$10, now())`,
-          [fakeId, SOURCE, '66.66.66.66', 'SYSLOG', 'CRITICAL', 'FAKE E — injected after seal', fakeHash,
-           'INTERNAL', false, 365],
-        );
-        await ds.query(
-          'INSERT INTO log_batch_mapping (log_id, batch_id, mapped_at) VALUES ($1,$2, now())',
-          [fakeId, batchId],
-        );
-      }),
-      () => noDelete(async () => {
-        await ds.query('DELETE FROM log_batch_mapping WHERE log_id = $1', [fakeId]);
-        await ds.query('DELETE FROM logs WHERE id = $1', [fakeId]);
-      }),
+            [
+              fakeId,
+              SOURCE,
+              '66.66.66.66',
+              'SYSLOG',
+              'CRITICAL',
+              'FAKE E — injected after seal',
+              fakeHash,
+              'INTERNAL',
+              false,
+              365,
+            ],
+          );
+          await ds.query(
+            'INSERT INTO log_batch_mapping (log_id, batch_id, mapped_at) VALUES ($1,$2, now())',
+            [fakeId, batchId],
+          );
+        }),
+      () =>
+        noDelete(async () => {
+          await ds.query('DELETE FROM log_batch_mapping WHERE log_id = $1', [
+            fakeId,
+          ]);
+          await ds.query('DELETE FROM logs WHERE id = $1', [fakeId]);
+        }),
     );
 
     // final: ยืนยันสะอาด
