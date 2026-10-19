@@ -15,11 +15,26 @@ export class IntegritySchedule implements OnModuleInit {
     private readonly scheduler: SchedulerRegistry,
   ) {}
 
-  // seal ตาม SEAL_CRON (default ทุก 1 นาที) — ลงทะเบียนเองแทน @Cron เพราะ decorator
-  // ถูกประเมินตอน import ก่อน ConfigModule โหลด .env (โหมด dev บน host จะไม่เห็นค่า)
-  // cron expression ผิด → CronJob โยนตอน boot (ดีกว่าเงียบแล้วไม่ seal เลย)
+  // ลงทะเบียน job seal เองแทน @Cron เพราะ decorator ถูกประเมินตอน import ก่อน ConfigModule
+  // โหลด .env (โหมด dev บน host จะไม่เห็นค่า) · cron expression ผิด → CronJob โยนตอน boot
+  //
+  // mode=cron (default): seal ตาม SEAL_CRON (default ทุก 1 นาที) — พฤติกรรมเดิมทุกอย่าง
+  // mode=hybrid: เช็คทุก 1 นาที (count|age) และ "ไม่" ลงทะเบียน hourly cron (กัน seal ซ้ำ)
   onModuleInit() {
-    const { cron, batchSize } = this.integrity.sealConfig;
+    const { mode, cron, batchSize, maxWaitMinutes } = this.integrity.sealConfig;
+
+    if (mode === 'hybrid') {
+      const job = new CronJob(CronExpression.EVERY_MINUTE, () =>
+        void this.handleHybridTick(),
+      );
+      this.scheduler.addCronJob(SEAL_CRON_JOB, job);
+      job.start();
+      this.logger.log(
+        `Seal schedule: hybrid (ทุก 1 นาที) · batch size ${batchSize} · max wait ${maxWaitMinutes} นาที`,
+      );
+      return;
+    }
+
     const job = new CronJob(cron, () => void this.handleSealBatch());
     this.scheduler.addCronJob(SEAL_CRON_JOB, job);
     job.start();
@@ -31,6 +46,14 @@ export class IntegritySchedule implements OnModuleInit {
       await this.integrity.runScheduledSeal();
     } catch (err) {
       this.logger.error('Seal batch job failed', err);
+    }
+  }
+
+  async handleHybridTick() {
+    try {
+      await this.integrity.runHybridSealTick();
+    } catch (err) {
+      this.logger.error('Hybrid seal tick failed', err);
     }
   }
 

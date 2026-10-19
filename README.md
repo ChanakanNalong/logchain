@@ -378,10 +378,21 @@ docker exec logchain-postgres psql -U logchain -d logchain \
 
 1 batch = 1 tx `storeRoot` (~78k gas ไม่ขึ้นกับจำนวน log) · ค่า default = พฤติกรรมเดิม (ทุก 1 นาที ทีละ ≤100 log)
 
+**โหมดการสั่ง seal (`SEAL_MODE`)** — `cron` (default) หรือ `hybrid`:
+
+- **`cron`** — seal ตาม `SEAL_CRON` รายเวลา ทุกรอบปิด log ค้างจนหมด (พฤติกรรมเดิมทุกอย่าง)
+- **`hybrid`** — ตัวเช็คทุก 1 นาที (แยกจาก verify cron) ตัดสินจากอย่างใดถึงก่อน แล้ว log เหตุผล `reason=count|age`:
+  - **count** — log ค้าง ≥ `SEAL_BATCH_SIZE` → seal เฉพาะ batch ที่เต็ม (เหลือเศษ < `SEAL_BATCH_SIZE` ไว้รอ)
+  - **age** — log เก่าสุดค้าง ≥ `SEAL_MAX_WAIT_MINUTES` → seal ทั้งหมด (รวม batch สุดท้ายที่ไม่เต็ม)
+  - อายุคิดจากนาฬิกาของ Postgres (`now() − min(created_at)`) ไม่ใช่นาฬิกาของ backend · hybrid ปิด hourly `SEAL_CRON` ให้เอง (กัน seal ซ้ำ) · ยังใช้คิว/การกันซ้อน/backoff/guard ยอดเงินชุดเดียวกับ cron
+  - `SEAL_MODE` ค่าไม่ถูกต้อง → fallback `cron` + เตือนใน log (ไม่ทำ boot ล้ม)
+
 | ตัวแปร | default | ความหมาย |
 |---|---|---|
-| `SEAL_CRON` | `0 */1 * * * *` | cron ของรอบ seal (มีช่องวินาที) · ทุกรอบปิด log ที่ค้าง**จนหมด** ทีละ `SEAL_BATCH_SIZE` |
-| `SEAL_BATCH_SIZE` | `100` | log ต่อ batch · ใหญ่ขึ้น = tx น้อยลง (gas ต่อ log ถูกลง) |
+| `SEAL_MODE` | `cron` | `cron` = ตาม `SEAL_CRON` · `hybrid` = เช็คทุก 1 นาที (count\|age) |
+| `SEAL_CRON` | `0 */1 * * * *` | (mode=cron) cron ของรอบ seal (มีช่องวินาที) · ทุกรอบปิด log ที่ค้าง**จนหมด** ทีละ `SEAL_BATCH_SIZE` |
+| `SEAL_MAX_WAIT_MINUTES` | `60` | (mode=hybrid) log เก่าสุดค้างเกินกี่นาทีให้ seal ทั้งหมด (age trigger) |
+| `SEAL_BATCH_SIZE` | `100` | log ต่อ batch · ใหญ่ขึ้น = tx น้อยลง (gas ต่อ log ถูกลง) · hybrid ใช้เป็น count trigger ด้วย |
 | `SEAL_MIN_BALANCE_TX` | `0` (ปิด) | ยอด wallet ต้องพอจ่าย storeRoot อย่างน้อยกี่ครั้ง · ไม่พอ = **ไม่สร้าง batch** (log ค้าง pending) + alert `WALLET_LOW_BALANCE` |
 | `SEAL_LOW_BALANCE_ALERT_MINUTES` | `60` | alert ยอดต่ำซ้ำได้ถี่สุด · ยอดกลับมาพอ = seal ต่อเองและปิด alert ให้ |
 | `SEAL_FAILURE_BACKOFF_AFTER` | `3` | seal ล้ม (`FAILED`) ติดกันกี่ครั้งถึงเริ่มข้ามรอบ 1, 2, 4, … · `0` = ปิด |
