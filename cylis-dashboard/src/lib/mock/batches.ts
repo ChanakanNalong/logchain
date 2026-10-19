@@ -6,7 +6,7 @@
  * src/integrity/batch-diff.service.ts.
  */
 import type { BatchChange, BatchDiff, BatchListItem, BatchStatus, SnapshotLog } from "@/types/api";
-import { MOCK_BATCHES, MOCK_LOGS, TAMPERED_SEALED_RAW, at, hex, logId, mappedLeaves, uuid } from "./data";
+import { MOCK_BATCHES, MOCK_LOGS, TAMPERED_FULL_SEALED_RAW, TAMPERED_SEALED_RAW, at, hex, logId, mappedLeaves, uuid } from "./data";
 import { buildLayers } from "./merkleMock";
 
 type Gas = { gasUsed: string | number; gwei: string | number } | null;
@@ -175,6 +175,77 @@ const TAMPERED_CHANGES: BatchChange[] = [
   { position: 3, logId: insertedLog.id, type: "UNMAPPED_OR_INSERTED", current: asSnapshot(insertedLog) },
 ];
 
+const tfLog = (key: string) => MOCK_LOGS.find((l) => l.item.id === logId(key))!.item;
+const tfMulti = tfLog("tf-multi");
+const tfContent = tfLog("tf-content");
+const tfHash = tfLog("tf-hash");
+
+/**
+ * tamperedFull — seal order: tf-ok 0 · tf-multi 1 · tf-content 2 · tf-hash 3 ·
+ * tf-mapping 4 · tf-deleted 5. Now mapped: tf-ok, tf-multi, tf-content, tf-hash,
+ * tf-inserted (index 4). Fields in the backend's COMPARED_FIELDS order, rawHash last;
+ * values canonical (createdAt ISO, sourceIp normalised).
+ */
+const TAMPERED_FULL_CHANGES: BatchChange[] = [
+  {
+    position: 1,
+    logId: tfMulti.id,
+    type: "CONTENT_MODIFIED",
+    fields: [
+      { field: "sourceIp", before: "10.0.6.11", after: tfMulti.sourceIp },
+      { field: "severity", before: "CRITICAL", after: tfMulti.severity },
+      {
+        field: "message",
+        before: "authorization declined 5 times for card ****4821 at terminal T-0442 — possible card testing",
+        after: tfMulti.message,
+      },
+      { field: "classification", before: "CONFIDENTIAL", after: tfMulti.classification },
+      { field: "cdeScope", before: true, after: tfMulti.cdeScope },
+      { field: "rawHash", before: TAMPERED_FULL_SEALED_RAW.multi, after: tfMulti.rawHash },
+    ],
+  },
+  {
+    // content edited, raw_hash left as sealed → no rawHash entry, still CONTENT_MODIFIED
+    position: 2,
+    logId: tfContent.id,
+    type: "CONTENT_MODIFIED",
+    fields: [
+      { field: "sourceIp", before: null, after: tfContent.sourceIp },
+      {
+        field: "message",
+        before: "export of settlement_report.csv (18,300 rows) completed by user mchan to 203.0.113.50",
+        after: tfContent.message,
+      },
+    ],
+  },
+  {
+    position: 3,
+    logId: tfHash.id,
+    type: "HASH_MODIFIED",
+    fields: [{ field: "rawHash", before: TAMPERED_FULL_SEALED_RAW.hash, after: tfHash.rawHash }],
+  },
+  {
+    position: 4,
+    logId: logId("tf-mapping"),
+    type: "DELETED",
+    reason: "MAPPING_MISSING",
+    // the row is unchanged — its content is what was sealed
+    snapshot: asSnapshot(tfLog("tf-mapping")),
+  },
+  { position: 4, logId: logId("tf-inserted"), type: "UNMAPPED_OR_INSERTED", current: asSnapshot(tfLog("tf-inserted")) },
+  {
+    position: 5,
+    logId: logId("tf-deleted"),
+    type: "DELETED",
+    reason: "ROW_MISSING",
+    snapshot: {
+      id: logId("tf-deleted"), createdAt: at(32, 20), source: "auth-service", sourceIp: "10.0.6.41", eventType: "AUTH_FAILURE",
+      severity: "WARNING", message: "login failed for user svc-backup: account locked after 10 attempts",
+      classification: "INTERNAL", cdeScope: false, rawHash: TAMPERED_FULL_SEALED_RAW.deleted,
+    },
+  },
+];
+
 /** Newest first after sorting in getBatches */
 export const AUDITS: AuditSpec[] = [
   fromLogsMock("confirmed", { gasUsed: "71240", gwei: "25" }),
@@ -183,6 +254,10 @@ export const AUDITS: AuditSpec[] = [
   // the Logs mock's tampered batch: stored root still equals the chain, rows changed
   fromLogsMock("tampered", { gasUsed: "72001", gwei: "26" }, {
     logCount: 4, mappedLogs: 4, changes: TAMPERED_CHANGES,
+  }),
+  // every change type: 6 sealed · 5 mapped now (tf-mapping lost its mapping, tf-inserted gained one)
+  fromLogsMock("tamperedFull", { gasUsed: "74410", gwei: "26.4" }, {
+    logCount: 6, changes: TAMPERED_FULL_CHANGES,
   }),
   // the Logs mock's "status disagrees" batch: its stored root no longer equals the chain
   // (chain check mismatch). Root, snapshot and logs were rewritten together, so by the

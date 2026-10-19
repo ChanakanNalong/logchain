@@ -18,6 +18,11 @@ const STATUSES: BatchStatus[] = ["PENDING", "SEALED", "UNVERIFIED", "CONFIRMED",
 const DEFAULT_LIMIT = 10;
 const LIMITS = [10, 20, 50, 100];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Numeric columns: header right-aligned over the digits */
+const RIGHT_COLS = new Set(["Logs", "Gas used", "POL / batch", "POL / log"]);
+// letter-spacing trails the last letter too — take it off the right padding so the
+// header's last letter ends where the cell's last digit does (both at 10px)
+const thRight = { textAlign: "right" as const, paddingRight: "calc(10px - 0.08em)" };
 
 /** Last column stuck to the right edge of the scroll box, with a shade so rows don't show through */
 function stickyRight(t: Theme) {
@@ -280,13 +285,8 @@ export default function Batches() {
                 <thead>
                   <tr>
                     {["Batch", "Status", "Sealed at", "Logs", "Gas used", "POL / batch", "POL / log", "Tx"].map((h) => (
-                      // คอลัมน์ตัวเลขชิดขวาให้ตรงกับค่าใน Td (ที่ใช้ textAlign:right)
-                      <Th
-                        key={h}
-                        style={["Logs", "Gas used", "POL / batch", "POL / log"].includes(h) ? { textAlign: "right" } : undefined}
-                      >
-                        {h}
-                      </Th>
+                      // คอลัมน์ตัวเลขชิดขวา (RIGHT_COLS) ให้ตรงกับค่าใน Td
+                      <Th key={h} style={RIGHT_COLS.has(h) ? thRight : undefined}>{h}</Th>
                     ))}
                     <th style={stickyRight(t)} />
                   </tr>

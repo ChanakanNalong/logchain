@@ -24,7 +24,8 @@ export const QUERY_KEYS = {
  * target's keys again in the same `navigate` call.
  */
 export const PAGE_QUERY_KEYS: Record<string, readonly string[]> = {
-  logs: ["q", "source", "severity", "eventType", "limit", "offset"],
+  // log: a pasted log ID whose drawer is open (survives F5)
+  logs: ["q", "log", "source", "severity", "eventType", "limit", "offset"],
   // a_ prefix: every key belongs to exactly one page, or leaving a page would
   // carry its filters into another one that reads the same name
   alerts: [QUERY_KEYS.alert, "a_q", "a_status", "a_sev", "a_type"],

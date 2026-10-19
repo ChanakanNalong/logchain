@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Search, ChevronLeft, ChevronRight, Server, ShieldAlert, X } from "lucide-react";
 import { useTheme, monoFont } from "@/theme";
@@ -6,17 +6,24 @@ import { Card, SectionLabel, Button, FilterDropdown, Badge } from "@/components/
 import LogTable from "@/components/LogTable";
 import LogDrawer, { type LogDrawerSeed } from "@/components/LogDrawer";
 import MultiSelectDropdown from "@/components/MultiSelectDropdown";
-import { getLogs } from "@/lib/endpoints";
+import { getLogDetail, getLogs } from "@/lib/endpoints";
 import { mapLog, type LogRow } from "@/lib/logRows";
 import { useReplaceQuery } from "@/lib/nav";
 import { ATTACK_SEVERITIES, LOG_EVENT_TYPES, LOG_SEVERITIES, LOG_SOURCES, VPS_SOURCES } from "@/lib/filterOptions";
-import type { LogItem } from "@/types/api";
+import { normalizeSearch, normalizeSearchInput } from "@/lib/searchText";
+import type { LogDetail, LogItem } from "@/types/api";
 
 const DEFAULT_LIMIT = 25;
 const LIMITS = [10, 25, 50, 100];
 const SEARCH_DEBOUNCE_MS = 400;
 /** GET /logs rejects a longer `q` */
 const Q_MAX = 200;
+/** a full log ID (the copy button next to an ID) — opens that log instead of a message search */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** the 8-hex short ID the table shows */
+const SHORT_ID_RE = /^[0-9a-f]{8}$/i;
+
+type Lookup = { id: string; status: "loading" | "ok" | "notfound" | "forbidden" | "error" };
 
 function splitList(v: string | null): string[] {
   return v ? v.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -24,6 +31,39 @@ function splitList(v: string | null): string[] {
 
 function sameSet(a: readonly string[], b: readonly string[]) {
   return a.length === b.length && a.every((v) => b.includes(v));
+}
+
+/** The element that scrolls `el` (App's <main>), or null */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement; p; p = p.parentElement) {
+    const { overflowY } = getComputedStyle(p);
+    if (overflowY === "auto" || overflowY === "scroll") return p;
+  }
+  return null;
+}
+
+/** One active filter under the search box — × takes just that one off */
+function FilterChip({ label, onRemove, tone }: { label: string; onRemove: () => void; tone?: "good" | "danger" }) {
+  const t = useTheme();
+  const c = tone === "good"
+    ? { fg: t.good, bg: "rgba(52,211,153,0.12)", bd: "rgba(52,211,153,0.4)" }
+    : tone === "danger"
+      ? { fg: t.danger, bg: "rgba(244,63,94,0.12)", bd: "rgba(244,63,94,0.4)" }
+      : { fg: t.text, bg: t.surface2, bd: t.border };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 4px 3px 9px", borderRadius: 999, fontSize: 12, color: c.fg, background: c.bg, border: `1px solid ${c.bd}` }}>
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove filter ${label}`}
+        title="เอาตัวกรองนี้ออก"
+        style={{ display: "inline-flex", background: "none", border: "none", padding: 2, cursor: "pointer", color: "inherit", borderRadius: 999 }}
+      >
+        <X size={12} />
+      </button>
+    </span>
+  );
 }
 
 function errorText(e: any): string {
@@ -42,8 +82,36 @@ export default function Logs() {
   const replaceQuery = useReplaceQuery();
 
   // URL is the source of truth on mount; state mirrors it from then on.
-  const [qInput, setQInput] = useState(() => searchParams.get("q") ?? "");
-  const [q, setQ] = useState(() => (searchParams.get("q") ?? "").trim());
+  // ?log=<id>: a log opened by pasting its ID — reopened after F5 (no message search then)
+  const [initialLogId] = useState(() => {
+    const v = searchParams.get("log");
+    return v && UUID_RE.test(v) ? v.toLowerCase() : null;
+  });
+  const [qInput, setQInput] = useState(() => initialLogId ?? normalizeSearchInput(searchParams.get("q") ?? ""));
+  const [q, setQ] = useState(() => (initialLogId ? "" : normalizeSearch(searchParams.get("q") ?? "")));
+  const [lookup, setLookup] = useState<Lookup | null>(() => (initialLogId ? { id: initialLogId, status: "loading" } : null));
+  const lookupSeq = useRef(0);
+  // ── keep the page where it was across a page / page-size / filter change ──
+  // The control the user acted on (pager, page-size menu) is pinned to its spot on
+  // screen until the new rows are in, whatever happens to the content around it.
+  const pagerRef = useRef<HTMLDivElement>(null);
+  const listHeadRef = useRef<HTMLDivElement>(null);
+  const pin = useRef<{ el: HTMLElement; top: number; at: number; sawLoading: boolean } | null>(null);
+  function pinPlace(el: HTMLElement | null) {
+    if (el) pin.current = { el, top: el.getBoundingClientRect().top, at: Date.now(), sawLoading: false };
+  }
+  // the user scrolling on their own wins — stop holding the place
+  useEffect(() => {
+    const release = () => { pin.current = null; };
+    window.addEventListener("wheel", release, { passive: true });
+    window.addEventListener("touchmove", release, { passive: true });
+    window.addEventListener("keydown", release);
+    return () => {
+      window.removeEventListener("wheel", release);
+      window.removeEventListener("touchmove", release);
+      window.removeEventListener("keydown", release);
+    };
+  }, []);
   const [source, setSource] = useState(() => splitList(searchParams.get("source")));
   const [severity, setSeverity] = useState(() => splitList(searchParams.get("severity")));
   const [eventType, setEventType] = useState(() => splitList(searchParams.get("eventType")));
@@ -59,15 +127,52 @@ export default function Logs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
-  const [openLog, setOpenLog] = useState<{ id: string; seed: LogDrawerSeed } | null>(null);
+  const [openLog, setOpenLog] = useState<{ id: string; seed: LogDrawerSeed; detail?: LogDetail } | null>(null);
+
+  /** Open a log by its full ID: fetch its detail, then hand it to the drawer (no second fetch) */
+  function openById(id: string) {
+    const seq = ++lookupSeq.current;
+    setLookup({ id, status: "loading" });
+    getLogDetail(id)
+      .then((d) => {
+        if (seq !== lookupSeq.current) return;
+        setLookup({ id, status: "ok" });
+        const l = d.log;
+        setOpenLog({ id, seed: { createdAt: l.createdAt, source: l.source, sourceIp: l.sourceIp, eventType: l.eventType, severity: l.severity, message: l.message }, detail: d });
+      })
+      .catch((e) => {
+        if (seq !== lookupSeq.current) return;
+        const status = e?.response?.status;
+        if (status !== 404 && status !== 403) console.error("log lookup failed", e);
+        setLookup({ id, status: status === 404 ? "notfound" : status === 403 ? "forbidden" : "error" });
+      });
+  }
+
+  // reopened from ?log= (F5 / shared link)
+  useEffect(() => {
+    if (initialLogId) openById(initialLogId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Debounce the search box; a new term starts again from the first page.
   useEffect(() => {
-    const next = qInput.trim();
+    const next = normalizeSearch(qInput);
+    if (UUID_RE.test(next)) {
+      // a log ID is looked up, never sent as a message search
+      const id = next.toLowerCase();
+      if (lookup?.id === id) return;
+      const timer = setTimeout(() => { setQ(""); setOffset(0); openById(id); }, SEARCH_DEBOUNCE_MS);
+      return () => clearTimeout(timer);
+    }
+    if (lookup) {
+      lookupSeq.current++;
+      setLookup(null);
+    }
     if (next === q) return;
-    const timer = setTimeout(() => { setQ(next); setOffset(0); }, SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => { pinPlace(listHeadRef.current); setQ(next); setOffset(0); }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [qInput, q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qInput, q, lookup]);
 
   const sourceKey = source.join(",");
   const severityKey = severity.join(",");
@@ -108,6 +213,8 @@ export default function Logs() {
   useEffect(() => {
     replaceQuery({
       q: q || null,
+      // only while that log's drawer is open (or still loading) — closing it drops the key
+      log: lookup && (lookup.status !== "ok" || openLog?.id === lookup.id) ? lookup.id : null,
       source: sourceKey || null,
       severity: severityKey || null,
       eventType: eventTypeKey || null,
@@ -118,15 +225,56 @@ export default function Logs() {
       sev: null,
       page: null,
     });
-  }, [q, sourceKey, severityKey, eventTypeKey, limit, offset, replaceQuery]);
+  }, [q, lookup, openLog, sourceKey, severityKey, eventTypeKey, limit, offset, replaceQuery]);
+
+  // Put the pinned control back where it was. Runs after every commit while a load is
+  // pending (and once more with the new rows), so nothing in between can leave the
+  // page scrolled away — e.g. the content briefly collapsing to its top.
+  useLayoutEffect(() => {
+    const p = pin.current;
+    if (!p) return;
+    if (p.el.isConnected) {
+      const scroller = scrollParent(p.el);
+      const drift = p.el.getBoundingClientRect().top - p.top;
+      if (scroller && Math.abs(drift) >= 1) scroller.scrollTop += drift;
+    }
+    // done once the load this change started has finished (the first commit after the
+    // click still has loading=false) — or if no load ever started
+    if (loading) p.sawLoading = true;
+    else if (p.sawLoading || Date.now() - p.at > 1500) pin.current = null;
+  });
 
   // Any filter change invalidates the current page — back to the first one.
-  function updateSource(v: string[]) { setSource(v); setOffset(0); }
-  function updateSeverity(v: string[]) { setSeverity(v); setOffset(0); }
-  function updateEventType(v: string[]) { setEventType(v); setOffset(0); }
-  function updateLimit(label: string) { setLimit(parseInt(label, 10)); setOffset(0); }
+  function updateSource(v: string[]) { pinPlace(listHeadRef.current); setSource(v); setOffset(0); }
+  function updateSeverity(v: string[]) { pinPlace(listHeadRef.current); setSeverity(v); setOffset(0); }
+  function updateEventType(v: string[]) { pinPlace(listHeadRef.current); setEventType(v); setOffset(0); }
+  function updateLimit(label: string) { pinPlace(listHeadRef.current); setLimit(parseInt(label, 10)); setOffset(0); }
+  function goToOffset(next: number) {
+    if (next === offset) return;
+    pinPlace(pagerRef.current);
+    setOffset(next);
+  }
   function clearAll() {
     setQInput(""); setQ(""); setSource([]); setSeverity([]); setEventType([]); setOffset(0);
+  }
+
+  // a one-line input would drop pasted newlines (gluing words) — put the cleaned text in ourselves
+  function onSearchPaste(e: ClipboardEvent<HTMLInputElement>) {
+    const text = e.clipboardData.getData("text");
+    if (!text) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    const start = el.selectionStart ?? qInput.length;
+    const end = el.selectionEnd ?? qInput.length;
+    const before = normalizeSearchInput(qInput.slice(0, start) + text);
+    const next = normalizeSearchInput(before + qInput.slice(end)).slice(0, Q_MAX);
+    setQInput(next);
+    const caret = Math.min(before.length, next.length);
+    requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+  }
+  /** Drop source / severity / event type, keep the search term */
+  function clearFiltersOnly() {
+    setSource([]); setSeverity([]); setEventType([]); setOffset(0);
   }
 
   const realLogsOn = sameSet(source, VPS_SOURCES);
@@ -148,6 +296,16 @@ export default function Logs() {
   const closeDrawer = useCallback(() => setOpenLog(null), []);
 
   const anyFilter = Boolean(q || source.length || severity.length || eventType.length);
+  // every active filter as a chip; Real logs / Attacks stand for their whole set
+  const chips: { key: string; label: string; tone?: "good" | "danger"; remove: () => void }[] = [
+    ...(realLogsOn
+      ? [{ key: "real", label: "Real logs", tone: "good" as const, remove: () => updateSource([]) }]
+      : source.map((v) => ({ key: `s:${v}`, label: `source: ${v}`, remove: () => updateSource(source.filter((x) => x !== v)) }))),
+    ...(attacksOn
+      ? [{ key: "attacks", label: "Attacks", tone: "danger" as const, remove: () => updateSeverity([]) }]
+      : severity.map((v) => ({ key: `v:${v}`, label: `severity: ${v}`, remove: () => updateSeverity(severity.filter((x) => x !== v)) }))),
+    ...eventType.map((v) => ({ key: `e:${v}`, label: `event: ${v}`, remove: () => updateEventType(eventType.filter((x) => x !== v)) })),
+  ];
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.floor(offset / limit) + 1;
   const firstShown = total === 0 ? 0 : offset + 1;
@@ -163,16 +321,20 @@ export default function Logs() {
           <Search size={15} color={t.muted} style={{ position: "absolute", left: 12, top: 11 }} />
           <input
             value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
+            onChange={(e) => setQInput(normalizeSearchInput(e.target.value))}
+            onPaste={onSearchPaste}
             maxLength={Q_MAX}
-            placeholder="Search the log message…"
-            aria-label="Search the log message"
+            placeholder="Search the log message or paste a log ID…"
+            aria-label="Search the log message or paste a log ID"
             style={{
               width: "100%", background: t.surface2, border: `1px solid ${t.border}`,
               borderRadius: 10, padding: "10px 12px 10px 36px", color: t.text,
               fontSize: 13, outline: "none",
             }}
           />
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11.5, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          ค้นในข้อความ log หรือวาง log id เต็มเพื่อเปิดดู · ไม่สนตัวพิมพ์ · IP / เลขบัตร / อีเมลถูก mask แล้ว (เช่น 203.0.113.xxx)
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
           <button
@@ -214,10 +376,16 @@ export default function Logs() {
             <Button variant="ghost" small onClick={clearAll}>Clear filters</Button>
           )}
         </div>
+        {chips.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }} aria-label="Active filters">
+            <span style={{ fontSize: 11.5, color: t.muted }}>ตัวกรองที่เปิดอยู่:</span>
+            {chips.map((c) => <FilterChip key={c.key} label={c.label} tone={c.tone} onRemove={c.remove} />)}
+          </div>
+        )}
       </Card>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+        <div ref={listHeadRef} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <SectionLabel>{anyFilter ? "Matching logs" : "All logs"} ({total.toLocaleString()})</SectionLabel>
             {realLogsOn && <Badge tone="good">กำลังกรอง: Real logs</Badge>}
@@ -225,7 +393,21 @@ export default function Logs() {
           </div>
           <FilterDropdown value={`${limit} / page`} onChange={updateLimit} options={LIMITS.map((n) => `${n} / page`)} />
         </div>
-        {error ? (
+        {lookup && lookup.status !== "ok" ? (
+          // a pasted log ID: the lookup's state takes the table's place until the drawer opens
+          <div role={lookup.status === "loading" ? "status" : "alert"} style={{ padding: 20, textAlign: "center", fontSize: 13, color: lookup.status === "loading" ? t.muted : t.danger }}>
+            {lookup.status === "loading" && "กำลังเปิด log…"}
+            {lookup.status === "notfound" && "ไม่พบ log id นี้"}
+            {lookup.status === "forbidden" && "บัญชีนี้ไม่มีสิทธิ์ดูรายละเอียด log นี้"}
+            {lookup.status === "error" && (
+              <>
+                เปิด log ไม่สำเร็จ{" "}
+                <Button variant="ghost" small onClick={() => openById(lookup.id)}>Retry</Button>
+              </>
+            )}
+            <div style={{ marginTop: 6, fontSize: 11.5, color: t.muted, ...monoFont }}>{lookup.id}</div>
+          </div>
+        ) : error ? (
           <div style={{ color: t.danger, padding: 20, textAlign: "center", fontSize: 13 }}>
             {error}{" "}
             <Button variant="ghost" small onClick={() => setReloadKey((k) => k + 1)}>Retry</Button>
@@ -235,15 +417,28 @@ export default function Logs() {
         ) : rows.length === 0 ? (
           <div style={{ color: t.muted, padding: 20, textAlign: "center" }}>
             {anyFilter ? "No logs match these filters" : "No logs found"}
+            {SHORT_ID_RE.test(q) && (
+              <div style={{ marginTop: 8, fontSize: 12.5 }}>
+                ถ้าจะค้นด้วย log id ให้กดปุ่ม copy ข้าง id เพื่อได้ id เต็ม แล้ววาง
+              </div>
+            )}
+            {chips.length > 0 && (
+              // the usual "it is there, I copied it" case: another filter hides it
+              <div style={{ marginTop: 10, fontSize: 12.5, display: "grid", gap: 8, justifyItems: "center" }}>
+                <div>มีตัวกรองเปิดอยู่: {chips.map((c) => c.label).join(" · ")}</div>
+                <Button variant="ghost" small onClick={clearFiltersOnly}>ค้นโดยไม่ใช้ตัวกรอง</Button>
+              </div>
+            )}
           </div>
         ) : (
           <>
             <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .15s" }}>
               <LogTable logs={rows} showChain onRowClick={openRow} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 11.5, color: t.muted, ...monoFont }}>
+            <div ref={pagerRef} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11.5, color: t.muted, ...monoFont }} aria-live="polite">
                 {firstShown}–{lastShown} of {total.toLocaleString()} · Page {currentPage} of {totalPages}
+                {loading && <span style={{ marginLeft: 8, color: t.blue2, ...monoFont }}>· กำลังโหลด…</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button
@@ -251,7 +446,7 @@ export default function Logs() {
                   variant="ghost"
                   small
                   disabled={offset <= 0 || loading}
-                  onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                  onClick={() => goToOffset(Math.max(0, offset - limit))}
                 >
                   Prev
                 </Button>
@@ -260,7 +455,7 @@ export default function Logs() {
                   variant="ghost"
                   small
                   disabled={offset + limit >= total || loading}
-                  onClick={() => setOffset((o) => o + limit)}
+                  onClick={() => goToOffset(offset + limit)}
                 >
                   Next
                 </Button>
@@ -270,7 +465,7 @@ export default function Logs() {
         )}
       </Card>
 
-      <LogDrawer logId={openLog?.id ?? null} seed={openLog?.seed} onClose={closeDrawer} />
+      <LogDrawer logId={openLog?.id ?? null} seed={openLog?.seed} initialDetail={openLog?.detail} onClose={closeDrawer} />
     </div>
   );
 }
