@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Search, ChevronLeft, ChevronRight, Server, ShieldAlert, X } from "lucide-react";
 import { useTheme, monoFont } from "@/theme";
@@ -31,6 +31,15 @@ function splitList(v: string | null): string[] {
 
 function sameSet(a: readonly string[], b: readonly string[]) {
   return a.length === b.length && a.every((v) => b.includes(v));
+}
+
+/** The element that scrolls `el` (App's <main>), or null */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement; p; p = p.parentElement) {
+    const { overflowY } = getComputedStyle(p);
+    if (overflowY === "auto" || overflowY === "scroll") return p;
+  }
+  return null;
 }
 
 /** One active filter under the search box — × takes just that one off */
@@ -82,6 +91,27 @@ export default function Logs() {
   const [q, setQ] = useState(() => (initialLogId ? "" : normalizeSearch(searchParams.get("q") ?? "")));
   const [lookup, setLookup] = useState<Lookup | null>(() => (initialLogId ? { id: initialLogId, status: "loading" } : null));
   const lookupSeq = useRef(0);
+  // ── keep the page where it was across a page / page-size / filter change ──
+  // The control the user acted on (pager, page-size menu) is pinned to its spot on
+  // screen until the new rows are in, whatever happens to the content around it.
+  const pagerRef = useRef<HTMLDivElement>(null);
+  const listHeadRef = useRef<HTMLDivElement>(null);
+  const pin = useRef<{ el: HTMLElement; top: number; at: number; sawLoading: boolean } | null>(null);
+  function pinPlace(el: HTMLElement | null) {
+    if (el) pin.current = { el, top: el.getBoundingClientRect().top, at: Date.now(), sawLoading: false };
+  }
+  // the user scrolling on their own wins — stop holding the place
+  useEffect(() => {
+    const release = () => { pin.current = null; };
+    window.addEventListener("wheel", release, { passive: true });
+    window.addEventListener("touchmove", release, { passive: true });
+    window.addEventListener("keydown", release);
+    return () => {
+      window.removeEventListener("wheel", release);
+      window.removeEventListener("touchmove", release);
+      window.removeEventListener("keydown", release);
+    };
+  }, []);
   const [source, setSource] = useState(() => splitList(searchParams.get("source")));
   const [severity, setSeverity] = useState(() => splitList(searchParams.get("severity")));
   const [eventType, setEventType] = useState(() => splitList(searchParams.get("eventType")));
@@ -139,7 +169,7 @@ export default function Logs() {
       setLookup(null);
     }
     if (next === q) return;
-    const timer = setTimeout(() => { setQ(next); setOffset(0); }, SEARCH_DEBOUNCE_MS);
+    const timer = setTimeout(() => { pinPlace(listHeadRef.current); setQ(next); setOffset(0); }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qInput, q, lookup]);
@@ -197,11 +227,33 @@ export default function Logs() {
     });
   }, [q, lookup, openLog, sourceKey, severityKey, eventTypeKey, limit, offset, replaceQuery]);
 
+  // Put the pinned control back where it was. Runs after every commit while a load is
+  // pending (and once more with the new rows), so nothing in between can leave the
+  // page scrolled away — e.g. the content briefly collapsing to its top.
+  useLayoutEffect(() => {
+    const p = pin.current;
+    if (!p) return;
+    if (p.el.isConnected) {
+      const scroller = scrollParent(p.el);
+      const drift = p.el.getBoundingClientRect().top - p.top;
+      if (scroller && Math.abs(drift) >= 1) scroller.scrollTop += drift;
+    }
+    // done once the load this change started has finished (the first commit after the
+    // click still has loading=false) — or if no load ever started
+    if (loading) p.sawLoading = true;
+    else if (p.sawLoading || Date.now() - p.at > 1500) pin.current = null;
+  });
+
   // Any filter change invalidates the current page — back to the first one.
-  function updateSource(v: string[]) { setSource(v); setOffset(0); }
-  function updateSeverity(v: string[]) { setSeverity(v); setOffset(0); }
-  function updateEventType(v: string[]) { setEventType(v); setOffset(0); }
-  function updateLimit(label: string) { setLimit(parseInt(label, 10)); setOffset(0); }
+  function updateSource(v: string[]) { pinPlace(listHeadRef.current); setSource(v); setOffset(0); }
+  function updateSeverity(v: string[]) { pinPlace(listHeadRef.current); setSeverity(v); setOffset(0); }
+  function updateEventType(v: string[]) { pinPlace(listHeadRef.current); setEventType(v); setOffset(0); }
+  function updateLimit(label: string) { pinPlace(listHeadRef.current); setLimit(parseInt(label, 10)); setOffset(0); }
+  function goToOffset(next: number) {
+    if (next === offset) return;
+    pinPlace(pagerRef.current);
+    setOffset(next);
+  }
   function clearAll() {
     setQInput(""); setQ(""); setSource([]); setSeverity([]); setEventType([]); setOffset(0);
   }
@@ -333,7 +385,7 @@ export default function Logs() {
       </Card>
 
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
+        <div ref={listHeadRef} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <SectionLabel>{anyFilter ? "Matching logs" : "All logs"} ({total.toLocaleString()})</SectionLabel>
             {realLogsOn && <Badge tone="good">กำลังกรอง: Real logs</Badge>}
@@ -383,9 +435,10 @@ export default function Logs() {
             <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity .15s" }}>
               <LogTable logs={rows} showChain onRowClick={openRow} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 11.5, color: t.muted, ...monoFont }}>
+            <div ref={pagerRef} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11.5, color: t.muted, ...monoFont }} aria-live="polite">
                 {firstShown}–{lastShown} of {total.toLocaleString()} · Page {currentPage} of {totalPages}
+                {loading && <span style={{ marginLeft: 8, color: t.blue2, ...monoFont }}>· กำลังโหลด…</span>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button
@@ -393,7 +446,7 @@ export default function Logs() {
                   variant="ghost"
                   small
                   disabled={offset <= 0 || loading}
-                  onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                  onClick={() => goToOffset(Math.max(0, offset - limit))}
                 >
                   Prev
                 </Button>
@@ -402,7 +455,7 @@ export default function Logs() {
                   variant="ghost"
                   small
                   disabled={offset + limit >= total || loading}
-                  onClick={() => setOffset((o) => o + limit)}
+                  onClick={() => goToOffset(offset + limit)}
                 >
                   Next
                 </Button>
