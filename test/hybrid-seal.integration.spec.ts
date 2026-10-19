@@ -59,7 +59,8 @@ describeHh('Hybrid seal (hh, real chain)', () => {
   const drainAll = async () => {
     for (let i = 0; i < 200; i++) {
       const r = await post('/api/v1/logs/seal-now');
-      if (r.status !== 200 || r.body?.message === 'No pending logs to seal') break;
+      if (r.status !== 200 || r.body?.message === 'No pending logs to seal')
+        break;
     }
   };
 
@@ -151,7 +152,11 @@ describeHh('Hybrid seal (hh, real chain)', () => {
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1', { exclude: ['health'] });
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     await app.init();
     ds = app.get(DataSource);
@@ -212,7 +217,11 @@ describeHh('Hybrid seal (hh, real chain)', () => {
 
     batches = await batchesOf(SOURCE);
     expect(batches.map((b) => b.n)).toEqual([100, 100, 50]);
-    expect(batches.map((b) => b.seal_reason)).toEqual(['count', 'count', 'age']);
+    expect(batches.map((b) => b.seal_reason)).toEqual([
+      'count',
+      'count',
+      'age',
+    ]);
     expect(batches.every((b) => b.status === 'CONFIRMED')).toBe(true);
 
     // log ของ source นี้ถูก map ครบ 250 ตัว ไม่ซ้ำ

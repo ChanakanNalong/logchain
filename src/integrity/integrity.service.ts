@@ -235,14 +235,16 @@ export class IntegrityService {
     pendingCount: number;
     oldestAgeMinutes: number | null;
   }> {
-    const rows: Array<{ pending_count: string; oldest_age_seconds: string | null }> =
-      await this.logsRepo.query(
-        `SELECT count(*)::bigint AS pending_count,
+    const rows: Array<{
+      pending_count: string;
+      oldest_age_seconds: string | null;
+    }> = await this.logsRepo.query(
+      `SELECT count(*)::bigint AS pending_count,
                 EXTRACT(EPOCH FROM now() - min(l.created_at)) AS oldest_age_seconds
            FROM logs l
            LEFT JOIN log_batch_mapping m ON m.log_id = l.id
           WHERE m.log_id IS NULL`,
-      );
+    );
     const r = rows[0];
     const pendingCount = Number(r?.pending_count ?? 0);
     const oldestAgeMinutes =

@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { IntegrityService } from './integrity.service';
 import { MerkleService } from './service/merkle.service';
@@ -182,7 +183,7 @@ describe('readSealConfig — SEAL_MODE', () => {
 
   it('ค่าไม่ถูกต้อง → fallback cron + warn (ไม่ throw)', () => {
     const warn = jest
-      .spyOn(require('@nestjs/common').Logger.prototype, 'warn')
+      .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
     expect(readSealConfig({ SEAL_MODE: 'turbo' }).mode).toBe('cron');
     expect(warn).toHaveBeenCalled();
@@ -251,8 +252,8 @@ describe('IntegrityService — runHybridSealTick', () => {
     });
     const alertsRepo = {
       findOne: jest.fn(() => Promise.resolve(null)),
-      create: jest.fn((dto) => dto),
-      save: jest.fn((dto) => Promise.resolve(dto)),
+      create: jest.fn((dto: unknown) => dto),
+      save: jest.fn((dto: unknown) => Promise.resolve(dto)),
       update: jest.fn(() => Promise.resolve({ affected: 0 })),
     };
     const blockchain = {
@@ -368,6 +369,6 @@ describe('IntegrityService — runHybridSealTick', () => {
     // 250 log ถูก drain จนหมดพอดี (100 + 100 + 50) ไม่ขาดไม่เกิน
     expect(mappingStore).toHaveLength(250);
     // ไม่มี batch ไหนได้ log เกิน batchSize
-    expect(batchStore.every((b) => (b.logCount as number) <= 100)).toBe(true);
+    expect(batchStore.every((b) => b.logCount <= 100)).toBe(true);
   });
 });

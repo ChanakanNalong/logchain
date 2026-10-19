@@ -24,8 +24,9 @@ export class IntegritySchedule implements OnModuleInit {
     const { mode, cron, batchSize, maxWaitMinutes } = this.integrity.sealConfig;
 
     if (mode === 'hybrid') {
-      const job = new CronJob(CronExpression.EVERY_MINUTE, () =>
-        void this.handleHybridTick(),
+      const job = new CronJob(
+        CronExpression.EVERY_MINUTE,
+        () => void this.handleHybridTick(),
       );
       this.scheduler.addCronJob(SEAL_CRON_JOB, job);
       job.start();
