@@ -52,7 +52,7 @@ export class IntegrityController {
     // แต่ยังติด guard ยอดเงิน — 503 พร้อมเหตุผล ไม่ใช่ "No pending logs" ที่ชี้ผิดทาง
     let batch;
     try {
-      batch = await this.integrity.sealBatch();
+      batch = await this.integrity.sealBatch('manual');
     } catch (err) {
       if (err instanceof SealSkippedError) {
         throw new ServiceUnavailableException(err.message);

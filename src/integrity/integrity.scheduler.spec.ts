@@ -13,6 +13,7 @@ describe('IntegritySchedule — seal cron', () => {
     const integrity = {
       sealConfig: readSealConfig(env),
       runScheduledSeal: jest.fn(),
+      runHybridSealTick: jest.fn(),
     } as unknown as IntegrityService;
     const registry = {
       addCronJob: jest.fn((_name: string, job: CronJob) => jobs.push(job)),
@@ -34,5 +35,12 @@ describe('IntegritySchedule — seal cron', () => {
 
   it('fails at boot on an invalid SEAL_CRON', () => {
     expect(() => boot({ SEAL_CRON: 'every 30 minutes' })).toThrow();
+  });
+
+  it('hybrid mode: registers an every-minute checker and ignores SEAL_CRON', () => {
+    const add = boot({ SEAL_MODE: 'hybrid', SEAL_CRON: '0 0 * * * *' });
+    expect(add).toHaveBeenCalledWith(SEAL_CRON_JOB, expect.any(CronJob));
+    // ไม่ใช้ hourly cron — เช็คทุกนาทีแทน (กัน seal ซ้ำ)
+    expect(jobs[0].cronTime.source).toBe(CronExpression.EVERY_MINUTE);
   });
 });

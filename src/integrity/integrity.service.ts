@@ -16,7 +16,14 @@ import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { explorerTxUrl } from '../blockchain/explorer';
 import { formatDec, fromUnits } from '../common/decimal';
 import { ethers } from 'ethers';
-import { readSealConfig, SealConfig, SealSkippedError } from './seal-config';
+import {
+  readSealConfig,
+  SealConfig,
+  SealSkippedError,
+  decideSeal,
+  SealTrigger,
+  SealReason,
+} from './seal-config';
 import { readIfMode, IfMode } from './if-mode';
 
 /** alert ที่ guard ยอดเงินต่ำยกขึ้น (ไม่ผูก batch — batch ยังไม่ถูกสร้าง) */
@@ -51,6 +58,7 @@ interface BatchListRow {
   effective_gas_price: string | number | null;
   status: string;
   log_count: number;
+  seal_reason: string | null;
   sealed_at: Date;
   confirmed_at: Date | null;
   if_anomaly: boolean | null;
@@ -136,9 +144,9 @@ export class IntegrityService {
    * ทำงานได้โดยไม่ต้องมี blockchain: ถ้า chain ไม่พร้อมจะปิด batch เป็น SEALED
    * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
-  sealBatch(): Promise<Batch | null> {
+  sealBatch(reason: SealReason = 'cron'): Promise<Batch | null> {
     const run = this.sealQueue
-      .then(() => this.sealBatchNow())
+      .then(() => this.sealBatchNow(reason))
       .then(
         (batch) => {
           if (batch) this.recordSealOutcome(batch.status !== 'FAILED');
@@ -213,6 +221,125 @@ export class IntegrityService {
     } finally {
       this.drainInFlight = false;
     }
+  }
+
+  /**
+   * สถิติ log ที่ยังไม่ถูก map เข้า batch — จำนวน + อายุของตัวเก่าสุด (นาที)
+   *
+   * อายุคิดใน SQL (EXTRACT EPOCH จาก now() − min(created_at)) = ใช้นาฬิกาของ Postgres
+   * ตัวเดียวกับที่ประทับ created_at ไม่ใช่นาฬิกาของ backend (กัน clock skew ระหว่าง host)
+   * anti-join (LEFT JOIN … WHERE m IS NULL) ไม่โหลด mapped id ทั้งหมดเข้า JS เหมือน sealBatchNow
+   * oldestAgeMinutes = null เมื่อไม่มี log ค้าง (min คืน NULL)
+   */
+  async getPendingStats(): Promise<{
+    pendingCount: number;
+    oldestAgeMinutes: number | null;
+  }> {
+    const rows: Array<{
+      pending_count: string;
+      oldest_age_seconds: string | null;
+    }> = await this.logsRepo.query(
+      `SELECT count(*)::bigint AS pending_count,
+                EXTRACT(EPOCH FROM now() - min(l.created_at)) AS oldest_age_seconds
+           FROM logs l
+           LEFT JOIN log_batch_mapping m ON m.log_id = l.id
+          WHERE m.log_id IS NULL`,
+    );
+    const r = rows[0];
+    const pendingCount = Number(r?.pending_count ?? 0);
+    const oldestAgeMinutes =
+      r?.oldest_age_seconds == null ? null : Number(r.oldest_age_seconds) / 60;
+    return { pendingCount, oldestAgeMinutes };
+  }
+
+  /**
+   * ตัวเช็คของ mode=hybrid — เรียกทุก 1 นาทีจาก scheduler (แยกจาก verify cron)
+   *
+   * ใช้ decideSeal() ตัดสินจาก count/age แล้ว drain ตามนั้น:
+   *   - trigger=count → drain เฉพาะ batch เต็ม (เหลือเศษ < batchSize ไว้รอ age)
+   *   - trigger=age   → drain ทั้งหมด (รวม batch สุดท้ายที่ไม่เต็ม)
+   * backoff / in_flight / ยอดเงินต่ำ ใช้กลไกเดิมทั้งหมด (คิว sealQueue + drainInFlight +
+   * checkWalletBalance ใน sealBatchNow + recordSealOutcome) — ที่นี่แค่เพิ่มตัวตัดสินว่า "ควร seal ไหม"
+   */
+  async runHybridSealTick(): Promise<SealRunResult> {
+    const { pendingCount, oldestAgeMinutes } = await this.getPendingStats();
+    const decision = decideSeal({
+      pendingCount,
+      oldestAgeMinutes,
+      inFlight: this.drainInFlight,
+      backoffTicksLeft: this.backoffTicksLeft,
+      batchSize: this.sealConfig.batchSize,
+      maxWaitMinutes: this.sealConfig.maxWaitMinutes,
+    });
+
+    if (!decision.seal) {
+      if (decision.skip === 'backoff') {
+        // ตัวเรียก (ไม่ใช่ decideSeal) เป็นคนลดตัวนับ — เหมือน runScheduledSeal ของ cron
+        this.backoffTicksLeft--;
+        this.logger.warn(
+          `Seal backoff: skipping hybrid tick after ${this.consecutiveFailures} consecutive failures ` +
+            `(${this.backoffTicksLeft} more to skip)`,
+        );
+        return { batches: [], skipped: 'BACKOFF' };
+      }
+      if (decision.skip === 'in_flight') {
+        this.logger.debug(
+          'Previous seal round still running — skipping this hybrid tick',
+        );
+        return { batches: [], skipped: 'IN_FLIGHT' };
+      }
+      return { batches: [] };
+    }
+
+    this.drainInFlight = true;
+    try {
+      // count: ปิดเฉพาะ batch เต็มเท่าที่มี (floor) · age: ปิดจนไม่เหลือ (เพดาน MAX_BATCHES_PER_TICK)
+      const maxBatches = decision.drainAll
+        ? MAX_BATCHES_PER_TICK
+        : Math.floor(pendingCount / this.sealConfig.batchSize);
+      const result = await this.drainPending(decision.trigger, maxBatches);
+      const logs = result.batches.reduce((n, b) => n + b.logCount, 0);
+      const ageStr =
+        oldestAgeMinutes == null ? 'n/a' : `${oldestAgeMinutes.toFixed(1)}m`;
+      this.logger.log(
+        `Hybrid seal: reason=${decision.trigger} pending=${pendingCount} oldest=${ageStr} → ` +
+          `${result.batches.length} batch (${logs} log)` +
+          (result.skipped ? ` [skipped=${result.skipped}]` : ''),
+      );
+      return result;
+    } finally {
+      this.drainInFlight = false;
+    }
+  }
+
+  /**
+   * drain log ค้างด้วย sealBatch() ทีละใบ สูงสุด maxBatches ใบ (hybrid เท่านั้น)
+   *
+   * หยุดเมื่อ: ไม่มี log ค้าง (null) · batch FAILED (log ชุดเดิมยังไม่ถูก map — วนต่อ = seal ซ้ำ) ·
+   * ครบ maxBatches · ยอดเงินต่ำ (SealSkippedError → คืน skipped ให้ตัวเรียก log)
+   * คิว sealQueue เดิมยังกัน seal-now ที่ยิงแทรก และ recordSealOutcome คุม backoff ให้อยู่แล้ว
+   */
+  private async drainPending(
+    reason: SealTrigger,
+    maxBatches: number,
+  ): Promise<SealRunResult> {
+    const batches: Batch[] = [];
+    const cap = Math.min(maxBatches, MAX_BATCHES_PER_TICK);
+    for (let i = 0; i < cap; i++) {
+      let batch: Batch | null;
+      try {
+        batch = await this.sealBatch(reason);
+      } catch (err) {
+        if (err instanceof SealSkippedError) {
+          return { batches, skipped: err.reason };
+        }
+        throw err;
+      }
+      if (!batch) break;
+      batches.push(batch);
+      if (batch.status === 'FAILED') break;
+    }
+    return { batches };
   }
 
   /** นับผล seal สำหรับ backoff — ล้มครบ N ครั้งติดกันแล้วข้าม 2^(ครั้งที่เกิน N) รอบ */
@@ -336,7 +463,7 @@ export class IntegrityService {
     }
   }
 
-  private async sealBatchNow(): Promise<Batch | null> {
+  private async sealBatchNow(reason: SealReason): Promise<Batch | null> {
     // 1. หา log_id ที่ถูก map แล้ว (เพื่อ exclude)
     const mapped = await this.mappingRepo.find({ select: { logId: true } });
     const mappedIds = mapped.map((m) => m.logId);
@@ -366,6 +493,7 @@ export class IntegrityService {
         merkleRoot: root.replace('0x', ''),
         logCount: pendingLogs.length,
         status: 'PENDING',
+        sealReason: reason,
       }),
     );
 
@@ -945,7 +1073,7 @@ export class IntegrityService {
 
     const rows: BatchListRow[] = await this.batchesRepo.query(
       `SELECT b.id, b.merkle_root, b.tx_hash, b.block_number, b.gas_used, b.effective_gas_price,
-              b.status, b.log_count,
+              b.status, b.log_count, b.seal_reason,
               b.sealed_at, b.confirmed_at, b.if_anomaly, b.if_score, b.if_reason, b.if_scored_at,
               EXISTS (SELECT 1 FROM batch_log_snapshot s WHERE s.batch_id = b.id) AS has_snapshot,
               COUNT(*) OVER () AS total
@@ -982,6 +1110,8 @@ export class IntegrityService {
         polygonscanUrl: explorerTxUrl(r.tx_hash),
         status: r.status,
         logCount: r.log_count,
+        // เหตุผลที่ปิด batch: count | age | manual | cron · null = ปิดก่อนมีคอลัมน์นี้
+        sealReason: r.seal_reason,
         sealedAt: new Date(r.sealed_at),
         confirmedAt: r.confirmed_at ? new Date(r.confirmed_at) : null,
         // ผลจำแนก Isolation Forest (ระดับที่ 3) · ifStatus = active | calibrating

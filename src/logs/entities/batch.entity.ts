@@ -30,6 +30,11 @@ export class Batch {
   @Column({ name: 'confirmed_at', type: 'timestamptz', nullable: true })
   confirmedAt: Date | null;
 
+  // เหตุผลที่ batch ถูกปิด: count | age | manual | cron (BatchSealReason migration)
+  // NULL = batch ที่ปิดก่อนมีคอลัมน์นี้ · ไม่อยู่ใน Merkle/raw_hash
+  @Column({ name: 'seal_reason', type: 'varchar', length: 16, nullable: true })
+  sealReason: string | null;
+
   // ---- ค่า gas จริงของ tx storeRoot (BatchGasAndIndexes migration) ----
   // เก็บเป็น string ทศนิยม (pg คืน bigint/numeric เป็น string) — ห้ามแปลงเป็น number จะเสียความแม่น
   // null = ไม่มี tx ใหม่ของ batch นี้ (ROOT_EXISTS / ยังไม่ confirm / ก่อนมีคอลัมน์)

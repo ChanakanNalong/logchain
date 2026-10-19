@@ -18,6 +18,7 @@ const ROW = {
   block_number: null,
   status: 'CONFIRMED',
   log_count: 24,
+  seal_reason: 'age',
   sealed_at: new Date('2026-10-16T04:17:00Z'),
   confirmed_at: null,
   if_anomaly: true,
@@ -92,5 +93,15 @@ describe('IntegrityService.listBatches — IF_MODE', () => {
     ]).listBatches({});
     expect(r.items[0].gasUsed).toBeNull();
     expect(r.items[0].effectiveGasPriceGwei).toBeNull();
+  });
+
+  it('exposes sealReason (and null for batches sealed before the column existed)', async () => {
+    const withReason = await makeService().listBatches({});
+    expect(withReason.items[0]).toMatchObject({ sealReason: 'age' });
+
+    const legacy = await makeService([
+      { ...ROW, seal_reason: null },
+    ]).listBatches({});
+    expect(legacy.items[0].sealReason).toBeNull();
   });
 });
