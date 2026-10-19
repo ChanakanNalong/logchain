@@ -269,6 +269,10 @@ export default function Verify() {
   const statusColWidth = batchTableWidth >= 720 ? 176 : 120;
   const clip = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
   const cellPad = { padding: "10px 6px" };
+  // header padding left/right = cellPad so each header lines up with its column
+  const thPad = { paddingLeft: 6, paddingRight: 6 };
+  // Logs is numeric → right; letter-spacing trails the last letter, so trim it off the right padding
+  const thPadRight = { textAlign: "right" as const, paddingLeft: 6, paddingRight: "calc(6px - 0.08em)" };
 
   return (
     // minmax(0,1fr): wide content scrolls inside its own frame, never the page
@@ -517,7 +521,7 @@ export default function Verify() {
                     <col style={{ width: 66 }} />
                   </colgroup>
                   <thead>
-                    <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx", ""].map((h, i) => <Th key={h + i}>{h}</Th>)}</tr>
+                    <tr>{["Status", "Merkle root", "Logs", "Anomaly", "Sealed at", "Tx", ""].map((h, i) => <Th key={h + i} style={h === "Logs" ? thPadRight : thPad}>{h}</Th>)}</tr>
                   </thead>
                   <tbody>
                     {batches.map((b) => {
@@ -529,7 +533,7 @@ export default function Verify() {
                         <Td style={{ ...cellPad, ...clip, fontSize: 12, color: t.blue2, ...monoFont }} title={b.merkleRoot}>
                           {b.merkleRoot}
                         </Td>
-                        <Td style={{ ...cellPad, ...clip, fontSize: 12, ...monoFont }}>{b.logCount}</Td>
+                        <Td style={{ ...cellPad, ...clip, fontSize: 12, textAlign: "right", ...monoFont }}>{b.logCount}</Td>
                         {/* Isolation Forest (ระดับที่ 3) — calibrating = ซ่อนผลจำแนก (ฝึกจากข้อมูลจำลอง) */}
                         <Td style={cellPad} title={b.ifStatus === "calibrating"
                           ? "โมเดลฝึกจากข้อมูลจำลอง กำลังเก็บ traffic จริงเพื่อ retrain"
