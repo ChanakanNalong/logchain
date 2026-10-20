@@ -104,6 +104,8 @@ export default function Verify() {
   const [overview, setOverview] = useState<any>(null);
   const [batches, setBatches] = useState<BatchListItem[] | null>(null);
   const [recentLogs, setRecentLogs] = useState<LogRow[]>([]);
+  // แท็บ "seal แล้ว" ดึงแยก (offset=pending) ไม่ใช้ split จาก recentLogs — กัน pending ≥ 100 แล้วแท็บว่าง
+  const [sealedRecent, setSealedRecent] = useState<LogRow[]>([]);
   const [recentTab, setRecentTab] = useState<"sealed" | "pending">("sealed");
   const [chainError, setChainError] = useState("");
 
@@ -157,6 +159,41 @@ export default function Verify() {
 
     return () => { cancelled = true; };
   }, []);
+
+  // แท็บ "seal แล้ว": log ถูก seal จากเก่า→ใหม่ ดังนั้นใน /logs (ใหม่→เก่า) log ที่ seal แล้วเริ่มถัดจาก
+  // pending ที่ค้างอยู่ → เริ่มอ่านที่ offset = pendingCount แล้วไล่หน้า (×10) จน CONFIRMED ครบ 6
+  // ไม่ split จาก recentLogs (limit 100) เพราะถ้า pending ≥ 100 หน้าต้น ๆ จะไม่มี CONFIRMED เลย
+  useEffect(() => {
+    if (!overview) return;
+    let cancelled = false;
+    const pend = Math.max(0, (overview.totalLogs ?? 0) - (overview.sealedLogs ?? 0));
+    (async () => {
+      const out: LogRow[] = [];
+      const PAGE = 10;
+      const MAX_PAGES = 6; // กันไล่ยาวเกินไปถ้าไม่มี CONFIRMED จริง
+      for (let p = 0; p < MAX_PAGES && out.length < 6; p++) {
+        let lastPage = false;
+        try {
+          const page = await getLogs({ limit: PAGE, offset: pend + p * PAGE });
+          if (cancelled) return;
+          const items = page.items ?? [];
+          for (const it of items) {
+            const r = mapLog(it);
+            if (r.batchStatus === "CONFIRMED") {
+              out.push(r);
+              if (out.length >= 6) break;
+            }
+          }
+          lastPage = items.length < PAGE; // หมดหน้าแล้ว
+        } catch {
+          break;
+        }
+        if (lastPage) break;
+      }
+      if (!cancelled) setSealedRecent(out);
+    })();
+    return () => { cancelled = true; };
+  }, [overview]);
 
   // tree of the selected batch — loads on its own, the proof form keeps working meanwhile
   useEffect(() => {
@@ -312,12 +349,8 @@ export default function Verify() {
 
   const roots = treeData ? treeRoots(treeData) : null;
   // 3 across, or 1 column when narrow — never 2 + 1
-  // "Verify a recent log" 2 แท็บ: seal แล้ว (CONFIRMED, verify ได้) / รอ seal (ยังไม่เข้า batch)
-  // N (รอ seal) ใช้ totalLogs−sealedLogs จาก /stats/overview — แม่นทั้งระบบ ไม่จำกัดแค่หน้าที่ดึงมา
-  const sealedRecent = useMemo(
-    () => recentLogs.filter((l) => l.batchStatus === "CONFIRMED").slice(0, 6),
-    [recentLogs],
-  );
+  // "Verify a recent log" 2 แท็บ · N (รอ seal) ใช้ totalLogs−sealedLogs จาก /stats/overview — แม่นทั้งระบบ
+  // แท็บ "รอ seal" split จาก recentLogs ได้ (log ใหม่สุด = ยังไม่ seal) · แท็บ "seal แล้ว" ดึงแยก (effect ด้านล่าง)
   const pendingRecent = useMemo(
     () => recentLogs.filter((l) => l.batchStatus === null).slice(0, 6),
     [recentLogs],
