@@ -24,10 +24,23 @@ interface IdOperator {
   value?: unknown;
 }
 interface FindOpts {
-  where?: { id?: IdOperator; batchId?: string };
+  where?: { id?: IdOperator; batchId?: string; createdAt?: IdOperator };
   order?: Record<string, 'ASC' | 'DESC'>;
   take?: number;
 }
+
+/** cutoff ของ age drain = เวลาที่ตัดสินใจ (หลัง createdAt ทุกตัวใน makeLog ที่เป็น Oct-15) */
+const CUTOFF = new Date(Date.UTC(2026, 9, 16, 0, 0, 0));
+/** mock return ของ getPendingStats (รวม now = cutoff) */
+const stats = (
+  pendingCount: number,
+  oldestAgeMinutes: number | null,
+  now = CUTOFF,
+) => ({
+  pendingCount,
+  oldestAgeMinutes,
+  now,
+});
 type LogRow = ReturnType<typeof makeLog>;
 interface MappingRow {
   logId: string;
@@ -214,6 +227,12 @@ describe('IntegrityService — runHybridSealTick', () => {
         let rows = [...logsStore];
         const excl = excludedIds(opts.where?.id);
         if (excl) rows = rows.filter((r) => !excl.includes(r.id));
+        // cutoff (age drain): created_at <= value — จำลอง LessThanOrEqual ของ TypeORM
+        const le = opts.where?.createdAt;
+        if (le?.type === 'lessThanOrEqual' && le.value instanceof Date) {
+          const cut = le.value;
+          rows = rows.filter((r) => r.createdAt <= cut);
+        }
         rows = applyOrder(rows, opts.order);
         if (opts.take) rows = rows.slice(0, opts.take);
         return Promise.resolve(rows);
@@ -275,7 +294,7 @@ describe('IntegrityService — runHybridSealTick', () => {
         { provide: getRepositoryToken(LogBatchMapping), useValue: mappingRepo },
       ],
     }).compile();
-    return module.get(IntegrityService);
+    return { service: module.get(IntegrityService), blockchain };
   }
 
   beforeEach(() => {
@@ -292,10 +311,8 @@ describe('IntegrityService — runHybridSealTick', () => {
 
   it('count trigger: 250 log → 2 batch × 100, เหลือ 50 ค้าง', async () => {
     logsStore = Array.from({ length: 250 }, (_, i) => makeLog(i));
-    const service = await build({ SEAL_MODE: 'hybrid' });
-    jest
-      .spyOn(service, 'getPendingStats')
-      .mockResolvedValue({ pendingCount: 250, oldestAgeMinutes: 5 });
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(250, 5));
 
     const run = await service.runHybridSealTick();
 
@@ -308,10 +325,8 @@ describe('IntegrityService — runHybridSealTick', () => {
 
   it('age trigger: 30 log ค้างนาน → seal ทั้งหมดใบเดียว (รวมใบที่ไม่เต็ม)', async () => {
     logsStore = Array.from({ length: 30 }, (_, i) => makeLog(i));
-    const service = await build({ SEAL_MODE: 'hybrid' });
-    jest
-      .spyOn(service, 'getPendingStats')
-      .mockResolvedValue({ pendingCount: 30, oldestAgeMinutes: 61 });
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(30, 61));
 
     const run = await service.runHybridSealTick();
 
@@ -320,10 +335,8 @@ describe('IntegrityService — runHybridSealTick', () => {
   });
 
   it('idle: ไม่มี log ค้าง → ไม่ seal', async () => {
-    const service = await build({ SEAL_MODE: 'hybrid' });
-    jest
-      .spyOn(service, 'getPendingStats')
-      .mockResolvedValue({ pendingCount: 0, oldestAgeMinutes: null });
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(0, null));
 
     const run = await service.runHybridSealTick();
     expect(run.batches).toHaveLength(0);
@@ -333,10 +346,8 @@ describe('IntegrityService — runHybridSealTick', () => {
   it('เลือก pending เรียง created_at ASC, id ASC (log เก่าสุดเข้า batch ก่อน)', async () => {
     // id เรียง 1..5 แต่ createdAt กลับด้าน (id ใหญ่ = createdAt เก่ากว่า)
     logsStore = [1, 2, 3, 4, 5].map(makeLog);
-    const service = await build({ SEAL_MODE: 'hybrid' });
-    jest
-      .spyOn(service, 'getPendingStats')
-      .mockResolvedValue({ pendingCount: 5, oldestAgeMinutes: 61 });
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(5, 61));
 
     await service.runHybridSealTick();
 
@@ -350,10 +361,8 @@ describe('IntegrityService — runHybridSealTick', () => {
 
   it('seal-now แทรกระหว่าง count drain → ไม่มี log_id ซ้ำใน mapping', async () => {
     logsStore = Array.from({ length: 250 }, (_, i) => makeLog(i));
-    const service = await build({ SEAL_MODE: 'hybrid' });
-    jest
-      .spyOn(service, 'getPendingStats')
-      .mockResolvedValue({ pendingCount: 250, oldestAgeMinutes: 5 });
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(250, 5));
 
     // ยิง hybrid tick (count drain) พร้อม seal-now แทรก 2 ครั้ง — คิว sealQueue ต้อง serialize
     // ให้ seal ทีละใบ ไม่ซ้อน (ถ้าซ้อน ทั้งคู่จะเห็น pending ชุดเดียวกันแล้ว map log ซ้ำ)
@@ -370,5 +379,58 @@ describe('IntegrityService — runHybridSealTick', () => {
     expect(mappingStore).toHaveLength(250);
     // ไม่มี batch ไหนได้ log เกิน batchSize
     expect(batchStore.every((b) => b.logCount <= 100)).toBe(true);
+  });
+
+  it('age drain: log ที่เข้าระหว่าง drain (created_at > cutoff) ต้องไม่ถูก seal', async () => {
+    logsStore = [makeLog(0), makeLog(1)]; // 2 aged (Oct-15 ≤ cutoff Oct-16)
+    // log สดที่ "มาถึง" ระหว่าง drain — createdAt หลัง cutoff
+    const freshRow = {
+      id: 'log-fresh',
+      source: 'unit-test',
+      sourceIp: null,
+      eventType: 'AUTH_FAILURE',
+      severity: 'INFO',
+      message: 'fresh',
+      classification: 'INTERNAL',
+      cdeScope: false,
+      createdAt: new Date(Date.UTC(2026, 9, 17, 0, 0, 0)),
+    };
+    const fresh = { ...freshRow, rawHash: computeRawHash(freshRow) };
+    // batchSize 1 → drain วนหลายรอบ (เปิดช่องให้กวาด fresh ถ้าไม่มี cutoff)
+    const { service, blockchain } = await build({
+      SEAL_MODE: 'hybrid',
+      SEAL_BATCH_SIZE: '1',
+    });
+    let first = true;
+    blockchain.storeRoot = jest.fn(() => {
+      if (first) {
+        first = false;
+        logsStore.push(fresh); // log เข้ามาระหว่าง storeRoot ใบแรก
+      }
+      return Promise.resolve({
+        txHash: '0xtx',
+        blockNumber: 1,
+        confirmed: true,
+      });
+    });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(2, 61));
+
+    await service.runHybridSealTick();
+
+    const ids = mappingStore.map((m) => m.logId).sort();
+    expect(ids).toEqual(['log-0000', 'log-0001']); // seal เฉพาะ 2 aged
+    expect(ids).not.toContain('log-fresh'); // fresh (> cutoff) ไม่ถูก seal
+    expect(logsStore.some((l) => l.id === 'log-fresh')).toBe(true); // ยังค้าง pending
+  });
+
+  it('age backlog 250 (aged ทั้งหมด) → 3 batch ในรอบเดียว (100,100,50)', async () => {
+    logsStore = Array.from({ length: 250 }, (_, i) => makeLog(i));
+    const { service } = await build({ SEAL_MODE: 'hybrid' });
+    jest.spyOn(service, 'getPendingStats').mockResolvedValue(stats(250, 61));
+
+    const run = await service.runHybridSealTick();
+
+    expect(run.batches.map((b) => b.logCount)).toEqual([100, 100, 50]);
+    expect(mappingStore).toHaveLength(250);
   });
 });

@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Not } from 'typeorm';
+import { Repository, In, Not, LessThanOrEqual } from 'typeorm';
 import { Log } from '../logs/entities/log.entity';
 import { Batch } from '../logs/entities/batch.entity';
 import { Alert } from '../alerts/entities/alert.entity';
@@ -149,9 +149,9 @@ export class IntegrityService {
    * ทำงานได้โดยไม่ต้องมี blockchain: ถ้า chain ไม่พร้อมจะปิด batch เป็น SEALED
    * แล้วให้ anchorSealedBatches() มาตรึงขึ้น chain ทีหลังเมื่อ config ครบ
    */
-  sealBatch(reason: SealReason = 'cron'): Promise<Batch | null> {
+  sealBatch(reason: SealReason = 'cron', cutoff?: Date): Promise<Batch | null> {
     const run = this.sealQueue
-      .then(() => this.sealBatchNow(reason))
+      .then(() => this.sealBatchNow(reason, cutoff))
       .then(
         (batch) => {
           if (batch) this.recordSealOutcome(batch.status !== 'FAILED');
@@ -239,13 +239,17 @@ export class IntegrityService {
   async getPendingStats(): Promise<{
     pendingCount: number;
     oldestAgeMinutes: number | null;
+    /** now() ของ Postgres (นาฬิกาเดียวกับที่คิดอายุ) — ใช้เป็น cutoff ของ age drain */
+    now: Date;
   }> {
     const rows: Array<{
       pending_count: string;
       oldest_age_seconds: string | null;
+      now_ts: string;
     }> = await this.logsRepo.query(
       `SELECT count(*)::bigint AS pending_count,
-                EXTRACT(EPOCH FROM now() - min(l.created_at)) AS oldest_age_seconds
+                EXTRACT(EPOCH FROM now() - min(l.created_at)) AS oldest_age_seconds,
+                now()::text AS now_ts
            FROM logs l
            LEFT JOIN log_batch_mapping m ON m.log_id = l.id
           WHERE m.log_id IS NULL`,
@@ -254,7 +258,7 @@ export class IntegrityService {
     const pendingCount = Number(r?.pending_count ?? 0);
     const oldestAgeMinutes =
       r?.oldest_age_seconds == null ? null : Number(r.oldest_age_seconds) / 60;
-    return { pendingCount, oldestAgeMinutes };
+    return { pendingCount, oldestAgeMinutes, now: new Date(r.now_ts) };
   }
 
   /**
@@ -267,7 +271,8 @@ export class IntegrityService {
    * checkWalletBalance ใน sealBatchNow + recordSealOutcome) — ที่นี่แค่เพิ่มตัวตัดสินว่า "ควร seal ไหม"
    */
   async runHybridSealTick(): Promise<SealRunResult> {
-    const { pendingCount, oldestAgeMinutes } = await this.getPendingStats();
+    const { pendingCount, oldestAgeMinutes, now } =
+      await this.getPendingStats();
     const decision = decideSeal({
       pendingCount,
       oldestAgeMinutes,
@@ -299,16 +304,29 @@ export class IntegrityService {
     this.drainInFlight = true;
     try {
       // count: ปิดเฉพาะ batch เต็มเท่าที่มี (floor) · age: ปิดจนไม่เหลือ (เพดาน MAX_BATCHES_PER_TICK)
+      // age ส่ง cutoff = now() ตอนตัดสินใจ → seal เฉพาะ log ที่ค้างอยู่ ณ จุดนั้น ไม่กวาด log ที่เข้าระหว่าง drain
       const maxBatches = decision.drainAll
         ? MAX_BATCHES_PER_TICK
         : Math.floor(pendingCount / this.sealConfig.batchSize);
-      const result = await this.drainPending(decision.trigger, maxBatches);
+      const cutoff = decision.trigger === 'age' ? now : undefined;
+      const result = await this.drainPending(
+        decision.trigger,
+        maxBatches,
+        cutoff,
+      );
       const logs = result.batches.reduce((n, b) => n + b.logCount, 0);
       const ageStr =
         oldestAgeMinutes == null ? 'n/a' : `${oldestAgeMinutes.toFixed(1)}m`;
+      // age: บอกจำนวนที่ค้างใหม่ (created_at > cutoff = เข้ามาระหว่าง/หลัง drain) ไว้รอรอบหน้า
+      let tail = '';
+      if (decision.trigger === 'age' && !result.skipped) {
+        const after = await this.getPendingStats();
+        tail = ` · ${after.pendingCount} log ใหม่รอรอบหน้า`;
+      }
       this.logger.log(
         `Hybrid seal: reason=${decision.trigger} pending=${pendingCount} oldest=${ageStr} → ` +
-          `${result.batches.length} batch (${logs} log)` +
+          `${result.batches.length} batch (${logs} log${decision.trigger === 'age' ? ' ≤ cutoff' : ''})` +
+          tail +
           (result.skipped ? ` [skipped=${result.skipped}]` : ''),
       );
       return result;
@@ -327,13 +345,14 @@ export class IntegrityService {
   private async drainPending(
     reason: SealTrigger,
     maxBatches: number,
+    cutoff?: Date,
   ): Promise<SealRunResult> {
     const batches: Batch[] = [];
     const cap = Math.min(maxBatches, MAX_BATCHES_PER_TICK);
     for (let i = 0; i < cap; i++) {
       let batch: Batch | null;
       try {
-        batch = await this.sealBatch(reason);
+        batch = await this.sealBatch(reason, cutoff);
       } catch (err) {
         if (err instanceof SealSkippedError) {
           return { batches, skipped: err.reason };
@@ -468,14 +487,22 @@ export class IntegrityService {
     }
   }
 
-  private async sealBatchNow(reason: SealReason): Promise<Batch | null> {
+  private async sealBatchNow(
+    reason: SealReason,
+    cutoff?: Date,
+  ): Promise<Batch | null> {
     // 1. หา log_id ที่ถูก map แล้ว (เพื่อ exclude)
     const mapped = await this.mappingRepo.find({ select: { logId: true } });
     const mappedIds = mapped.map((m) => m.logId);
 
     // 2. logs ที่ยังไม่ถูก map (batch ใหม่)
+    //    cutoff (age drain): เอาเฉพาะ created_at <= เวลาตัดสินใจ — กัน log ที่เข้าระหว่าง drain
+    //    ถูกกวาดมา seal เป็น batch จิ๋ว (count/seal-now/cron ไม่ส่ง cutoff = พฤติกรรมเดิม)
+    const where: Record<string, unknown> = {};
+    if (mappedIds.length > 0) where.id = Not(In(mappedIds));
+    if (cutoff) where.createdAt = LessThanOrEqual(cutoff);
     const pendingLogs = await this.logsRepo.find({
-      where: mappedIds.length > 0 ? { id: Not(In(mappedIds)) } : {},
+      where,
       order: { createdAt: 'ASC', id: 'ASC' }, // ต้องตรงกับ getLeavesForBatch
       take: this.sealConfig.batchSize,
     });
