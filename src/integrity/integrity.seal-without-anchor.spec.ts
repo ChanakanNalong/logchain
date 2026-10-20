@@ -215,13 +215,16 @@ describe('IntegrityService — seal แยกจาก anchor', () => {
     expect(mappingStore.map((m) => m.logId).sort()).toEqual(['a', 'b', 'c']);
   });
 
-  it('per-log proof ใช้ได้กับ batch ที่ยังไม่ anchor', async () => {
+  it('batch ที่ยังไม่ anchor: มี proof แต่ verify กับเชนไม่ได้ (verified=null · ไม่ fallback ไป dbRoot)', async () => {
     await service.sealBatch();
 
     const result = await service.getProofForLog('b');
 
     expect(result).not.toBeNull();
-    expect(result!.verified).toBe(true);
+    // ยังไม่ anchor / อ่านเชนไม่ได้ → ตรวจ proof กับเชนไม่ได้ = null (ห้ามตีความว่า valid จาก dbRoot)
+    expect(result!.verified).toBeNull();
+    expect(result!.chainVerifiable).toBe(false);
+    expect(result!.proof).toBeDefined();
     expect(result!.batch.status).toBe('SEALED');
   });
 

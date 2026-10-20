@@ -326,7 +326,7 @@ export default function Verify() {
   const pathCheck = path && proofForTree ? checkProofAgainstPath(path, proofForTree.proof) : null;
   const pathOk = !!path && path.length > 0 && pathCheck?.ok === true;
 
-  const verified = result?.verify ?? false;
+  const verified: boolean | null = result?.verify ?? null;
   const placeholder = (text: string) => (
     <div style={{ color: t.muted, padding: 16, textAlign: "center", fontSize: 13 }}>{text}</div>
   );
@@ -408,8 +408,8 @@ export default function Verify() {
       <Card>
         <SectionLabel>Merkle proof verification</SectionLabel>
         <p style={{ color: t.muted, fontSize: 13, marginTop: 4 }}>
-          Enter a log ID to check its Merkle proof against the batch root <strong>stored in the DB</strong>.
-          Whether that root matches the chain is shown separately under <span style={monoFont}>chainRoot</span> below.
+          Enter a log ID to check its Merkle proof against the batch root <strong>anchored on-chain</strong>.
+          อ่านเชนไม่ได้หรือ batch ยังไม่ anchor จะขึ้น "ตรวจกับเชนไม่ได้" (ไม่ fallback ไปเทียบ root ใน DB).
         </p>
 
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
@@ -505,24 +505,38 @@ export default function Verify() {
               </div>
             </div>
 
-            <div style={{
-              marginTop: 18, display: "flex", alignItems: "center", gap: 10,
-              padding: "12px 16px", borderRadius: 10,
-              background: verified ? "rgba(52,211,153,0.08)" : "rgba(244,63,94,0.08)",
-              border: `1px solid ${verified ? "rgba(52,211,153,0.35)" : "rgba(244,63,94,0.35)"}`,
-            }}>
-              {verified ? <CircleCheck size={18} color={t.good} /> : <CircleX size={18} color={t.danger} />}
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14, color: verified ? t.good : t.danger }}>
-                  {verified ? "Verified — proof valid" : "Invalid — proof mismatch"}
-                </div>
-                <div style={{ fontSize: 12, color: t.muted }}>
-                  {verified
-                    ? `The proof (${result.proof.length} hash${result.proof.length === 1 ? "" : "es"}) rebuilds the batch root stored in the DB. Compare with the chain under chainRoot.`
-                    : "The proof does not rebuild the batch root stored in the DB — the log or its batch may have been altered after seal."}
+            {verified === null ? (
+              <div style={{
+                marginTop: 18, display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 10,
+                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.35)",
+              }}>
+                <AlertTriangle size={18} color={t.warn} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: t.warn }}>ตรวจกับเชนไม่ได้</div>
+                  <div style={{ fontSize: 12, color: t.muted }}>
+                    อ่าน root จากเชนไม่ได้ หรือ batch ยังไม่ถูก anchor — จึงยืนยัน proof กับเชนไม่ได้ (ไม่ fallback ไปเทียบ root ใน DB){result.chainError ? ` · ${result.chainError}` : ""}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div style={{
+                marginTop: 18, display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 10,
+                background: verified ? "rgba(52,211,153,0.08)" : "rgba(244,63,94,0.08)",
+                border: `1px solid ${verified ? "rgba(52,211,153,0.35)" : "rgba(244,63,94,0.35)"}`,
+              }}>
+                {verified ? <CircleCheck size={18} color={t.good} /> : <CircleX size={18} color={t.danger} />}
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: verified ? t.good : t.danger }}>
+                    {verified ? "Verified — proof valid (เทียบกับ root บนเชน)" : "Invalid — proof mismatch"}
+                  </div>
+                  <div style={{ fontSize: 12, color: t.muted }}>
+                    {verified
+                      ? `proof (${result.proof.length} hash${result.proof.length === 1 ? "" : "es"}) สร้าง root ที่ถูก anchor บนเชนได้จริง`
+                      : "proof ไม่ตรงกับ root บนเชน — log หรือ batch ถูกแก้หลัง seal"}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
         </div>

@@ -74,8 +74,8 @@ export interface ProofStep {
 }
 
 export interface LogProof {
-  /** the proof rebuilds `batch.merkleRoot` (checked against the DB, not the chain) */
-  verified: boolean;
+  /** true = proof rebuilds the root on chain · false = ไม่ตรง · null = ตรวจกับเชนไม่ได้ (อ่านไม่ได้/ยังไม่ anchor) */
+  verified: boolean | null;
   path: ProofStep[];
 }
 
@@ -362,6 +362,12 @@ export interface LogProofResult {
     ifReason?: string | null;
   };
   proof: ProofStep[];
-  /** proof rebuilds batch.merkleRoot (the DB root, not the chain) */
-  verify: boolean;
+  /** true = proof rebuilds the root on **chain** · false = ไม่ตรง (ถูกแก้) · null = ตรวจกับเชนไม่ได้ (อ่านไม่ได้/ยังไม่ anchor) */
+  verify: boolean | null;
+  /** เชนอ่านได้และ anchor แล้ว → ตรวจ proof กับเชนได้จริง */
+  chainVerifiable: boolean;
+  chainRoot: string | null;
+  chainError: string | null;
+  /** ตัวเทียบที่ใช้จำแนก integrity (เดียวกับ diff): snapshot | raw_hash | none */
+  baseline: "snapshot" | "raw_hash" | "none";
 }

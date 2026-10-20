@@ -122,7 +122,12 @@ export function buildProof(logId: string): LogProofResult | null {
         ifReason: a.item.ifReason ?? null,
       },
       proof,
+      // mock: ถือ dbRoot เป็น root บนเชน (ไม่มีเชนจริง) · verify เทียบกับ root นั้น
       verify: acc.toLowerCase() === a.dbRoot.toLowerCase(),
+      chainVerifiable: true,
+      chainRoot: a.dbRoot,
+      chainError: null,
+      baseline: "snapshot",
     };
   }
   return null;
