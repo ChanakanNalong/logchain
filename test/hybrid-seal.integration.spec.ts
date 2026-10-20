@@ -267,4 +267,47 @@ describeHh('Hybrid seal (hh, real chain)', () => {
     expect(batches.every((b) => b.n <= BATCH_SIZE)).toBe(true);
     expect(batches.reduce((s, b) => s + b.n, 0)).toBe(250);
   }, 120_000);
+
+  it('age cutoff: log ที่เข้าระหว่าง drain (created_at > cutoff) ไม่ถูกกวาด — ไม่เกิด batch จิ๋ว', async () => {
+    const SRC = `hybrid-cutoff-${RUN}`;
+    await drainAll();
+    const t0 = Date.now();
+    await ingest(SRC, 250); // backlog ใหญ่ → age drain หลาย batch (storeRoot หลายครั้ง = มีช่วง drain จริง)
+
+    // รอจน log เก่าสุดอายุ > MAX_WAIT (age trigger)
+    const waitMs = MAX_WAIT_MIN * 60_000 + 4000 - (Date.now() - t0);
+    if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
+
+    // cutoff = now() ของ Postgres ก่อน tick · log ที่ created_at > ค่านี้ ต้องไม่ถูก seal ในรอบนี้
+    const [{ now: tickStart }] = await ds.query('SELECT now()');
+
+    // run age tick พร้อม ingest log สด 15 ตัว (ให้บางตัวเข้าระหว่าง drain)
+    await Promise.all([
+      integrity.runHybridSealTick(),
+      ingest(`${SRC}-fresh`, 15),
+    ]);
+
+    // invariant: ไม่มี age batch ที่ seal ในรอบนี้ (sealed_at >= tickStart) มี log ที่ created_at > tickStart
+    // = ไม่กวาด log ที่มาหลังเวลาตัดสินใจ (ถ้าไม่มี cutoff log สดที่เข้าระหว่าง drain จะโดนกวาดเป็น batch จิ๋ว)
+    const swept = await ds.query(
+      `SELECT count(*)::int AS n
+         FROM batches b
+         JOIN log_batch_mapping m ON m.batch_id = b.id
+         JOIN logs l ON l.id = m.log_id
+        WHERE b.seal_reason = 'age' AND b.sealed_at >= $1 AND l.created_at > $1`,
+      [tickStart],
+    );
+    expect(Number(swept[0].n)).toBe(0);
+
+    // backlog 250 (aged ≤ cutoff) ถูก seal ครบ · ทุก batch ≤ 100 · ทุกใบ CONFIRMED
+    const mapped = await ds.query(
+      `SELECT COUNT(*)::int n FROM log_batch_mapping m JOIN logs l ON l.id=m.log_id WHERE l.source=$1`,
+      [SRC],
+    );
+    expect(Number(mapped[0].n)).toBe(250);
+    const batches = await batchesOf(SRC);
+    expect(
+      batches.every((b) => b.n <= BATCH_SIZE && b.status === 'CONFIRMED'),
+    ).toBe(true);
+  }, 200_000);
 });
