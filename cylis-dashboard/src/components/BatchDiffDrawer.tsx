@@ -201,8 +201,20 @@ function ChangeRow({ c, onOpenLog, noOriginal }: { c: BatchChange; onOpenLog: (i
       </div>
       {c.fields && c.fields.length > 0 && (
         noOriginal ? (
-          <div style={{ marginTop: 8, fontSize: 12.5, color: t.muted }}>
-            ไม่ทราบค่าเดิม (snapshot ถูกแก้) — raw_hash ที่ anchor ไว้ไม่ตรงกับ hash ของเนื้อหาปัจจุบัน (เนื้อ log ถูกแก้หลัง seal)
+          <div style={{ marginTop: 8, fontSize: 12.5 }}>
+            <div style={{ color: t.muted, marginBottom: 4 }}>ไม่ทราบค่าเดิม (snapshot ถูกแก้) — raw_hash (ยืนยันกับเชน) ≠ hash เนื้อหาปัจจุบัน:</div>
+            {c.fields?.map((f) => (
+              <div key={f.field} style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 6, padding: "4px 8px", borderRadius: 6, background: t.surface2, minWidth: 0 }}>
+                  <span style={{ color: t.muted, flexShrink: 0, ...monoFont }}>raw_hash</span>
+                  <FoldText value={String(f.before)} color={t.muted} />
+                </div>
+                <div style={{ display: "flex", gap: 6, padding: "4px 8px", borderRadius: 6, background: "rgba(244,63,94,0.10)", minWidth: 0 }}>
+                  <span style={{ color: t.danger, flexShrink: 0, fontWeight: 700, ...monoFont }}>content</span>
+                  <FoldText value={String(f.after)} color={t.danger} />
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div style={{ marginTop: 8 }}>{c.fields.map((f) => <FieldDiff key={f.field} f={f} />)}</div>
@@ -363,9 +375,9 @@ export default function BatchDiffDrawer({
 
             {d.snapshotTrusted === false && d.baseline === "raw_hash" && (
               <Banner tone="info" icon={Info}>
-                <strong>เทียบกับ raw_hash</strong> (snapshot ไม่น่าเชื่อถือ · raw_hash ยังตรงกับเชน)
+                <strong>snapshot ไม่น่าเชื่อถือ — ใช้ raw_hash (ยังตรงกับเชน) เป็นตัวเทียบแทน</strong>
                 <div style={{ marginTop: 6 }}>
-                  สมาชิก batch ครบตามตอน seal (storedHashRoot == เชน) จึงเทียบรายตัวได้ว่าตัวไหนเนื้อหาถูกแก้ —
+                  สมาชิก batch ครบตามตอน seal (storedHashRoot == เชน) จึงชี้รายตัวได้ว่าตัวไหนเนื้อหาถูกแก้ —
                   แต่ไม่ทราบค่าเดิมของแต่ละตัว (snapshot ถูกแก้)
                 </div>
                 <div style={{ marginTop: 4, fontSize: 11, color: t.muted, ...monoFont }}>{d.untrustedReasons.join(" · ")}</div>
@@ -419,7 +431,10 @@ export default function BatchDiffDrawer({
             </section>
 
             <section style={{ marginTop: 18 }}>
-              <SectionLabel>Summary</SectionLabel>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <SectionLabel>Summary</SectionLabel>
+                {d.baseline === "raw_hash" && <Badge tone="warn">เทียบกับ raw_hash</Badge>}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(150px, 100%), 1fr))", gap: 8, marginTop: 6 }}>
                 {SUMMARY_KEYS.map(([key, label, tone]) => {
                   const v = d.summary[key] as number | null;

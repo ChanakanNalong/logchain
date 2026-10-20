@@ -57,7 +57,7 @@ declare -A REDS=(
   [move]="ต้นทาง: DELETED/MAPPING_MISSING · ปลายทาง: UNMAPPED_OR_INSERTED"
   [snapshot]="contentRoot + snapshotTrusted=false (SNAPSHOT_CONTENT_MISMATCH)"
   [dbroot]="dbRoot (status ไม่พลิก — verify ยึด chain)"
-  [cover]="snapshotRoot + dbRoot + contentRoot (storedHashRoot/chainRoot เขียว) · diff: SNAPSHOT_ROOT_MISMATCH ไม่ชี้รายตัว"
+  [cover]="snapshotRoot + dbRoot + contentRoot (storedHashRoot/chainRoot เขียว) · diff ชี้รายตัวได้ด้วย raw_hash (CONTENT_MODIFIED 1 · ไม่ทราบค่าเดิม)"
 )
 
 # ── psql helpers (รันในคอนเทนเนอร์ postgres) ─────────────────────────────
