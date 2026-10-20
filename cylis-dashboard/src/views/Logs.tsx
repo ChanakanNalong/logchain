@@ -334,7 +334,7 @@ export default function Logs() {
           />
         </div>
         <div style={{ marginTop: 6, fontSize: 11.5, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          ค้นในข้อความ log หรือวาง log id เต็มเพื่อเปิดดู · ไม่สนตัวพิมพ์ · IP / เลขบัตร / อีเมลถูก mask แล้ว (เช่น 203.0.113.xxx)
+          ค้นในข้อความ log · ค้น Source IP ได้ (เต็ม เช่น 49.229.84.104 หรือบางส่วน 49.229) · วาง log id เต็มเพื่อเปิดดู · ไม่สนตัวพิมพ์ · IP / เลขบัตร / อีเมลในข้อความถูก mask แล้ว (เช่น 203.0.113.xxx)
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
           <button

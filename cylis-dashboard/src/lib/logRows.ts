@@ -13,6 +13,8 @@ export interface LogRow {
   sev: string;
   batchStatus: BatchStatus | null;
   polygonscanUrl: string | null;
+  /** matched via a masked IP in the message (.xxx), not an exact source_id — real IP may be another .x */
+  maskedIp: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export function mapLog(l: Partial<LogItem>): LogRow {
     // older backends (bare array) have no batch columns → shown as not sealed
     batchStatus: l.batchStatus ?? null,
     polygonscanUrl: l.polygonscanUrl ?? null,
+    maskedIp: l.matchedMaskedIp === true,
   };
 }
 

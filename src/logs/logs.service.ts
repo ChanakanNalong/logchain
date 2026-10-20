@@ -30,6 +30,8 @@ export interface LogListItem {
   txHash: string | null;
   blockNumber: number | null;
   polygonscanUrl: string | null;
+  /** true = แถวนี้เข้าผลเพราะ message มี IP แบบ mask (.xxx) ไม่ใช่ source_id ตรง — IP จริงอาจเป็นตัวอื่นในช่วง .x */
+  matchedMaskedIp: boolean;
 }
 
 export interface LogPage {
@@ -55,6 +57,7 @@ interface LogListRow {
   batch_status: string | null;
   tx_hash: string | null;
   block_number: string | number | null;
+  matched_masked_ip?: boolean;
   total?: string | number;
 }
 
@@ -72,6 +75,37 @@ function csv(raw: string | undefined): string[] | null {
 function likePattern(q: string | undefined): string | null {
   const t = q?.trim();
   return t ? `%${t.replace(/[\\%_]/g, (c) => '\\' + c)}%` : null;
+}
+
+const esc = (s: string): string => s.replace(/[\\%_]/g, (c) => '\\' + c);
+
+/**
+ * ถ้า q ดูเหมือน IP — แยกเป็นเงื่อนไขค้น source_id:
+ *   full   = IPv4 เต็ม → host(source_id) = full (ตรงตัว)
+ *   prefix = บางส่วน เช่น "49.229" → host(source_id) LIKE '49.229%'
+ *   masked = (เฉพาะ IPv4 เต็ม) รูปแบบ mask ใน message = "49.229.84.xxx" (octet สุดท้าย → xxx)
+ * ไม่ใช่ IP → ทั้งหมด null (ค้นแค่ message ตามเดิม)
+ */
+function ipSearch(q: string | undefined): {
+  full: string | null;
+  prefix: string | null;
+  masked: string | null;
+} {
+  const t = q?.trim();
+  if (!t) return { full: null, prefix: null, masked: null };
+  const m = t.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m && m.slice(1).every((o) => Number(o) <= 255)) {
+    return {
+      full: esc(t),
+      prefix: null,
+      masked: `%${esc(`${m[1]}.${m[2]}.${m[3]}.xxx`)}%`,
+    };
+  }
+  // บางส่วนของ IPv4 (ตัวเลข/จุด) — prefix match บน host(source_id)
+  if (/^\d{1,3}(\.\d{1,3}){0,3}$/.test(t)) {
+    return { full: null, prefix: `${esc(t)}%`, masked: null };
+  }
+  return { full: null, prefix: null, masked: null };
 }
 
 @Injectable()
@@ -162,16 +196,27 @@ export class LogService {
   async list(query: ListLogsQuery): Promise<LogPage> {
     const limit = query.limit ?? 100;
     const offset = query.offset ?? 0;
+    // q ค้น message (เดิม) · ถ้า q เป็น IP → ค้น source_id ด้วย (เต็ม=ตรงตัว, บางส่วน=prefix)
+    // + ถ้า IPv4 เต็ม ค้นรูปแบบ mask (.xxx) ใน message ด้วย — ทุก clause ใช้ parameter ($4–$7)
+    const ip = ipSearch(query.q);
     const where = `
       WHERE ($1::text[] IS NULL OR l.source = ANY($1))
         AND ($2::text[] IS NULL OR l.severity = ANY($2))
         AND ($3::text[] IS NULL OR l.event_type = ANY($3))
-        AND ($4::text IS NULL OR l.message ILIKE $4 ESCAPE '\\')`;
+        AND (
+             ($4::text IS NULL OR l.message ILIKE $4 ESCAPE '\\')
+          OR ($5::text IS NOT NULL AND host(l.source_id) LIKE $5 ESCAPE '\\')
+          OR ($6::text IS NOT NULL AND host(l.source_id) LIKE $6 ESCAPE '\\')
+          OR ($7::text IS NOT NULL AND l.message ILIKE $7 ESCAPE '\\')
+        )`;
     const filters = [
       csv(query.source),
       csv(query.severity),
       csv(query.eventType),
       likePattern(query.q),
+      ip.full,
+      ip.prefix,
+      ip.masked,
     ];
 
     const rows: LogListRow[] = await this.repo.query(
@@ -179,13 +224,16 @@ export class LogService {
               l.event_type, l.severity, l.message, l.classification, l.cde_scope,
               l.retention_days, l.raw_hash,
               m.batch_id, b.status AS batch_status, b.tx_hash, b.block_number,
+              -- true = เข้าผลเพราะ message มี IP แบบ mask เท่านั้น (ไม่ใช่ source_id ตรง)
+              ($7::text IS NOT NULL AND l.message ILIKE $7 ESCAPE '\\'
+                AND (host(l.source_id) IS DISTINCT FROM $5)) AS matched_masked_ip,
               COUNT(*) OVER () AS total
          FROM logs l
          LEFT JOIN log_batch_mapping m ON m.log_id = l.id
          LEFT JOIN batches b ON b.id = m.batch_id
          ${where}
         ORDER BY l.created_at DESC, l.id DESC
-        LIMIT $5 OFFSET $6`,
+        LIMIT $8 OFFSET $9`,
       [...filters, limit, offset],
     );
 
@@ -220,5 +268,6 @@ function toListItem(r: LogListRow): LogListItem {
     txHash: r.tx_hash,
     blockNumber: r.block_number === null ? null : Number(r.block_number),
     polygonscanUrl: explorerTxUrl(r.tx_hash),
+    matchedMaskedIp: r.matched_masked_ip === true,
   };
 }

@@ -30,7 +30,18 @@ describe('LogService.list / findOne', () => {
 
   it('defaults: limit 100, offset 0, no filters', async () => {
     const page = await service.list({});
-    expect(params()).toEqual([null, null, null, null, 100, 0]);
+    // [source, severity, eventType, qMessage, ipFull, ipPrefix, ipMasked, limit, offset]
+    expect(params()).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      100,
+      0,
+    ]);
     expect(page).toEqual({ items: [], total: 0, limit: 100, offset: 0 });
   });
 
@@ -47,9 +58,66 @@ describe('LogService.list / findOne', () => {
       ['WARNING', 'CRITICAL'],
       ['SYSLOG'],
       null,
+      null,
+      null,
+      null,
       20,
       40,
     ]);
+  });
+
+  it('q = full IPv4: searches source_id exact + masked form in message', async () => {
+    await service.list({ q: '49.229.84.104' });
+    const p = params();
+    expect(p[3]).toBe('%49.229.84.104%'); // message ILIKE (เดิม)
+    expect(p[4]).toBe('49.229.84.104'); // host(source_id) LIKE (ตรงตัว)
+    expect(p[5]).toBeNull(); // ไม่ใช่ prefix
+    expect(p[6]).toBe('%49.229.84.xxx%'); // masked ใน message
+    const sql = (query.mock.calls[0] as [string])[0];
+    expect(sql).toMatch(/host\(l\.source_id\) LIKE \$5/);
+    expect(sql).toMatch(/host\(l\.source_id\) LIKE \$6/);
+  });
+
+  it('q = partial IP: prefix match on source_id only', async () => {
+    await service.list({ q: '49.229' });
+    const p = params();
+    expect(p[4]).toBeNull(); // ไม่ใช่ IP เต็ม
+    expect(p[5]).toBe('49.229%'); // prefix
+    expect(p[6]).toBeNull(); // ไม่มี masked (เฉพาะ IP เต็ม)
+  });
+
+  it('q = non-IP text: ip params stay null (message search เหมือนเดิม)', async () => {
+    await service.list({ q: 'login failed' });
+    const p = params();
+    expect(p[3]).toBe('%login failed%');
+    expect([p[4], p[5], p[6]]).toEqual([null, null, null]);
+  });
+
+  it('maps matched_masked_ip → matchedMaskedIp', async () => {
+    delete process.env.BLOCKCHAIN_EXPLORER_TX_URL;
+    query.mockResolvedValueOnce([
+      {
+        id: 'l1',
+        created_at: '2026-10-15T09:39:58.004Z',
+        source: 'web-proxy',
+        source_ip: '49.229.84.7',
+        event_type: 'HTTP_ACCESS',
+        severity: 'INFO',
+        message: 'GET / from 49.229.84.xxx',
+        classification: 'INTERNAL',
+        cde_scope: false,
+        retention_days: 365,
+        raw_hash: 'h',
+        batch_id: null,
+        batch_status: null,
+        tx_hash: null,
+        block_number: null,
+        matched_masked_ip: true,
+        total: '1',
+      },
+    ]);
+    const page = await service.list({ q: '49.229.84.104' });
+    expect(page.items[0].matchedMaskedIp).toBe(true);
   });
 
   it('q is a literal substring: % _ and \\ are escaped for ILIKE', async () => {
@@ -124,6 +192,9 @@ describe('LogService.list / findOne', () => {
     expect(page.total).toBe(12);
     expect((query.mock.calls[1] as [string, unknown[]])[1]).toEqual([
       ['vps-01'],
+      null,
+      null,
+      null,
       null,
       null,
       null,

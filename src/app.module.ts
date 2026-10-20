@@ -38,6 +38,7 @@ import { AlertLogs1790726400000 } from './database/migrations/1790726400000-Aler
 import { BatchLogSnapshot1790812800000 } from './database/migrations/1790812800000-BatchLogSnapshot';
 import { BatchGasAndIndexes1790899200000 } from './database/migrations/1790899200000-BatchGasAndIndexes';
 import { BatchSealReason1790985600000 } from './database/migrations/1790985600000-BatchSealReason';
+import { LogsSourceIpIndex1791072000000 } from './database/migrations/1791072000000-LogsSourceIpIndex';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { BatchSealReason1790985600000 } from './database/migrations/179098560000
             BatchLogSnapshot1790812800000,
             BatchGasAndIndexes1790899200000,
             BatchSealReason1790985600000,
+            LogsSourceIpIndex1791072000000,
           ],
           migrationsRun: true,
         };
