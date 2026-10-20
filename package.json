@@ -104,6 +104,7 @@
     "testEnvironment": "node"
   },
   "overrides": {
-    "multer": "^2.4.0"
+    "multer": "^2.4.0",
+    "follow-redirects": "^1.16.1"
   }
 }
