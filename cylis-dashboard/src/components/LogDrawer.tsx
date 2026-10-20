@@ -16,14 +16,14 @@ import BatchStatusBadge from "@/components/BatchStatusBadge";
 import AlertRoleBadge from "@/components/AlertRoleBadge";
 import { copyText, PolygonscanLink } from "@/components/LogTable";
 import { ChangedValue, CloseButton, hasSnapshotNotes, NOW_TINT, SEAL_TINT, SealBanner, SealValue, SnapshotHeader, SnapshotNotes, type DiffLoad } from "@/components/SnapshotPanel";
-import { getBatchDiff, getLogDetail } from "@/lib/endpoints";
+import { getBatchDiff, getLogDetail, getLogProof } from "@/lib/endpoints";
 import { buildCompare, COMPARE_FIELDS, findChange, type CompareKey } from "@/lib/logCompare";
 import { fmtTime, isZeroRoot, shortHash } from "@/lib/format";
 import { alertTone, toTone } from "@/lib/logRows";
 import { QUERY_KEYS, useNavigate } from "@/lib/nav";
 import { unanchoredRootView } from "@/lib/chainState";
 import { canAccessPage } from "@/lib/roles";
-import type { BatchDiff, ChainCheck, LogDetail } from "@/types/api";
+import type { BatchDiff, ChainCheck, LogDetail, LogProofResult } from "@/types/api";
 
 /** Fields already known from the row that was clicked — shown while the detail loads */
 export interface LogDrawerSeed {
@@ -184,6 +184,8 @@ export default function LogDrawer({
   const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState<LogDetail | null>(null);
+  // /logs/:id/proof — มี contentHash + integrity ที่ /detail ไม่ได้ส่งออก (ใช้ใน Chain check)
+  const [proofInfo, setProofInfo] = useState<LogProofResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -232,6 +234,17 @@ export default function LogDrawer({
     return () => { cancelled = true; };
     // initialDetail is read only when the log changes — a new object for the same log must not refetch
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logId, reloadKey]);
+
+  // proof (contentHash + integrity) สำหรับ Chain check — แยกจาก detail · 404 = ยังไม่ seal → null
+  useEffect(() => {
+    if (!logId) return;
+    let cancelled = false;
+    setProofInfo(null);
+    getLogProof(logId)
+      .then((p) => { if (!cancelled) setProofInfo(p); })
+      .catch(() => { if (!cancelled) setProofInfo(null); });
+    return () => { cancelled = true; };
   }, [logId, reloadKey]);
 
   // focus moves into the panel so Esc works right after opening
@@ -407,6 +420,45 @@ export default function LogDrawer({
     restSections.push({ key: "batch", title: "Batch · on-chain", rows: batchRows });
 
     const chainRows: Pair[] = [];
+    // ── สรุป 3 ข้อ: เทียบ root บนเชน + raw_hash↔เนื้อหา + Merkle proof (ไม่ใช่แค่ dbRoot==chainRoot) ──
+    const proof = proofInfo?.logId === logId ? proofInfo : null;
+    if (b && proof) {
+      const mark = (ok: boolean | null) =>
+        ok === null ? <span style={{ color: t.muted }}>—</span>
+        : ok ? <span style={{ color: t.good, fontWeight: 700 }}>✓</span>
+        : <span style={{ color: t.danger, fontWeight: 700 }}>✗</span>;
+      const line = (ok: boolean | null, text: string) => (
+        <div style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12.5 }}>
+          <span style={{ width: 14, textAlign: "center", ...monoFont }}>{mark(ok)}</span>
+          <span style={{ color: ok === false ? t.danger : t.text }}>{text}</span>
+        </div>
+      );
+      // c1 = root ใน DB ตรงกับบนเชน (null = อ่านเชนไม่ได้ / ยังไม่ anchor)
+      const c1 = chainMatch ? (isZeroRoot(chainMatch.chainRoot) ? null : chainMatch.match) : null;
+      const c2 = proof.rawHash === proof.contentHash; // raw_hash ที่เก็บไว้ = hash เนื้อหาปัจจุบัน
+      const c3 = proof.verify;                         // เนื้อหาพิสูจน์ได้ว่าอยู่ใน root บนเชน
+      const allPass = c1 === true && c2 && c3;
+      const anyFail = c1 === false || !c2 || !c3;
+      const summaryTone = allPass ? "good" : anyFail ? "danger" : "neutral";
+      const summaryLabel = allPass
+        ? "log นี้ไม่ถูกแก้"
+        : proof.integrity === "CONTENT_MODIFIED" ? "เนื้อหา log ถูกแก้หลัง seal"
+        : proof.integrity === "HASH_MODIFIED" ? "คอลัมน์ raw_hash ถูกแก้"
+        : c1 === false ? "root ใน DB ไม่ตรงกับบนเชน"
+        : !anyFail ? "ตรวจกับเชนไม่ได้ครบ (เทียบเท่าที่ทำได้)"
+        : "ตรวจพบความไม่ตรง";
+      chainRows.push({
+        key: "checklist",
+        now: (
+          <div style={{ display: "grid", gap: 8, marginBottom: 4 }}>
+            <div><Badge tone={summaryTone}>{summaryLabel}</Badge></div>
+            {line(c1, "root ใน DB ตรงกับ root บนเชน")}
+            {line(c2, "raw_hash ที่เก็บไว้ตรงกับเนื้อหา log ปัจจุบัน")}
+            {line(c3, "เนื้อหา log นี้พิสูจน์ได้ว่าอยู่ใน root บนเชน (Merkle proof)")}
+          </div>
+        ),
+      });
+    }
     if (check) {
       const checkView = (tone: string, title?: string) => (
         <div style={{ display: "grid", gap: 6 }}>
