@@ -104,6 +104,7 @@ export default function Verify() {
   const [overview, setOverview] = useState<any>(null);
   const [batches, setBatches] = useState<BatchListItem[] | null>(null);
   const [recentLogs, setRecentLogs] = useState<LogRow[]>([]);
+  const [recentTab, setRecentTab] = useState<"sealed" | "pending">("sealed");
   const [chainError, setChainError] = useState("");
 
   // batch whose tree is on screen (v_batch keeps it across F5)
@@ -134,12 +135,13 @@ export default function Verify() {
     Promise.allSettled([
       api.get("/stats/overview"),
       getBatches({ limit: 10 }),
-      getLogs({ limit: 6 }),
+      // ดึงมากพอจะแยกเป็น 2 แท็บ (seal แล้ว / รอ seal) ฝั่ง client · จำนวน "รอ seal (N)" ใช้ totalLogs−sealedLogs จาก overview
+      getLogs({ limit: 100 }),
     ]).then(([overviewRes, batchesRes, logsRes]) => {
       if (cancelled) return;
       if (overviewRes.status === "fulfilled") setOverview(overviewRes.value.data);
       setBatches(batchesRes.status === "fulfilled" ? batchesRes.value.items : []);
-      if (logsRes.status === "fulfilled") setRecentLogs(logsRes.value.items.slice(0, 6).map(mapLog));
+      if (logsRes.status === "fulfilled") setRecentLogs(logsRes.value.items.map(mapLog));
 
       const failed = [overviewRes, batchesRes, logsRes].find((r) => r.status === "rejected");
       if (failed) {
@@ -310,6 +312,20 @@ export default function Verify() {
 
   const roots = treeData ? treeRoots(treeData) : null;
   // 3 across, or 1 column when narrow — never 2 + 1
+  // "Verify a recent log" 2 แท็บ: seal แล้ว (CONFIRMED, verify ได้) / รอ seal (ยังไม่เข้า batch)
+  // N (รอ seal) ใช้ totalLogs−sealedLogs จาก /stats/overview — แม่นทั้งระบบ ไม่จำกัดแค่หน้าที่ดึงมา
+  const sealedRecent = useMemo(
+    () => recentLogs.filter((l) => l.batchStatus === "CONFIRMED").slice(0, 6),
+    [recentLogs],
+  );
+  const pendingRecent = useMemo(
+    () => recentLogs.filter((l) => l.batchStatus === null).slice(0, 6),
+    [recentLogs],
+  );
+  const pendingCount: number | null = overview
+    ? Math.max(0, (overview.totalLogs ?? 0) - (overview.sealedLogs ?? 0))
+    : null;
+
   const rootCols = treeBoxWidth >= 950 ? 5 : treeBoxWidth >= 460 ? 3 : 1;
   // stacked below ~1150px of window (sidebar 220 + main padding 56): only then the table may scroll
   const bottomStacked = bottomWidth < 860;
@@ -659,33 +675,66 @@ export default function Verify() {
         {/* ยิง verify ได้จากตรงนี้เลย ไม่ต้องไปคัดลอก id จากหน้า Logs */}
         <Card style={{ minWidth: 0 }}>
           <SectionLabel dot={t.cyan}>Verify a recent log</SectionLabel>
-          <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-            {recentLogs.length === 0
-              ? placeholder("No logs yet")
-              : recentLogs.map((l) => {
-                  // batchStatus === null = ยังไม่ถูก seal เข้า batch → ยัง verify proof ไม่ได้
-                  const unsealed = l.batchStatus === null;
-                  return (
-                  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, ...monoFont, color: t.blue2, display: "flex", alignItems: "center", gap: 6 }}>
-                        {String(l.id).slice(0, 8)}
-                        {unsealed && <Badge tone="warn">รอ seal</Badge>}
+          {/* 2 แท็บ: seal แล้ว (CONFIRMED, verify ได้) · รอ seal (N จาก overview) */}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            {([
+              ["sealed", "seal แล้ว"],
+              ["pending", pendingCount !== null ? `รอ seal (${pendingCount.toLocaleString()})` : "รอ seal"],
+            ] as const).map(([key, label]) => {
+              const active = recentTab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setRecentTab(key)}
+                  style={{
+                    cursor: "pointer", fontSize: 12.5, padding: "5px 12px", borderRadius: 8,
+                    border: `1px solid ${active ? t.cyan : t.border}`,
+                    background: active ? "rgba(34,211,238,0.12)" : "transparent",
+                    color: active ? t.cyan : t.muted, fontWeight: active ? 600 : 400,
+                    ...sansFont,
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {recentTab === "sealed"
+              ? (sealedRecent.length === 0
+                  ? placeholder("ยังไม่มี log ที่ seal แล้วในช่วงล่าสุด")
+                  : sealedRecent.map((l) => (
+                      <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, ...monoFont, color: t.blue2, display: "flex", alignItems: "center", gap: 6 }}>
+                            {String(l.id).slice(0, 8)}
+                            <Badge tone="good">On-chain ✓</Badge>
+                          </div>
+                          <div style={{ fontSize: 11, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {l.source} · {l.ts}
+                          </div>
+                        </div>
+                        <Button variant="subtle" small onClick={() => verifyFromList(l.id)}>Verify</Button>
                       </div>
-                      <div style={{ fontSize: 11, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {l.source} · {l.ts}
+                    )))
+              : (pendingRecent.length === 0
+                  ? placeholder("ไม่มี log รอ seal")
+                  : pendingRecent.map((l) => (
+                      <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, ...monoFont, color: t.blue2, display: "flex", alignItems: "center", gap: 6 }}>
+                            {String(l.id).slice(0, 8)}
+                            <Badge tone="warn">รอ seal</Badge>
+                          </div>
+                          <div style={{ fontSize: 11, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {l.source} · {l.ts}
+                          </div>
+                        </div>
+                        <Button variant="subtle" small disabled title="log นี้ยังไม่ถูก seal เข้า batch — ตรวจ proof ไม่ได้จนกว่าจะ seal">
+                          Verify
+                        </Button>
                       </div>
-                    </div>
-                    {unsealed ? (
-                      <Button variant="subtle" small disabled title="log นี้ยังไม่ถูก seal เข้า batch — ตรวจ proof ไม่ได้จนกว่าจะ seal">
-                        Verify
-                      </Button>
-                    ) : (
-                      <Button variant="subtle" small onClick={() => verifyFromList(l.id)}>Verify</Button>
-                    )}
-                  </div>
-                  );
-                })}
+                    )))}
           </div>
         </Card>
       </div>
