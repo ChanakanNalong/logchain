@@ -96,18 +96,17 @@ require_confirmed_unfired() {
 
 print_check_hint() {
   local case="$1" b="$2" logid="$3"
-  local url; url="$(dashboard_url)"
+  local base; base="$(dashboard_url)"
   echo
   echo "  ── ตรวจบนหน้า Check ──"
-  echo "  Dashboard : $url  (เปิดหน้า Verify)"
-  echo "  batch     : $b"
-  [ -n "$logid" ] && echo "  log id    : $logid  (วางในช่อง Verify)"
-  [ "$case" = move ] && echo "  batch ปลายทาง: $MOVE_DEST"
-  echo "  ควรแดง    : ${REDS[$case]}"
+  echo "  Check : ${base}/?view=batches&b_diff=$b"
+  [ "$case" = move ] && echo "  Check (ปลายทาง): ${base}/?view=batches&b_diff=$MOVE_DEST"
+  [ -n "$logid" ] && echo "  proof : ${base}/?view=verify&proofLog=$logid"
+  echo "  ควรแดง : ${REDS[$case]}"
   if [ "$case" = dbroot ]; then
-    echo "  → เปิดหน้า Check เห็น dbRoot แดงทันที · status จะ 'ไม่' พลิก (verify ยึด chain)"
+    echo "  → เปิดลิงก์ Check เห็น dbRoot แดงทันที · status จะ 'ไม่' พลิก (verify ยึด chain)"
   else
-    echo "  → เปิดหน้า Check/กด Verify เห็นแดงทันที · status badge พลิก TAMPERED ภายใน ≤1 นาที (verify cron)"
+    echo "  → เปิดลิงก์ Check/proof เห็นแดงทันที · status badge พลิก TAMPERED ภายใน ≤1 นาที (verify cron)"
   fi
 }
 
@@ -397,6 +396,7 @@ restore_all() {
 # ─────────────────────── STATUS ───────────────────────
 status() {
   ensure_backup_table
+  local base; base="$(dashboard_url)"
   echo "=== LogChain live-demo — สถานะ ==="
   printf "%-9s %-10s %-8s %s\n" CASE BATCH STATUS "ยิงค้าง?"
   local c b st fired
@@ -404,8 +404,9 @@ status() {
     b="${BATCH[$c]}"; st="$(batch_status "$b")"
     fired=$(is_fired "$c" && echo "ใช่ ⚠" || echo "-")
     printf "%-9s %-10s %-8s %s\n" "$c" "${b:0:8}" "$st" "$fired"
+    echo "    Check: ${base}/?view=batches&b_diff=$b"
+    [ "$c" = move ] && echo "    Check (ปลายทาง ${MOVE_DEST:0:8}): ${base}/?view=batches&b_diff=$MOVE_DEST"
   done
-  echo "  (move ปลายทาง ${MOVE_DEST:0:8} = $(batch_status "$MOVE_DEST"))"
   echo
   local tamp openint openall rate
   tamp="$(scalar "SELECT count(*) FROM batches WHERE status='TAMPERED'")"
