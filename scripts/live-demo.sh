@@ -28,9 +28,14 @@ declare -A BATCH=(
   [snapshot]="e78d43b9-46d7-46a6-8162-449abb8be7ee"
   [dbroot]="aabad945-2ea1-4acc-9bd3-4a081a37fc26"
   [move]="afbc538a-cb71-4502-ad80-39dd236e0495"
+  [cover]="b2bf3ea1-370f-4c5a-8fb9-e86f5a7e6d21"
 )
 MOVE_DEST="a6b87a02-82c6-4799-b6c8-f014c5c9eeb5"
-CASES=(content rehash hash move snapshot dbroot)
+CASES=(content rehash hash move snapshot dbroot cover)
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-logchain-backend}"
+# เคส cover คำนวณ contentRoot ด้วย merkle จริงของ backend · override ได้ (เช่นทดสอบ hh รัน node บน host)
+MERKLE_EXEC="${MERKLE_EXEC:-docker exec -i $BACKEND_CONTAINER}"
+MERKLE_MODULE="${MERKLE_MODULE:-/app/dist/integrity/service/merkle.service.js}"
 
 # override config ได้ (เช่นทดสอบบน hh): LIVE_DEMO_CONF=<file> ที่ redefine BATCH/MOVE_DEST/PSQL_CONTAINER
 if [ -n "${LIVE_DEMO_CONF:-}" ] && [ -r "${LIVE_DEMO_CONF}" ]; then source "${LIVE_DEMO_CONF}"; fi
@@ -42,6 +47,7 @@ declare -A DESC=(
   [move]="ย้าย mapping ของ log ไป batch อื่น (ไม่ลบ mapping)"
   [snapshot]="แก้ทั้ง log และ batch_log_snapshot"
   [dbroot]="แก้ batches.merkle_root (คง 64-hex)"
+  [cover]="โจมตีแบบสอดคล้อง: message + snapshot(ตรง) + merkle_root=contentRoot จริง"
 )
 # ช่องที่ควรแดงบนหน้า Check ของแต่ละเคส
 declare -A REDS=(
@@ -51,6 +57,7 @@ declare -A REDS=(
   [move]="ต้นทาง: DELETED/MAPPING_MISSING · ปลายทาง: UNMAPPED_OR_INSERTED"
   [snapshot]="contentRoot + snapshotTrusted=false (SNAPSHOT_CONTENT_MISMATCH)"
   [dbroot]="dbRoot (status ไม่พลิก — verify ยึด chain)"
+  [cover]="snapshotRoot + dbRoot + contentRoot (storedHashRoot/chainRoot เขียว) · diff: SNAPSHOT_ROOT_MISMATCH ไม่ชี้รายตัว"
 )
 
 # ── psql helpers (รันในคอนเทนเนอร์ postgres) ─────────────────────────────
@@ -85,6 +92,39 @@ batch_status()  { scalar "SELECT COALESCE((SELECT status FROM batches WHERE id='
 # log แรกของ batch (ตามลำดับ leaf: created_at ASC, id ASC)
 first_log() { scalar "SELECT l.id FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id WHERE m.batch_id='$1' ORDER BY l.created_at, l.id LIMIT 1"; }
 
+# นิพจน์ SQL canonical v2 (ไบต์ตรงกับ backend computeRawHash — พิสูจน์แล้ว) · $1 = SQL expr ของ message · ใช้ alias l
+_canon() {
+  printf "%s" "encode(digest('{\"v\":2,\"id\":'||to_json(l.id::text)::text||',\"source\":'||to_json(l.source)::text||',\"sourceIp\":'||CASE WHEN l.source_id IS NULL THEN 'null' ELSE to_json(host(l.source_id))::text END||',\"eventType\":'||to_json(l.event_type)::text||',\"severity\":'||to_json(l.severity)::text||',\"message\":'||to_json(($1)::text)::text||',\"classification\":'||to_json(l.classification)::text||',\"cdeScope\":'||CASE WHEN l.cde_scope THEN 'true' ELSE 'false' END||',\"createdAt\":'||to_json(to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'))::text||'}','sha256'),'hex')"
+}
+
+# cover: คำนวณ contentRoot (merkle จริงของ backend) + v2 hash ของเนื้อหาใหม่ ก่อนเข้า transaction (read-only)
+# → ตั้ง COVER_ROOT (ไม่มี 0x) และ COVER_HASH
+compute_cover() {
+  local batch="$1" logid="$2" msg="$3"
+  COVER_HASH="$(runsql -v msg="$msg" -v logid="$logid" -tA -f - <<HSQL
+SELECT $(_canon ":'msg'") FROM logs l WHERE l.id=:'logid'::uuid;
+HSQL
+)"
+  local leaves
+  leaves="$(runsql -v msg="$msg" -v logid="$logid" -v batch="$batch" -tA -f - <<LSQL
+SELECT CASE
+  WHEN l.id=:'logid'::uuid THEN $(_canon ":'msg'")
+  WHEN l.raw_hash=$(_canon "l.message") THEN l.raw_hash
+  ELSE $(_canon "l.message") END
+FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id
+WHERE m.batch_id=:'batch'::uuid ORDER BY l.created_at, l.id;
+LSQL
+)"
+  COVER_ROOT="$(printf '%s\n' "$leaves" | $MERKLE_EXEC node -e "
+let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+  const {MerkleService}=require('$MERKLE_MODULE');
+  const leaves=d.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+  process.stdout.write(new MerkleService().buildTree(leaves).root.replace(/^0x/,''));
+});")"
+  [ -n "$COVER_HASH" ] && [ ${#COVER_HASH} -eq 64 ] || die "cover: คำนวณ v2 hash ไม่สำเร็จ"
+  [ -n "$COVER_ROOT" ] && [ ${#COVER_ROOT} -eq 64 ] || die "cover: คำนวณ contentRoot (merkle backend) ไม่สำเร็จ"
+}
+
 die() { echo "✗ $*" >&2; exit 1; }
 
 require_confirmed_unfired() {
@@ -118,7 +158,7 @@ fire() {
   local b="${BATCH[$case]}"
 
   case "$case" in
-    content|rehash|hash|snapshot) require_confirmed_unfired "$case" "$b" ;;
+    content|rehash|hash|snapshot|cover) require_confirmed_unfired "$case" "$b" ;;
     dbroot)                        require_confirmed_unfired "$case" "$b" ;;
     move)
       require_confirmed_unfired move "$b"
@@ -127,7 +167,7 @@ fire() {
   esac
 
   local logid=""
-  case "$case" in content|rehash|hash|snapshot|move) logid="$(first_log "$b")"; [ -n "$logid" ] || die "เคส $case: batch ไม่มี log" ;; esac
+  case "$case" in content|rehash|hash|snapshot|move|cover) logid="$(first_log "$b")"; [ -n "$logid" ] || die "เคส $case: batch ไม่มี log" ;; esac
 
   echo "▶ ยิงเคส $case — ${DESC[$case]}"
 
@@ -265,6 +305,48 @@ WITH u AS (UPDATE batches
 \\endif
 SQL
     ;;
+  cover)
+    # คำนวณ contentRoot (merkle backend) + v2 hash ก่อน แล้วยิง 3 จุดใน transaction เดียว
+    compute_cover "$b" "$logid" "$DEMO_MSG"
+    echo "  contentRoot (merkle backend) = ${COVER_ROOT:0:12}… · snapshot raw_hash ใหม่ = ${COVER_HASH:0:12}…"
+    runsql -v msg="$DEMO_MSG" -v newhash="$COVER_HASH" -v newroot="$COVER_ROOT" -f - <<SQL
+BEGIN;
+INSERT INTO _live_demo_backup(case_name,batch_id,log_id,orig_message,orig_snapshot,orig_raw_hash,orig_merkle_root)
+  SELECT 'cover','$b','$logid', l.message, s.snapshot, s.raw_hash, bt.merkle_root
+    FROM logs l
+    JOIN batch_log_snapshot s ON s.log_id=l.id AND s.batch_id='$b'
+    JOIN batches bt ON bt.id='$b'
+   WHERE l.id='$logid';
+ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
+ALTER TABLE batch_log_snapshot DISABLE TRIGGER trg_snapshot_no_update;
+WITH u AS (UPDATE logs SET message=:'msg' WHERE id='$logid' RETURNING 1)
+  SELECT (count(*)=1) AS ok1 FROM u \\gset
+WITH u2 AS (UPDATE batch_log_snapshot SET snapshot=jsonb_set(snapshot,'{message}',to_jsonb(:'msg'::text)), raw_hash=:'newhash'
+              WHERE batch_id='$b' AND log_id='$logid' RETURNING 1)
+  SELECT (count(*)=1) AS ok2 FROM u2 \\gset
+WITH u3 AS (UPDATE batches SET merkle_root=:'newroot' WHERE id='$b' RETURNING 1)
+  SELECT (count(*)=1) AS ok3 FROM u3 \\gset
+\\if :ok1
+\\if :ok2
+\\if :ok3
+  ALTER TABLE logs ENABLE ALWAYS TRIGGER trg_logs_no_update;
+  ALTER TABLE batch_log_snapshot ENABLE TRIGGER trg_snapshot_no_update;
+  COMMIT;
+  \\echo '  ✓ cover: message + snapshot(ตรง) + merkle_root=contentRoot เปลี่ยนแล้ว'
+\\else
+  ROLLBACK;
+  \\echo '  ✗ cover: merkle_root UPDATE != 1 — rolled back'
+\\endif
+\\else
+  ROLLBACK;
+  \\echo '  ✗ cover: snapshot UPDATE != 1 — rolled back'
+\\endif
+\\else
+  ROLLBACK;
+  \\echo '  ✗ cover: log UPDATE != 1 — rolled back'
+\\endif
+SQL
+    ;;
   esac
 
   is_fired "$case" || die "เคส $case: ยิงไม่สำเร็จ (ไม่มี backup) — ตรวจ output ด้านบน"
@@ -367,6 +449,42 @@ u AS (UPDATE batches bt SET merkle_root=b.orig_merkle_root FROM b WHERE bt.id=b.
 SQL
     verify_delete dbroot "SELECT (bt.merkle_root IS NOT DISTINCT FROM b.orig_merkle_root) FROM batches bt JOIN _live_demo_backup b ON b.batch_id=bt.id WHERE b.case_name='dbroot'"
     ;;
+  cover)
+    runsql -f - <<SQL
+BEGIN;
+ALTER TABLE logs DISABLE TRIGGER trg_logs_no_update;
+ALTER TABLE batch_log_snapshot DISABLE TRIGGER trg_snapshot_no_update;
+WITH b AS (SELECT log_id,orig_message FROM _live_demo_backup WHERE case_name='cover'),
+u AS (UPDATE logs l SET message=b.orig_message FROM b WHERE l.id=b.log_id RETURNING 1)
+  SELECT (count(*)=1) AS ok1 FROM u \\gset
+WITH b AS (SELECT log_id,batch_id,orig_snapshot,orig_raw_hash FROM _live_demo_backup WHERE case_name='cover'),
+u2 AS (UPDATE batch_log_snapshot s SET snapshot=b.orig_snapshot, raw_hash=b.orig_raw_hash FROM b
+         WHERE s.log_id=b.log_id AND s.batch_id=b.batch_id RETURNING 1)
+  SELECT (count(*)=1) AS ok2 FROM u2 \\gset
+WITH b AS (SELECT batch_id,orig_merkle_root FROM _live_demo_backup WHERE case_name='cover'),
+u3 AS (UPDATE batches bt SET merkle_root=b.orig_merkle_root FROM b WHERE bt.id=b.batch_id RETURNING 1)
+  SELECT (count(*)=1) AS ok3 FROM u3 \\gset
+\\if :ok1
+\\if :ok2
+\\if :ok3
+  ALTER TABLE logs ENABLE ALWAYS TRIGGER trg_logs_no_update;
+  ALTER TABLE batch_log_snapshot ENABLE TRIGGER trg_snapshot_no_update;
+  COMMIT;
+\\else
+  ROLLBACK;
+  \\echo '  ✗ restore cover: merkle_root UPDATE != 1'
+\\endif
+\\else
+  ROLLBACK;
+  \\echo '  ✗ restore cover: snapshot UPDATE != 1'
+\\endif
+\\else
+  ROLLBACK;
+  \\echo '  ✗ restore cover: log UPDATE != 1'
+\\endif
+SQL
+    verify_delete cover "SELECT (l.message IS NOT DISTINCT FROM b.orig_message AND s.snapshot IS NOT DISTINCT FROM b.orig_snapshot AND s.raw_hash IS NOT DISTINCT FROM b.orig_raw_hash AND bt.merkle_root IS NOT DISTINCT FROM b.orig_merkle_root) FROM _live_demo_backup b JOIN logs l ON l.id=b.log_id JOIN batch_log_snapshot s ON s.log_id=b.log_id AND s.batch_id=b.batch_id JOIN batches bt ON bt.id=b.batch_id WHERE b.case_name='cover'"
+    ;;
   *) die "ไม่รู้จักเคส: $case" ;;
   esac
 }
@@ -436,6 +554,6 @@ case "$cmd" in
   status)            status ;;
   restore)           [ $# -ge 2 ] || die "ระบุเคส: ./live-demo.sh restore <case>"; restore_one "$2" ;;
   restore-all)       restore_all ;;
-  content|rehash|hash|move|snapshot|dbroot) fire "$cmd" ;;
+  content|rehash|hash|move|snapshot|dbroot|cover) fire "$cmd" ;;
   *) die "คำสั่งไม่รู้จัก: $cmd"; ;;
 esac
