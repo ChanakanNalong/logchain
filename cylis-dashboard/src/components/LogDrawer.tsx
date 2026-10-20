@@ -436,9 +436,9 @@ export default function LogDrawer({
       // c1 = root ใน DB ตรงกับบนเชน (null = อ่านเชนไม่ได้ / ยังไม่ anchor)
       const c1 = chainMatch ? (isZeroRoot(chainMatch.chainRoot) ? null : chainMatch.match) : null;
       const c2 = proof.rawHash === proof.contentHash; // raw_hash ที่เก็บไว้ = hash เนื้อหาปัจจุบัน
-      const c3 = proof.verify;                         // เนื้อหาพิสูจน์ได้ว่าอยู่ใน root บนเชน
-      const allPass = c1 === true && c2 && c3;
-      const anyFail = c1 === false || !c2 || !c3;
+      const c3 = proof.verify;                         // เนื้อหาพิสูจน์ได้ว่าอยู่ใน root บนเชน (null = ตรวจเชนไม่ได้)
+      const allPass = c1 === true && c2 && c3 === true;
+      const anyFail = c1 === false || !c2 || c3 === false;
       const summaryTone = allPass ? "good" : anyFail ? "danger" : "neutral";
       const summaryLabel = allPass
         ? "log นี้ไม่ถูกแก้"
@@ -531,19 +531,21 @@ export default function LogDrawer({
 
     const proofRows: Pair[] = [];
     if (detail.proof) {
-      const broken = !detail.proof.verified;
+      const broken = detail.proof.verified === false; // null = ตรวจเชนไม่ได้ ไม่ใช่ broken
       proofRows.push({
         key: "proof",
         now: (
           <Field label="Proof" tint={tintRest && broken ? NOW_TINT : undefined}>
-            {detail.proof.verified
-              ? <Badge tone="good">ประกอบกลับเป็น root ใน DB ได้</Badge>
-              : <Badge tone="danger">ประกอบกลับเป็น root ใน DB ไม่ได้</Badge>}
+            {detail.proof.verified === true
+              ? <Badge tone="good">ประกอบกลับเป็น root บนเชนได้</Badge>
+              : detail.proof.verified === null
+                ? <Badge tone="neutral">ตรวจกับเชนไม่ได้</Badge>
+                : <Badge tone="danger">ประกอบกลับเป็น root บนเชนไม่ได้</Badge>}
           </Field>
         ),
         seal: sealKnown ? (
           <Field label="Proof" tint={broken ? SEAL_TINT : undefined}>
-            <Badge tone="good" title={`${INFERRED} — root ใน DB สร้างจาก raw hash ตอน seal`}>ประกอบกลับเป็น root ใน DB ได้</Badge>
+            <Badge tone="good" title={`${INFERRED} — root ที่ anchor สร้างจาก raw hash ตอน seal`}>ประกอบกลับเป็น root บนเชนได้</Badge>
           </Field>
         ) : undefined,
       });

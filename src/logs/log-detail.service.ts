@@ -38,7 +38,8 @@ export interface LogDetail {
     confirmedAt: Date | null;
   } | null;
   proof: {
-    verified: boolean;
+    /** null = ตรวจ proof กับเชนไม่ได้ (อ่านเชนไม่ได้/ยังไม่ anchor) */
+    verified: boolean | null;
     path: Array<{ position: string; data: string }>;
   } | null;
   alerts: LogAlertView[];

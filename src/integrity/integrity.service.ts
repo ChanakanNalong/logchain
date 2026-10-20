@@ -16,9 +16,11 @@ import {
   rawHashCanonical,
   computeRawHash,
   recomputeContentLeaf,
+  RAW_HASH_VERSION,
 } from '../logs/services/log-hash';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { explorerTxUrl } from '../blockchain/explorer';
+import { readChainRoot, isZeroRoot } from '../blockchain/chain-read';
 import { formatDec, fromUnits } from '../common/decimal';
 import { ethers } from 'ethers';
 import {
@@ -1174,40 +1176,74 @@ export class IntegrityService {
     if (!log || !batch) return null;
 
     // leaf = hash คำนวณใหม่จากเนื้อหาปัจจุบัน (version-aware) → proof สะท้อนความถูกต้องของ "เนื้อหา"
-    // เนื้อหาถูกแก้ → leaf ต่างจากตอน seal → verify=false (เดิมใช้ raw_hash ที่เก็บไว้ จึง true ทั้งที่เนื้อหาถูกแก้)
     const logsOfBatch = await this.getLogsForBatch(batch.id);
     const leaves = logsOfBatch.map((l) => recomputeContentLeaf(l));
     const targetLeaf = recomputeContentLeaf(log);
     const proof = this.merkle.getProof(leaves, targetLeaf);
-    const verified = this.merkle.verifyProof(
-      targetLeaf,
-      proof,
-      '0x' + batch.merkleRoot,
-    );
     // ตำแหน่งใน tree (= leaves[].index ของ GET /batches/:id/tree) · leaf ไม่ซ้ำกันเพราะ id อยู่ใน hash
     const leafIndex = leaves.indexOf(targetLeaf);
     const leafHash = this.merkle.leafHash(targetLeaf);
 
-    // แยกสาเหตุด้วย snapshot: เนื้อหาถูกแก้ หรือ raw_hash ถูกแก้ (snapshot.rawHash = ค่าเดิมตอน seal)
+    // ── proof ต้อง verify กับ root บนเชน (ของจริงนอก DB) ไม่ใช่ batches.merkle_root ──
+    // ผู้โจมตีที่แก้ทั้งเนื้อหา + snapshot + dbRoot ให้ตรงกัน หลอก proof ที่เทียบ dbRoot ได้ แต่หลอกเชนไม่ได้
+    // อ่านเชนไม่ได้ / ยังไม่ anchor → verified = null (ตรวจกับเชนไม่ได้) · ห้าม fallback ไป dbRoot เงียบ ๆ
+    const hx = (r: string) => ('0x' + r.replace(/^0x/, '')).toLowerCase();
+    const chain = await readChainRoot(this.blockchain, batch.id);
+    const chainRoot = 'root' in chain ? chain.root : null;
+    const chainError = 'error' in chain ? chain.error : null;
+    const chainVerifiable = chainRoot !== null && !isZeroRoot(chainRoot);
+    const verified: boolean | null = chainVerifiable
+      ? this.merkle.verifyProof(targetLeaf, proof, chainRoot)
+      : null;
+
+    const storedRawHash = log.rawHash;
+    const contentHash = computeRawHash(log); // v2 ของเนื้อหาปัจจุบัน (ไว้โชว์ในการ์ด)
+
+    // ── integrity label: เลือก baseline แบบเดียวกับ GET /batches/:id/diff (snapshot → raw_hash → none) ──
+    // snapshot อาจถูกแก้ (เคส cover) จึงเชื่อ snapshot ได้ต่อเมื่อ snapshotRoot==เชน และทุกตัว hash ตรงตัวเอง
     const snapRepo = this.batchesRepo.manager?.getRepository(BatchLogSnapshot);
     const snap = snapRepo
       ? await snapRepo.findOne({ where: { batchId: batch.id, logId: log.id } })
       : null;
-    const storedRawHash = log.rawHash;
-    const contentHash = computeRawHash(log); // v2 ของเนื้อหาปัจจุบัน (ไว้โชว์ในการ์ด)
+    const allSnaps = snapRepo
+      ? await snapRepo.find({ where: { batchId: batch.id } })
+      : [];
+    const storedHashRoot = logsOfBatch.length
+      ? hx(this.merkle.buildTree(logsOfBatch.map((l) => l.rawHash)).root)
+      : null;
+    const snapshotRoot = allSnaps.length
+      ? hx(this.merkle.buildTree(allSnaps.map((s) => s.rawHash)).root)
+      : null;
+    const snapshotTrusted =
+      chainVerifiable &&
+      allSnaps.length > 0 &&
+      snapshotRoot === hx(chainRoot) &&
+      allSnaps.every((s) => this.snapshotSelfIntact(s));
+    const baseline: 'snapshot' | 'raw_hash' | 'none' = snapshotTrusted
+      ? 'snapshot'
+      : chainVerifiable && storedHashRoot === hx(chainRoot)
+        ? 'raw_hash'
+        : 'none';
+
     let integrity: 'INTACT' | 'CONTENT_MODIFIED' | 'HASH_MODIFIED' | 'UNKNOWN';
-    if (snap) {
+    if (baseline === 'snapshot' && snap) {
+      // snapshot เชื่อถือได้ → เทียบกับค่าเดิมตอน seal (แยก content vs raw_hash)
       const orig = snap.rawHash;
       const contentMatchesOriginal = isRawHashIntact({ ...log, rawHash: orig });
-      const rawHashMatchesOriginal = storedRawHash === orig;
       integrity = contentMatchesOriginal
-        ? rawHashMatchesOriginal
+        ? storedRawHash === orig
           ? 'INTACT'
           : 'HASH_MODIFIED'
         : 'CONTENT_MODIFIED';
+    } else if (baseline === 'raw_hash') {
+      // raw_hash (anchor ยืนยันกับเชน) เป็นตัวเทียบ · เนื้อหา hash ≠ raw_hash = เนื้อถูกแก้
+      integrity =
+        recomputeContentLeaf(log) === storedRawHash
+          ? 'INTACT'
+          : 'CONTENT_MODIFIED';
     } else {
-      // legacy ไม่มี snapshot — บอกได้แค่ว่าเนื้อหา hash ได้ raw_hash ที่เก็บไว้ไหม
-      integrity = isRawHashIntact(log) ? 'INTACT' : 'UNKNOWN';
+      // เทียบกับเชนไม่ได้ (อ่านไม่ได้/ยังไม่ anchor) หรือ snapshot เพี้ยน+raw_hash ก็ไม่ตรงเชน → บอกไม่ได้
+      integrity = 'UNKNOWN';
     }
 
     return {
@@ -1215,6 +1251,10 @@ export class IntegrityService {
       batch,
       proof,
       verified,
+      chainVerifiable,
+      chainRoot,
+      chainError,
+      baseline,
       leafIndex,
       leafHash,
       storedRawHash,
@@ -1222,5 +1262,14 @@ export class IntegrityService {
       integrity,
       hasSnapshot: !!snap,
     };
+  }
+
+  /** snapshot แต่ละตัว hash ตรงกับ raw_hash ของตัวเองไหม (เหมือน BatchDiffService.snapshotIntact) */
+  private snapshotSelfIntact(s: BatchLogSnapshot): boolean {
+    const c = s.snapshot;
+    if (c.v !== RAW_HASH_VERSION || c.id !== s.logId) return false;
+    const createdAt = new Date(c.createdAt);
+    if (Number.isNaN(createdAt.getTime())) return false;
+    return isRawHashIntact({ ...c, createdAt, rawHash: s.rawHash });
   }
 }

@@ -113,7 +113,14 @@ export class IntegrityController {
         status: result.batch.status,
       },
       proof: result.proof,
-      verify: result.verified, // true = เนื้อหาปัจจุบันของ log อยู่ใน tree ที่ anchor จริง
+      // true = เนื้อหาปัจจุบันของ log อยู่ใน tree ที่ anchor บน "เชน" จริง · false = ไม่อยู่ (ถูกแก้)
+      // null = ตรวจกับเชนไม่ได้ (อ่านเชนไม่ได้/ยังไม่ anchor) — ห้ามตีความว่า valid
+      verify: result.verified,
+      chainVerifiable: result.chainVerifiable,
+      chainRoot: result.chainRoot,
+      chainError: result.chainError,
+      // ตัวเทียบที่ใช้จำแนก integrity (เดียวกับ /batches/:id/diff): snapshot | raw_hash | none
+      baseline: result.baseline,
     };
   }
 }
