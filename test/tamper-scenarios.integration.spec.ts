@@ -409,7 +409,7 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
       cdeScope: r3.cde_scope,
       createdAt: new Date(r3.created_at),
     });
-    await runScenario(
+    const obsB = await runScenario(
       'B',
       'แก้ message ของ log ตัวที่ 3 + raw_hash ใหม่ให้ตรง (จำลองผู้โจมตีรู้สูตร)',
       r3.id,
@@ -428,6 +428,10 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
           );
         }),
     );
+    // แก้ทั้ง message + raw_hash ให้ตรงเนื้อหาปลอม → แดงทั้งสอง root (leaf ปลอม ≠ ที่ anchor ไว้) · proof false
+    expect(obsB.diff.storedHashRoot).not.toBe(obsB.diff.chainRoot);
+    expect(obsB.diff.contentRoot).not.toBe(obsB.diff.chainRoot);
+    expect(obsB.proofSubject?.verify).toBe(false);
 
     // C — แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)
     const obsC = await runScenario(
