@@ -37,6 +37,7 @@ import { KafkaProducerService } from '../src/kafka/kafka-producer.service';
 import { KafkaConsumerService } from '../src/kafka/kafka-consumer.service';
 import { computeRawHash } from '../src/logs/services/log-hash';
 import { DbAuditService } from '../src/db-audit/db-audit.service';
+import { BlockchainService } from '../src/blockchain/blockchain.service';
 
 // ⚠️ ต้องมี Hardhat node จริง (127.0.0.1:8545) + contract ที่ deploy แล้ว + hh Postgres/Vault
 // CI ปกติ (ci.yml → jest-e2e รันทุก *.integration.spec.ts) ไม่มี Hardhat และตั้งใจไม่ตั้ง CONTRACT_ADDRESS
@@ -624,6 +625,158 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     expect(finalProof.verify).toBe(true);
     expect(finalProof.integrity).toBe('INTACT');
   }, 300_000);
+
+  // ── C″ — แก้ content + raw_hash + dbRoot ให้สอดคล้องกันทั้งหมด + chain ล่ม ──
+  // สมมติฐานเดิม: ถ้าแก้ครบสามที่ให้ตรงกันแล้ว chain ล่ม จะ "รอด" การตรวจ local
+  // ผลจริง: ยังถูกจับ เพราะ batch_log_snapshot เป็น immutable (แก้ไม่ได้ถ้าไม่ปิด trg_snapshot)
+  //          → snapshotRoot (สร้างจาก snapshot เดิม) ไม่ตรงกับ dbRoot ที่ถูกปลอม → SNAPSHOT_ROOT_MISMATCH
+  // bypass offline ที่สมบูรณ์จริง ต้องปลอม snapshot ด้วย = ต้อง DISABLE trg_snapshot_no_update (ซึ่ง DDL audit จับ)
+  it('C″: content+raw_hash+dbRoot สอดคล้อง + chain ล่ม → ยังถูกจับด้วย snapshot (immutable) ไม่ใช่ bypass', async () => {
+    const blockchain = app.get(BlockchainService);
+    const rC = rows[6];
+    const [{ merkle_root: origDbRoot }]: Array<{ merkle_root: string }> =
+      await ds.query('SELECT merkle_root FROM batches WHERE id = $1', [
+        batchId,
+      ]);
+    const forgedMsg = 'C-double-prime consistent forge';
+    const forgedHash = computeRawHash({
+      id: rC.id,
+      source: rC.source,
+      sourceIp: rC.source_ip,
+      eventType: rC.event_type,
+      severity: rC.severity,
+      message: forgedMsg,
+      classification: rC.classification,
+      cdeScope: rC.cde_scope,
+      createdAt: new Date(rC.created_at),
+    });
+    // 1) แก้ content + raw_hash ของ log ให้ตรงกัน
+    await noUpdate(async () => {
+      await ds.query(
+        'UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1',
+        [rC.id, forgedMsg, forgedHash],
+      );
+    });
+    // 2) อ่าน storedHashRoot ใหม่แล้วเขียนทับ dbRoot ให้ "สอดคล้อง" (batches ไม่มี trigger)
+    const t = await treeNow();
+    const newRoot = (t.storedHashRoot as string).replace(/^0x/, '');
+    await ds.query('UPDATE batches SET merkle_root = $2 WHERE id = $1', [
+      batchId,
+      newRoot,
+    ]);
+    // 3) chain ล่ม (getRoot throw) → ทั้ง verify และ diff อ่านเชนไม่ได้ (เหลือแต่การตรวจ local)
+    const spy = jest
+      .spyOn(blockchain, 'getRoot')
+      .mockRejectedValue(new Error('chain down (simulated)'));
+    await verifyNow();
+    const after = await batchStatus();
+    const diff = await diffNow();
+    const openTamper: Array<{ n: string }> = await ds.query(
+      `SELECT count(*) n FROM alerts WHERE batch_id = $1 AND alert_type = 'INTEGRITY_TAMPERED' AND status = 'OPEN'`,
+      [batchId],
+    );
+    spy.mockRestore();
+    // restore log + dbRoot
+    await noUpdate(async () => {
+      await ds.query(
+        'UPDATE logs SET message = $2, raw_hash = $3 WHERE id = $1',
+        [rC.id, rC.message, rC.raw_hash],
+      );
+    });
+    await ds.query('UPDATE batches SET merkle_root = $2 WHERE id = $1', [
+      batchId,
+      origDbRoot,
+    ]);
+    await verifyNow();
+    results.cDoublePrime = {
+      after,
+      diffVerdict: diff.verdict,
+      untrustedReasons: diff.untrustedReasons,
+      openTamper: Number(openTamper[0].n),
+      restoredStatus: await batchStatus(),
+    };
+    // chain ล่ม แต่ snapshot ที่แก้ไม่ได้ ยังจับการปลอมได้ → ไม่ใช่ bypass เงียบ
+    expect(diff.verdict).toBe('TAMPERED');
+    expect(diff.untrustedReasons).toContain('SNAPSHOT_ROOT_MISMATCH');
+    expect(after).not.toBe('CONFIRMED'); // verify ไม่ปล่อยผ่านเป็น CONFIRMED เงียบ ๆ
+    // restore แล้วกลับ CONFIRMED + INTACT
+    expect(await batchStatus()).toBe('CONFIRMED');
+  }, 120_000);
+
+  // ── J — root หายจาก chain (chain reset / redeploy) → UNVERIFIED (ไม่ใช่ tamper) ──
+  it('J: checkRoot=MISSING → UNVERIFIED (ไม่ใช่ tamper) แล้วกลับ CONFIRMED เมื่อ root กลับมา', async () => {
+    const blockchain = app.get(BlockchainService);
+    const [{ merkle_root: dbRoot }]: Array<{ merkle_root: string }> =
+      await ds.query('SELECT merkle_root FROM batches WHERE id = $1', [
+        batchId,
+      ]);
+    // root หายจาก chain
+    const miss = jest.spyOn(blockchain, 'checkRoot').mockResolvedValue({
+      result: 'MISSING' as const,
+      onChainRoot: '0x' + '0'.repeat(64),
+    });
+    await verifyNow();
+    const unverified = await batchStatus();
+    const openTamperDuring: Array<{ n: string }> = await ds.query(
+      `SELECT count(*) n FROM alerts WHERE batch_id = $1 AND alert_type = 'INTEGRITY_TAMPERED' AND status = 'OPEN'`,
+      [batchId],
+    );
+    miss.mockRestore();
+    // root กลับมา (MATCH) → verify คืน CONFIRMED
+    const match = jest.spyOn(blockchain, 'checkRoot').mockResolvedValue({
+      result: 'MATCH' as const,
+      onChainRoot: '0x' + dbRoot,
+    });
+    await verifyNow();
+    const recovered = await batchStatus();
+    match.mockRestore();
+    results.jUnverified = {
+      unverified,
+      recovered,
+      openTamperDuring: Number(openTamperDuring[0].n),
+    };
+    expect(unverified).toBe('UNVERIFIED');
+    expect(Number(openTamperDuring[0].n)).toBe(0); // MISSING ≠ tamper
+    expect(recovered).toBe('CONFIRMED');
+  }, 120_000);
+
+  // ── replica bypass — trigger ของ snapshot เป็น O (ไม่ใช่ ALWAYS) → session_replication_role=replica ข้ามได้ ──
+  // ต่างจาก logs ที่เป็น ENABLE ALWAYS (เทสต์ 'quick win' ด้านล่างยืนยันว่า logs ข้ามไม่ได้)
+  it('replica bypass: session_replication_role=replica ข้าม trigger snapshot (O) ได้ — ช่องโหว่', async () => {
+    let blockedNormally = false;
+    try {
+      await ds.query(
+        'UPDATE batch_log_snapshot SET snapshot = snapshot WHERE batch_id = $1',
+        [batchId],
+      );
+    } catch (e) {
+      blockedNormally = /IMMUTABLE_SNAPSHOT/.test(
+        String((e as Error)?.message ?? e),
+      );
+    }
+    const qr = ds.createQueryRunner();
+    await qr.connect();
+    let bypassed = false;
+    try {
+      await qr.query("SET session_replication_role = 'replica'");
+      await qr.query(
+        'UPDATE batch_log_snapshot SET snapshot = snapshot WHERE batch_id = $1',
+        [batchId],
+      );
+      bypassed = true; // ไม่ throw = trigger ถูกข้าม
+    } catch {
+      bypassed = false;
+    } finally {
+      await qr.query("SET session_replication_role = 'origin'");
+      await qr.release();
+    }
+    results.replicaSnapshot = {
+      blockedNormally,
+      bypassed,
+    };
+    expect(blockedNormally).toBe(true); // ปกติโดน block
+    expect(bypassed).toBe(true); // แต่ replica ข้ามได้ (snapshot ยังไม่ ENABLE ALWAYS)
+  }, 60_000);
 
   // ── DDL audit (ข้อ 1) ────────────────────────────────────────────────────
   // ทุก DISABLE TRIGGER ใน scenario A–F ข้างบนถูก event trigger บันทึกลง db_audit_events
