@@ -85,8 +85,8 @@ interface TreeBody {
   batchId: string;
   logCount: number;
   dbRoot: string;
-  computedRoot: string | null;
-  rootMatchesDb: boolean;
+  storedHashRoot: string | null;
+  storedHashRootMatchesDb: boolean;
   chainRoot: string | null;
   chainError: string | null;
   leaves: Array<{
@@ -236,7 +236,7 @@ describe('Merkle tree API (integration)', () => {
       const t = await tree(b.id);
       const top = t.layers[t.layers.length - 1];
       expect(top).toEqual(['0x' + b.merkle_root]);
-      expect(t.rootMatchesDb).toBe(true);
+      expect(t.storedHashRootMatchesDb).toBe(true);
       expect(t.leaves).toHaveLength(t.layers[0].length);
     }
   });
@@ -308,7 +308,7 @@ describe('Merkle tree API (integration)', () => {
       const t = await tree(hundred);
       expect(t.chainRoot).toBeNull();
       expect(t.chainError).toContain('ECONNREFUSED');
-      expect(t.rootMatchesDb).toBe(true);
+      expect(t.storedHashRootMatchesDb).toBe(true);
     } finally {
       rpcDown = false;
     }
