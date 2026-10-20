@@ -39,6 +39,9 @@ import { BatchLogSnapshot1790812800000 } from './database/migrations/17908128000
 import { BatchGasAndIndexes1790899200000 } from './database/migrations/1790899200000-BatchGasAndIndexes';
 import { BatchSealReason1790985600000 } from './database/migrations/1790985600000-BatchSealReason';
 import { LogsSourceIpIndex1791072000000 } from './database/migrations/1791072000000-LogsSourceIpIndex';
+import { LogsTriggersEnableAlways1791158400000 } from './database/migrations/1791158400000-LogsTriggersEnableAlways';
+import { DbDdlAudit1791244800000 } from './database/migrations/1791244800000-DbDdlAudit';
+import { DbAuditModule } from './db-audit/db-audit.module';
 
 @Module({
   imports: [
@@ -82,6 +85,8 @@ import { LogsSourceIpIndex1791072000000 } from './database/migrations/1791072000
             BatchGasAndIndexes1790899200000,
             BatchSealReason1790985600000,
             LogsSourceIpIndex1791072000000,
+            LogsTriggersEnableAlways1791158400000,
+            DbDdlAudit1791244800000,
           ],
           migrationsRun: true,
         };
@@ -105,6 +110,7 @@ import { LogsSourceIpIndex1791072000000 } from './database/migrations/1791072000
     ComplianceModule,
     StatsModule,
     AdminModule,
+    DbAuditModule,
   ],
   controllers: [AppController, HealthController],
   providers: [
