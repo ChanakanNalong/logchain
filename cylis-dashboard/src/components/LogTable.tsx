@@ -143,7 +143,14 @@ export default function LogTable({ logs, showChain = false, onRowClick }: LogTab
               </Td>
               <Td style={{ color: t.muted, whiteSpace: "nowrap", ...monoFont }}>{r.ts}</Td>
               <Td>{r.source}</Td>
-              <Td style={{ ...monoFont }}>{r.ip}</Td>
+              <Td style={{ ...monoFont }}>
+                {r.ip}
+                {r.maskedIp && (
+                  <Badge tone="warn" title="เข้าผลเพราะ IP ในข้อความถูก mask (.xxx) — IP จริงอาจเป็นตัวอื่นในช่วงเดียวกัน ไม่ใช่ที่ค้น">
+                    IP mask
+                  </Badge>
+                )}
+              </Td>
               {/* one line; the full message is in the tooltip and the drawer.
                   max-width on a <td> is not reliable in auto table layout — cap a div instead.
                   `pre`, not `nowrap`: runs of spaces stay as they are, so a copied message

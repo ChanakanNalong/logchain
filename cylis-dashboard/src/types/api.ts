@@ -35,6 +35,8 @@ export interface LogItem {
   blockNumber: number | null;
   /** null when there is no tx, or the explorer is unset (Hardhat) */
   polygonscanUrl: string | null;
+  /** true = matched because the message holds a masked IP (.xxx), not an exact source_id — the real IP may be another .x in the range */
+  matchedMaskedIp?: boolean;
 }
 
 export type LogsPage = Paged<LogItem>;
@@ -46,12 +48,12 @@ export interface LogsQuery {
   source?: string[];
   severity?: string[];
   eventType?: string[];
-  /** ILIKE on `message`, ≤ 200 chars */
+  /** ≤ 200 chars · ILIKE on `message`; if it looks like an IP, also matches source_id (full = exact, partial = prefix) + the masked form in the message */
   q?: string;
 }
 
 /** The log part of `GET /logs/:id/detail` (no batch columns) */
-export type LogRecord = Omit<LogItem, "batchId" | "batchStatus" | "txHash" | "blockNumber" | "polygonscanUrl">;
+export type LogRecord = Omit<LogItem, "batchId" | "batchStatus" | "txHash" | "blockNumber" | "polygonscanUrl" | "matchedMaskedIp">;
 
 export interface BatchInfo {
   id: string;
