@@ -33,6 +33,7 @@ git pull                  # ให้มี scripts/live-demo.sh ล่าสุ
 | `move` | ย้าย mapping ของ log ไป batch อื่น | ต้นทาง DELETED/MAPPING_MISSING · ปลายทาง UNMAPPED_OR_INSERTED | ทั้งสอง batch TAMPERED ใน ≤1 นาที |
 | `snapshot` | แก้ทั้ง `logs` และ `batch_log_snapshot` | contentRoot + snapshotTrusted=false (SNAPSHOT_CONTENT_MISMATCH) | TAMPERED ใน ≤1 นาที |
 | `dbroot` | แก้ `batches.merkle_root` (คง 64-hex) | dbRoot | **ไม่พลิก** (verify ยึด chain) |
+| `cover` | โจมตีสอดคล้องทั้งหมด: `message` + `snapshot`(ตรง) + `merkle_root`=contentRoot จริง | snapshotRoot + dbRoot + contentRoot (storedHashRoot/chainRoot 🟢) · diff: SNAPSHOT_ROOT_MISMATCH (ไม่ชี้รายตัว) | TAMPERED ใน ≤1 นาที |
 
 ยิงแต่ละเคสแล้วสคริปต์พิมพ์: batch id · log id · ช่องที่ควรแดง · ให้เปิดหน้า Check/กด Verify
 (เห็นแดงทันทีเพราะหน้า Check คำนวณสด · status badge ในลิสต์พลิกตาม verify cron ≤1 นาที)
@@ -41,6 +42,8 @@ git pull                  # ให้มี scripts/live-demo.sh ล่าสุ
 `content` `rehash` `hash` `snapshot` ต้อง **ปิด trigger ชั่วคราว** → DDL audit จับเป็น `TRIGGER_DISABLED`
 = เด้งอีเมลเข้าอินบ็อกซ์ของ **Kan คนเดียว** (to = user เดียวกัน · อาจารย์ไม่อยู่ในรายชื่อ)
 ถ้ามี alert `TRIGGER_DISABLED` ที่ยัง OPEN อยู่ก่อน จะ **ยุบรวม** (occurrence เพิ่ม) ไม่ใช่ใบใหม่
+`cover` ปิด trigger 2 ตาราง (logs + snapshot) → มีอีเมล TRIGGER_DISABLED · และคำนวณ `merkle_root`=contentRoot ด้วย
+merkle จริงของ backend (`docker exec logchain-backend`) — ต้องมีคอนเทนเนอร์ backend ขึ้นอยู่
 `move` และ `dbroot` ไม่ปิด trigger → ไม่มีอีเมล
 
 ## กลไกความปลอดภัย
