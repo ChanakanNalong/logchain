@@ -36,6 +36,7 @@ import { AppModule } from '../src/app.module';
 import { KafkaProducerService } from '../src/kafka/kafka-producer.service';
 import { KafkaConsumerService } from '../src/kafka/kafka-consumer.service';
 import { computeRawHash } from '../src/logs/services/log-hash';
+import { DbAuditService } from '../src/db-audit/db-audit.service';
 
 // ⚠️ ต้องมี Hardhat node จริง (127.0.0.1:8545) + contract ที่ deploy แล้ว + hh Postgres/Vault
 // CI ปกติ (ci.yml → jest-e2e รันทุก *.integration.spec.ts) ไม่มี Hardhat และตั้งใจไม่ตั้ง CONTRACT_ADDRESS
@@ -119,6 +120,25 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
       `SELECT alert_type, title, severity, rule_id, status
          FROM alerts WHERE batch_id = $1 ORDER BY created_at DESC`,
       [batchId],
+    );
+  // alert จาก DDL audit (source DB_AUDIT, batch_id = null)
+  const dbAuditAlerts = async (
+    alertType?: string,
+  ): Promise<
+    Array<{
+      alert_type: string;
+      severity: string;
+      title: string;
+      status: string;
+      occurrence_count: number;
+    }>
+  > =>
+    ds.query(
+      `SELECT alert_type, severity, title, status, occurrence_count
+         FROM alerts WHERE source = 'DB_AUDIT'
+         ${alertType ? 'AND alert_type = $1' : ''}
+        ORDER BY created_at DESC`,
+      alertType ? [alertType] : [],
     );
 
   const proof = async (logId: string) => {
@@ -604,4 +624,59 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     expect(finalProof.verify).toBe(true);
     expect(finalProof.integrity).toBe('INTACT');
   }, 300_000);
+
+  // ── DDL audit (ข้อ 1) ────────────────────────────────────────────────────
+  // ทุก DISABLE TRIGGER ใน scenario A–F ข้างบนถูก event trigger บันทึกลง db_audit_events
+  it('DDL audit: DISABLE TRIGGER ของ scenario → alert CRITICAL TRIGGER_DISABLED', async () => {
+    const svc = app.get(DbAuditService);
+    await svc.poll();
+    const crit = await dbAuditAlerts('TRIGGER_DISABLED');
+    expect(crit.length).toBeGreaterThanOrEqual(1);
+    expect(crit.every((a) => a.severity === 'CRITICAL')).toBe(true);
+    results.dbAudit = { triggerDisabled: crit };
+  }, 60_000);
+
+  it('DDL audit: ALTER TABLE ปกติบนตารางที่เฝ้า = SCHEMA_CHANGE → WARNING (ไม่มี false CRITICAL)', async () => {
+    // จำลอง DDL แบบ migration ปกติ (เพิ่ม/ลบคอลัมน์ชั่วคราวบน batches)
+    await ds.query(
+      'ALTER TABLE batches ADD COLUMN IF NOT EXISTS _audit_demo int',
+    );
+    await ds.query('ALTER TABLE batches DROP COLUMN IF EXISTS _audit_demo');
+    const demoRows: Array<{ kind: string }> = await ds.query(
+      `SELECT kind FROM db_audit_events WHERE on_table = 'batches' AND query ILIKE '%_audit_demo%'`,
+    );
+    expect(demoRows.length).toBeGreaterThanOrEqual(1);
+    // ALTER ปกติต้องเป็น SCHEMA_CHANGE ไม่ใช่ DISABLE/DROP (ไม่มี false CRITICAL)
+    expect(demoRows.every((r) => r.kind === 'SCHEMA_CHANGE')).toBe(true);
+
+    const svc = app.get(DbAuditService);
+    await svc.poll();
+    const warn = await dbAuditAlerts('SCHEMA_CHANGED');
+    expect(warn.length).toBeGreaterThanOrEqual(1);
+    expect(warn.every((a) => a.severity === 'WARNING')).toBe(true);
+  }, 60_000);
+
+  it('quick win: ENABLE ALWAYS → session_replication_role = replica ยัง block UPDATE logs', async () => {
+    await ds.query('ALTER TABLE logs ENABLE ALWAYS TRIGGER trg_logs_no_update');
+    const [{ id }]: Array<{ id: string }> = await ds.query(
+      'SELECT id FROM logs LIMIT 1',
+    );
+    const qr = ds.createQueryRunner();
+    await qr.connect();
+    let blocked = false;
+    try {
+      await qr.query("SET session_replication_role = 'replica'");
+      try {
+        await qr.query('UPDATE logs SET message = message WHERE id = $1', [id]);
+      } catch (e) {
+        blocked = /IMMUTABLE_LOG/.test(String((e as Error)?.message ?? e));
+      }
+    } finally {
+      await qr.query("SET session_replication_role = 'origin'");
+      await qr.release();
+    }
+    expect(blocked).toBe(true);
+    // คืน origin (ให้สถานะสะอาดเหมือน afterAll)
+    await ds.query('ALTER TABLE logs ENABLE TRIGGER trg_logs_no_update');
+  }, 60_000);
 });
