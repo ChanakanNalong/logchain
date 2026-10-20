@@ -222,7 +222,8 @@ function rootStates(d: BatchDiff) {
     ) as RootState,
     snapshot: (d.snapshotRoot === null ? { kind: "gray", text: "ไม่มี snapshot" } : cmp(d.snapshotRoot)) as RootState,
     db: cmp(d.dbRoot) as RootState,
-    current: (d.currentRoot === null ? { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้แล้ว" } : cmp(d.currentRoot)) as RootState,
+    storedHash: (d.storedHashRoot === null ? { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้แล้ว" } : cmp(d.storedHashRoot)) as RootState,
+    content: (d.contentRoot === null ? { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้แล้ว" } : cmp(d.contentRoot)) as RootState,
   };
 }
 
@@ -257,7 +258,7 @@ export default function BatchDiffDrawer({
     return () => window.removeEventListener("resize", update);
   }, []);
   const rootsRoom = Math.min(viewport, 880) - 44; // panel side padding
-  const rootCols = narrow ? 1 : rootsRoom >= 760 ? 4 : 2;
+  const rootCols = narrow ? 1 : rootsRoom >= 950 ? 5 : rootsRoom >= 460 ? 3 : 2;
   const closeLog = useCallback(() => setOpenLog(null), []);
 
   // Esc belongs to the log drawer while it is open on top
@@ -282,7 +283,7 @@ export default function BatchDiffDrawer({
   // the only thing edited while the current logs still rebuild the reference root.
   const verdictHint =
     d && verdict && d.snapshotTrusted === false
-      ? roots?.current.kind === "match"
+      ? roots?.content.kind === "match"
         ? "snapshot ถูกแก้ · root ของ log ปัจจุบันยังตรงกับค่าอ้างอิง"
         : "snapshot ถูกแก้ และ root ของ log ปัจจุบันไม่ตรงกับค่าอ้างอิง"
       : verdict?.hint;
@@ -387,12 +388,15 @@ export default function BatchDiffDrawer({
               <div style={{ fontSize: 12.5, color: t.muted, margin: "4px 0 10px" }}>
                 เทียบกับ: <strong style={{ color: t.text }}>{roots.referenceName}</strong>
               </div>
-              {/* 4 across · 2×2 · 1 column — never 3 + 1 */}
               <div style={{ display: "grid", gridTemplateColumns: `repeat(${rootCols}, minmax(0, 1fr))`, gap: 10 }}>
                 <RootCard title="chainRoot" origin="บนเชน — อ่านจาก contract ตอนนี้" value={roots.chainValue} state={roots.chain} isReference={roots.anchored} />
                 <RootCard title="snapshotRoot" origin="สร้างจาก snapshot ที่เก็บตอน seal" value={d.snapshotRoot} state={roots.snapshot} isReference={false} />
                 <RootCard title="dbRoot" origin="root ที่เก็บใน DB ตอน seal" value={d.dbRoot} state={roots.db} isReference={!roots.anchored} />
-                <RootCard title="currentRoot" origin="root จาก log ปัจจุบัน — คำนวณจาก log ที่ผูกกับ batch ตอนนี้" value={d.currentRoot} state={roots.current} isReference={false} />
+                <RootCard title="storedHashRoot" origin="จาก raw_hash ที่เก็บไว้ — แดงเมื่อคอลัมน์ raw_hash ถูกแก้" value={d.storedHashRoot} state={roots.storedHash} isReference={false} />
+                <RootCard title="contentRoot" origin="คำนวณจากเนื้อหา log ปัจจุบัน (hash ใหม่) — แดงเมื่อเนื้อ log ถูกแก้" value={d.contentRoot} state={roots.content} isReference={false} />
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12.5, color: t.muted }}>
+                ทุกช่องต้องเขียว ข้อมูลถึงจะสมบูรณ์ — <span style={{ color: t.text }}>storedHashRoot</span> แดง = raw_hash ถูกแก้ · <span style={{ color: t.text }}>contentRoot</span> แดง = เนื้อ log ถูกแก้
               </div>
               {d.chainError && <div style={{ marginTop: 8, fontSize: 12, color: t.muted, ...monoFont }}>{d.chainError}</div>}
             </section>

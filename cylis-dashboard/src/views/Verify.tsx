@@ -67,7 +67,9 @@ function treeRoots(tree: BatchTree) {
         ? { kind: "gray", text: unanchored.label, tone: unanchored.tone }
         : cmp(tree.chainRoot)) as RootState,
     db: cmp(tree.dbRoot),
-    computed: (tree.computedRoot ? cmp(tree.computedRoot) : { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้" }) as RootState,
+    snapshot: (tree.snapshotRoot === null ? { kind: "gray", text: "ไม่มี snapshot" } : cmp(tree.snapshotRoot)) as RootState,
+    storedHash: (tree.storedHashRoot ? cmp(tree.storedHashRoot) : { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้" }) as RootState,
+    content: (tree.contentRoot ? cmp(tree.contentRoot) : { kind: "gray", text: "ไม่มี log ผูกกับ batch นี้" }) as RootState,
   };
 }
 
@@ -255,7 +257,7 @@ export default function Verify() {
 
   const roots = treeData ? treeRoots(treeData) : null;
   // 3 across, or 1 column when narrow — never 2 + 1
-  const rootCols = treeBoxWidth >= 600 ? 3 : 1;
+  const rootCols = treeBoxWidth >= 950 ? 5 : treeBoxWidth >= 460 ? 3 : 1;
   // stacked below ~1150px of window (sidebar 220 + main padding 56): only then the table may scroll
   const bottomStacked = bottomWidth < 860;
   const recentLogCol = bottomWidth >= 1100 ? 360 : 320;
@@ -425,8 +427,13 @@ export default function Verify() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: `repeat(${rootCols}, minmax(0, 1fr))`, gap: 10 }}>
               <RootCard title="chainRoot" origin="บนเชน — อ่านจาก contract ตอนนี้" value={roots.chainValue} state={roots.chain} isReference={roots.anchored} />
+              <RootCard title="snapshotRoot" origin="สร้างจาก snapshot ที่เก็บตอน seal" value={treeData.snapshotRoot} state={roots.snapshot} isReference={false} />
               <RootCard title="dbRoot" origin="root ที่เก็บใน DB ตอน seal" value={treeData.dbRoot} state={roots.db} isReference={!roots.anchored} />
-              <RootCard title="computedRoot" origin="คำนวณจาก log ที่ผูกกับ batch ตอนนี้ (tree ด้านล่าง)" value={treeData.computedRoot || null} state={roots.computed} isReference={false} />
+              <RootCard title="storedHashRoot" origin="จาก raw_hash ที่เก็บไว้ — แดงเมื่อคอลัมน์ raw_hash ถูกแก้ (tree ด้านล่าง)" value={treeData.storedHashRoot || null} state={roots.storedHash} isReference={false} />
+              <RootCard title="contentRoot" origin="คำนวณจากเนื้อหา log ปัจจุบัน (hash ใหม่) — แดงเมื่อเนื้อ log ถูกแก้" value={treeData.contentRoot || null} state={roots.content} isReference={false} />
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12.5, color: t.muted }}>
+              ทุกช่องต้องเขียว ข้อมูลถึงจะสมบูรณ์ — <span style={{ color: t.text }}>storedHashRoot</span> แดง = raw_hash ถูกแก้ · <span style={{ color: t.text }}>contentRoot</span> แดง = เนื้อ log ถูกแก้
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginTop: 8, fontSize: 12, color: t.muted }}>
               {roots.anchored && roots.db.kind === "match" && treeData.polygonscanUrl && (

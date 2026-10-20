@@ -167,7 +167,7 @@ export default function MerkleTreeView({
     const key = `${L}:${i}`;
     const isRoot = L === last;
     if (isRoot) {
-      const ok = tree.rootMatchesDb;
+      const ok = tree.storedHashRootMatchesDb;
       return { fill: ok ? "rgba(52,211,153,0.18)" : "rgba(244,63,94,0.18)", stroke: ok ? t.good : t.danger, sw: 2 };
     }
     if (onPath.has(key)) return { fill: t.blue, stroke: t.blue2, sw: 2 };

@@ -91,7 +91,7 @@ interface DiffBody {
   chainError: string | null;
   snapshotRoot: string | null;
   dbRoot: string;
-  currentRoot: string | null;
+  storedHashRoot: string | null;
   snapshotTrusted: boolean | null;
   trustBasis: string | null;
   untrustedReasons: string[];
@@ -368,7 +368,7 @@ describe('Tamper diff (integration)', () => {
     );
     try {
       const d = await diff();
-      expect(d.currentRoot).not.toBe(d.chainRoot);
+      expect(d.storedHashRoot).not.toBe(d.chainRoot);
       expect(d.snapshotTrusted).toBe(true);
       expect(d.changes.map((c) => [c.position, c.type])).toEqual([
         [55, 'CONTENT_MODIFIED'],

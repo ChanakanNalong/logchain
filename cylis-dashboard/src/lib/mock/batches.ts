@@ -16,8 +16,9 @@ interface AuditSpec {
   chainRoot: string | null;
   chainError: string | null;
   dbRoot: string;
-  /** root rebuilt from the logs mapped now · null when none are mapped */
-  currentRoot: string | null;
+  /** root from stored raw_hash · null when none mapped (mock: content intact ⇒ contentRoot = storedHashRoot) */
+  storedHashRoot: string | null;
+  contentRoot: string | null;
   /** logs mapped to the batch now, in seal order — the tree on the Verify page */
   leaves: { logId: string; rawHash: string }[];
   /** gas for the tree's cost block (same as the list's) */
@@ -79,7 +80,8 @@ function fromLogsMock(
     chainRoot,
     chainError: "error" in b.chainCheck ? b.chainCheck.error : null,
     dbRoot,
-    currentRoot: buildLayers(leaves.map((l) => l.rawHash)).root,
+    storedHashRoot: buildLayers(leaves.map((l) => l.rawHash)).root,
+    contentRoot: buildLayers(leaves.map((l) => l.rawHash)).root,
     leaves,
     gas,
     rates: true,
@@ -111,7 +113,8 @@ function listOnly(
     chainRoot: dbRoot,
     chainError: null,
     dbRoot,
-    currentRoot: dbRoot,
+    storedHashRoot: dbRoot,
+    contentRoot: dbRoot,
     leaves,
     gas,
     rates: opts.rates ?? true,
@@ -302,12 +305,12 @@ export function buildDiff(batchId: string): BatchDiff | null {
   const base = {
     batchId: item.id, status: item.status, txHash: item.txHash, blockNumber: item.blockNumber,
     polygonscanUrl: item.polygonscanUrl, chainRoot: a.chainRoot, chainError: a.chainError,
-    dbRoot: a.dbRoot, currentRoot: a.currentRoot, checkedAt: new Date().toISOString(),
+    dbRoot: a.dbRoot, storedHashRoot: a.storedHashRoot, contentRoot: a.contentRoot, checkedAt: new Date().toISOString(),
   };
   const unknown = { unchanged: null, contentModified: null, hashModified: null, deleted: null, unmappedOrInserted: null };
 
   if (!a.snapshot) {
-    const intact = a.currentRoot === reference && a.dbRoot === reference;
+    const intact = a.storedHashRoot === reference && a.contentRoot === reference && a.dbRoot === reference;
     return {
       ...base, snapshotRoot: null, snapshotTrusted: null, trustBasis: null, untrustedReasons: [], legacy: true,
       summary: { verdict: intact ? (unverifiable ? "UNVERIFIABLE" : "INTACT") : "TAMPERED", snapshotLogs: 0, mappedLogs: a.mappedLogs, ...unknown },
@@ -329,7 +332,7 @@ export function buildDiff(batchId: string): BatchDiff | null {
 
   const count = (t: BatchChange["type"]) => a.changes.filter((c) => c.type === t).length;
   const touched = new Set(a.changes.filter((c) => c.type !== "UNMAPPED_OR_INSERTED").map((c) => c.position));
-  const intact = a.changes.length === 0 && a.currentRoot === reference && a.dbRoot === reference;
+  const intact = a.changes.length === 0 && a.storedHashRoot === reference && a.contentRoot === reference && a.dbRoot === reference;
   return {
     ...base, snapshotRoot: a.snapshot.root, snapshotTrusted: true, trustBasis, untrustedReasons: [], legacy: false,
     summary: {

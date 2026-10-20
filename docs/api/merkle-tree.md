@@ -16,10 +16,12 @@ role: `analyst` `operator` `auditor` `admin` · `:id` ต้องเป็น U
 
 | field | ความหมาย |
 |---|---|
-| `leaves[]` | `index` (0-based) · `logId` · `rawHash` (hash ของเนื้อ log) · `leafHash` = sha256(utf8 ของ rawHash) — เรียง `createdAt` ASC, `id` ASC |
-| `layers` | `layers[0]` = leafHash ทั้งหมด … `layers[last]` = `[root]` · ในชั้นเดียวกัน node `2k` กับ `2k+1` รวมกันเป็น node `k` ของชั้นถัดไป (คู่ถูกเรียงก่อน hash — `sortPairs`) |
+| `leaves[]` | `index` (0-based) · `logId` · `rawHash` (raw_hash ที่เก็บไว้) · `leafHash` = sha256(utf8 ของ rawHash) · `contentHash` = hash คำนวณใหม่จากเนื้อหาปัจจุบัน (ต่างจาก `rawHash` = เนื้อถูกแก้) — เรียง `createdAt` ASC, `id` ASC |
+| `layers` | tree จาก **raw_hash ที่เก็บไว้** (storedHashRoot) · `layers[0]` = leafHash ทั้งหมด … `layers[last]` = `[root]` · ในชั้นเดียวกัน node `2k` กับ `2k+1` รวมกันเป็น node `k` ของชั้นถัดไป (คู่ถูกเรียงก่อน hash — `sortPairs`) |
 | `promoted[]` | node เศษ (ชั้นที่มีจำนวนคี่ ตัวสุดท้าย) ที่ **ส่งต่อขึ้นไปเฉย ๆ ไม่ hash** · `{layer, index}` = ตำแหน่งในชั้นนั้น → ไปอยู่ชั้น `layer+1` ตำแหน่ง `floor(index/2)` ค่าเดิม |
-| `computedRoot` | root ที่ได้จาก `layers` · `rootMatchesDb` = เท่ากับ `dbRoot` (batches.merkle_root) ไหม |
+| `snapshotRoot` | root จาก snapshot ตอน seal · `null` = batch เก่าก่อนมี snapshot |
+| `storedHashRoot` | root จาก leaf = `raw_hash` ที่เก็บไว้ (ได้จาก `layers`) · `storedHashRootMatchesDb` = เท่ากับ `dbRoot` ไหม · **แดงเมื่อคอลัมน์ `raw_hash` ถูกแก้** |
+| `contentRoot` | root จาก leaf = hash **คำนวณใหม่จากเนื้อหา log ปัจจุบัน** (version-aware) · `contentRootMatchesDb` = เท่ากับ `dbRoot` ไหม · **แดงเมื่อเนื้อ log ถูกแก้** (เดิม `computedRoot` ตัวเดียวใช้ raw_hash จึงเขียวทั้งที่เนื้อถูกแก้) · batch ที่ไม่ถูกแตะ: `storedHashRoot` = `contentRoot` = `dbRoot` |
 | `chainRoot` | อ่านจาก contract (eth_call) · RPC ล่ม / ไม่ได้ตั้ง chain → `null` + `chainError` (ยัง 200) · ยังไม่ anchor = `0x000…` |
 | `cost` | `null` ถ้า batch ไม่มี `gas_used` (ยังไม่ anchor / ROOT_EXISTS / batch เก่าที่ยังไม่ backfill) |
 
@@ -41,8 +43,11 @@ role: `analyst` `operator` `auditor` `admin` · `:id` ต้องเป็น U
   "blockNumber": 28451107,
   "polygonscanUrl": "https://amoy.polygonscan.com/tx/0xfbe0b13c39a1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
   "dbRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
-  "computedRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
-  "rootMatchesDb": true,
+  "snapshotRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
+  "storedHashRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
+  "storedHashRootMatchesDb": true,
+  "contentRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
+  "contentRootMatchesDb": true,
   "chainRoot": "0x87e2e9e844ad922c3c2634f9e9dd4ec405a5e85d140ce51273a2fe3f8ca094da",
   "chainError": null,
   "checkedAt": "2026-10-15T10:20:11.402Z",
@@ -159,11 +164,13 @@ root = leafHash ของ log ตัวเดียว · `layers` มีชั�
   ],
   "promoted": [],
   "dbRoot": "0x787cfb9f43cde9ee55795482bf87df214d9c4d65e46611f849fc7faf0159f760",
-  "computedRoot": "0x787cfb9f43cde9ee55795482bf87df214d9c4d65e46611f849fc7faf0159f760",
-  "rootMatchesDb": true
+  "storedHashRoot": "0x787cfb9f43cde9ee55795482bf87df214d9c4d65e46611f849fc7faf0159f760",
+  "storedHashRootMatchesDb": true,
+  "contentRoot": "0x787cfb9f43cde9ee55795482bf87df214d9c4d65e46611f849fc7faf0159f760",
+  "contentRootMatchesDb": true
 }
 ```
-(field อื่นเหมือน 1a)
+(field อื่นเหมือน 1a · ทุก log ที่ไม่ถูกแตะ → `contentHash` ของ leaf = `rawHash` และ `contentRoot` = `storedHashRoot` = `dbRoot`)
 
 ### 1c. ไม่มี gas (ยังไม่ anchor / batch เก่า)
 
@@ -211,17 +218,23 @@ root = leafHash ของ log ตัวเดียว · `layers` มีชั�
 
 ---
 
-## 2. `GET /logs/:id/proof` — เพิ่ม `leafIndex` + `leafHash`
+## 2. `GET /logs/:id/proof` — leaf = `sha256(contentHash)` · เพิ่ม `contentHash` + `integrity`
 
-role เดิม (`analyst` `operator` `admin`) · field เดิมคงไว้ทั้งหมด · `leafIndex` ตรงกับ `leaves[].index` ของ tree
+role เดิม (`analyst` `operator` `admin`) · `leafIndex` ตรงกับ `leaves[].index` ของ tree
 
-ตรวจเองได้: เริ่มจาก `leafHash` แล้วไล่ `proof` — `position: "left"` = sibling อยู่ซ้าย · ก่อน hash ให้เรียงคู่ (`sortPairs`) แล้ว sha256 ของ 2 ค่าต่อกัน
+**leaf คำนวณจากเนื้อหาปัจจุบัน** (`contentHash`) ไม่ใช่ `raw_hash` ที่เก็บไว้ (`rawHash`) — แก้เนื้อ log แล้ว `contentHash` เปลี่ยน → leaf เปลี่ยน → `verify: false` (เดิมใช้ raw_hash จึง true ทั้งที่เนื้อถูกแก้)
+- `rawHash` = raw_hash ที่เก็บใน DB · `contentHash` = hash คำนวณใหม่จากเนื้อหาปัจจุบัน · ต่างกัน = ถูกแก้
+- `integrity`: `INTACT` · `CONTENT_MODIFIED` (เนื้อ log ถูกแก้) · `HASH_MODIFIED` (คอลัมน์ raw_hash ถูกแก้ เนื้อหาเดิม) · `UNKNOWN` (legacy ไม่มี snapshot) — แยกด้วย snapshot
+
+ตรวจเองได้: เริ่มจาก `leafHash` (= sha256 ของ `contentHash`) แล้วไล่ `proof` — `position: "left"` = sibling อยู่ซ้าย · ก่อน hash ให้เรียงคู่ (`sortPairs`) แล้ว sha256 ของ 2 ค่าต่อกัน
 ได้ `0x` + `batch.merkleRoot` = proof ถูก (`verify: true`)
 
 ```json
 {
   "logId": "aaaaaaaa-0000-4000-8000-000000000003",
   "rawHash": "f25743e01a8d2faa127a86adc728bf034cb23a158ec792ee9a43c5c2cfad4aab",
+  "contentHash": "f25743e01a8d2faa127a86adc728bf034cb23a158ec792ee9a43c5c2cfad4aab",
+  "integrity": "INTACT",
   "leafIndex": 3,
   "leafHash": "0x31bd53d6def13ef28a9a5cd0317e9813f30e2b0eeb78c0a2a2bcda4834754626",
   "batch": {

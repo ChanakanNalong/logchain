@@ -3,7 +3,7 @@
 สัญญา JSON สำหรับทำ mock ฝั่ง frontend · prefix `/api/v1` · Bearer token ของ Keycloak · ทุกคำขอลง `audit_access`
 
 รูปแบบค่าเหมือน [logs-alerts.md](logs-alerts.md): UUID เต็ม · เวลา ISO-8601 UTC · `merkleRoot` hex 64 ไม่มี `0x`
-· `chainRoot` / `snapshotRoot` / `dbRoot` / `currentRoot` มี `0x` · `polygonscanUrl` = `BLOCKCHAIN_EXPLORER_TX_URL` + `txHash` (ไม่มี tx = `null`)
+· `chainRoot` / `snapshotRoot` / `dbRoot` / `storedHashRoot` / `contentRoot` มี `0x` · `polygonscanUrl` = `BLOCKCHAIN_EXPLORER_TX_URL` + `txHash` (ไม่มี tx = `null`)
 
 ---
 
@@ -110,7 +110,8 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
 
 - `position` = ลำดับ leaf ใน Merkle tree เริ่มที่ **0** (ลำดับ seal: `createdAt`, `id`) · `UNMAPPED_OR_INSERTED` ใช้ลำดับในชุดที่ผูกอยู่ตอนนี้
 - field ที่เทียบ: `source` `sourceIp` `eventType` `severity` `message` `classification` `cdeScope` `createdAt` + `rawHash`
-- `currentRoot` = root ที่สร้างจาก log ปัจจุบันที่ผูกกับ batch (สิ่งที่ verify ทุกนาทีคำนวณ)
+- `storedHashRoot` = root จาก leaf = `raw_hash` ที่เก็บไว้ (เดิมชื่อ `currentRoot`) — **แดงเมื่อคอลัมน์ `raw_hash` ถูกแก้**
+- `contentRoot` = root จาก leaf = hash **คำนวณใหม่จากเนื้อหา log ปัจจุบัน** (version-aware) — **แดงเมื่อเนื้อ log ถูกแก้** (เช่น 2a แก้ message: `storedHashRoot` ยัง = `chainRoot` แต่ `contentRoot` ≠ แล้ว · `GET /logs/:id/proof` ก็ `verify: false`) · batch ที่ไม่ถูกแตะ: `storedHashRoot` = `contentRoot` = `dbRoot`
 - `summary.verdict`: `INTACT` (ไม่มีอะไรเปลี่ยน root ตรง) · `TAMPERED` · `UNVERIFIABLE` (ไม่มี root อ้างอิงที่เชื่อได้ — RPC ล่มหลังส่ง tx แล้ว หรือ batch ยังไม่ขึ้น chain ดู 2i)
 
 ### 2a. ปกติ
@@ -126,7 +127,7 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
   "chainError": null,
   "snapshotRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
   "dbRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
-  "currentRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
+  "storedHashRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
   "snapshotTrusted": true,
   "trustBasis": "chain",
   "untrustedReasons": [],
@@ -161,7 +162,7 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
   "chainError": null,
   "snapshotRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
   "dbRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
-  "currentRoot": "0x4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091",
+  "storedHashRoot": "0x4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091",
   "snapshotTrusted": true,
   "trustBasis": "chain",
   "untrustedReasons": [],
@@ -279,7 +280,7 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
   "chainError": null,
   "snapshotRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
   "dbRoot": "0xdfbbcdda5f74f5001a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
-  "currentRoot": "0x4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091",
+  "storedHashRoot": "0x4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091",
   "snapshotTrusted": false,
   "trustBasis": "chain",
   "untrustedReasons": ["SNAPSHOT_CONTENT_MISMATCH"],
@@ -301,7 +302,7 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
 
 `untrustedReasons`: `SNAPSHOT_ROOT_MISMATCH` (root ของ snapshot ≠ root อ้างอิง) · `SNAPSHOT_CONTENT_MISMATCH` (เนื้อใน snapshot hash ไม่ได้ raw_hash ของมัน)
 · `NOT_ANCHORED` (batch ไม่เคยขึ้น chain — ดู 2i · มาคู่กับ verdict `UNVERIFIABLE` เสมอ ไม่ได้แปลว่า snapshot ถูกแก้)
-ระดับ batch ยังบอกได้จาก `currentRoot` เทียบ `chainRoot` · ตัวเลขรายตำแหน่งเป็น `null` (ไม่รู้)
+ระดับ batch ยังบอกได้จาก `storedHashRoot` เทียบ `chainRoot` · ตัวเลขรายตำแหน่งเป็น `null` (ไม่รู้)
 
 ### 2g. legacy (batch ที่ seal ก่อนมี snapshot)
 
@@ -316,7 +317,7 @@ diff เทียบ snapshot กับ log ปัจจุบันทีละ
   "chainError": null,
   "snapshotRoot": null,
   "dbRoot": "0x71f0962f0482de081a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
-  "currentRoot": "0x71f0962f0482de081a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
+  "storedHashRoot": "0x71f0962f0482de081a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081",
   "snapshotTrusted": null,
   "trustBasis": null,
   "untrustedReasons": [],
@@ -346,14 +347,14 @@ batch ที่ **ไม่มี `txHash`** + status `FAILED` / `SEALED` / `PEN
 → `verdict: "UNVERIFIABLE"` + `untrustedReasons` มี `"NOT_ANCHORED"` (ต่อท้ายเหตุผลอื่น ถ้ามี)
 
 - `FAILED` = anchor ไม่สำเร็จ (เช่น wallet เงินหมด) → **ไม่เขียน mapping โดยตั้งใจ** log ชุดนั้นถูก seal ใหม่ใน batch ถัดไป
-  → `mappedLogs: 0` · `currentRoot: null` (เดิมได้ `TAMPERED` ปลอมเพราะ `currentRoot` ≠ `dbRoot` เสมอ)
+  → `mappedLogs: 0` · `storedHashRoot: null` (เดิมได้ `TAMPERED` ปลอมเพราะ `storedHashRoot` ≠ `dbRoot` เสมอ)
 - `SEALED` / `PENDING` ที่ยังไม่มี tx: `changes` ยังคำนวณเทียบ snapshot กับ log ปัจจุบันให้ดู แต่ทั้งสองฝั่งอยู่ใน DB → verdict ยัง `UNVERIFIABLE`
 - ไม่มี `txHash` ใน DB แต่ root อยู่บน chain แล้ว = anchor แล้ว → ตัดสินตามปกติ (ไม่ใส่ `NOT_ANCHORED`)
 - batch `CONFIRMED` ที่ root ไม่ตรง → ยัง `TAMPERED` ตามเดิม
 
 **ข้อจำกัด (ยังไม่แก้ — ตั้งใจ):** anchor สำเร็จแต่ commit ฝั่ง DB ล้ม (เช่น เขียน snapshot ไม่ได้) → batch เป็น `FAILED`
 มี root จริงบน chain แต่ไม่มี mapping (log ชุดนั้นถูก seal ใหม่ใน batch ถัดไป) → ไม่เข้าเงื่อนไข `NOT_ANCHORED`
-เพราะ chain มี root แล้ว → `currentRoot: null` ≠ `chainRoot` → ได้ **`TAMPERED`** ทั้งที่ log ไม่ได้ถูกแก้
+เพราะ chain มี root แล้ว → `storedHashRoot: null` ≠ `chainRoot` → ได้ **`TAMPERED`** ทั้งที่ log ไม่ได้ถูกแก้
 เกิดได้เฉพาะ DB ล้มหลังส่ง tx (ไม่ใช่กรณีเงินหมด) · cloud ไม่มี batch แบบนี้ (FAILED 1,161 ใบไม่มี tx ทุกใบ) ·
 ดูว่าใช่กรณีนี้ไหม: status `FAILED` + `mappedLogs: 0` + `chainRoot` ไม่เป็นศูนย์ · เทสต์: `test/tamper-diff.integration.spec.ts`
 ("a snapshot that cannot be written leaves no mapping")
@@ -369,7 +370,7 @@ batch ที่ **ไม่มี `txHash`** + status `FAILED` / `SEALED` / `PEN
   "chainError": null,
   "snapshotRoot": null,
   "dbRoot": "0x3c5e9a1b7d2f4e6a8c0b1d3f5e7a9c1b3d5f7e9a1c3b5d7f9e1a3c5b7d9f1e3a",
-  "currentRoot": null,
+  "storedHashRoot": null,
   "snapshotTrusted": null,
   "trustBasis": null,
   "untrustedReasons": ["NOT_ANCHORED"],

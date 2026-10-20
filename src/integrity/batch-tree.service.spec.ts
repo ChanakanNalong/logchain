@@ -16,9 +16,22 @@ const raw = (i: number) => createHash('sha256').update(`log${i}`).digest('hex');
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
 
 function build(n: number, batchPatch: Partial<Batch> = {}, chain?: jest.Mock) {
+  // raw_hash = raw(i) (ตามเดิม) + ใส่ field เนื้อหาให้ครบเพื่อให้ recomputeContentLeaf (contentRoot) ไม่ crash
   const logs = Array.from(
     { length: n },
-    (_, i) => ({ id: `log-${i}`, rawHash: raw(i) }) as Log,
+    (_, i) =>
+      ({
+        id: `log-${i}`,
+        source: 'unit',
+        sourceIp: null,
+        eventType: 'E',
+        severity: 'INFO',
+        message: `m${i}`,
+        classification: 'INTERNAL',
+        cdeScope: false,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)),
+        rawHash: raw(i),
+      }) as Log,
   );
   const root = merkle.buildTree(logs.map((l) => l.rawHash)).root;
   const batch = {
@@ -38,6 +51,10 @@ function build(n: number, batchPatch: Partial<Batch> = {}, chain?: jest.Mock) {
     {
       findOneBy: ({ id }: { id: string }) =>
         Promise.resolve(id === BATCH ? batch : null),
+      // batch-tree โหลด snapshot ผ่าน manager — ชุดทดสอบนี้ไม่มี snapshot (snapshotRoot = null)
+      manager: {
+        getRepository: () => ({ find: () => Promise.resolve([]) }),
+      },
     } as unknown as Repository<Batch>,
     merkle,
     {
@@ -73,11 +90,11 @@ describe('BatchTreeService', () => {
       const { service, root, logs } = build(n);
       const t = await service.tree(BATCH);
       expect(rootFromLayers(t.layers)).toBe(root);
-      expect(t.computedRoot).toBe(root);
-      expect(t.rootMatchesDb).toBe(true);
+      expect(t.storedHashRoot).toBe(root);
+      expect(t.storedHashRootMatchesDb).toBe(true);
       expect(t.layers[0]).toEqual(logs.map((l) => '0x' + sha(l.rawHash)));
       expect(t.leaves.map((l) => l.index)).toEqual(logs.map((_, i) => i));
-      expect(t.leaves[0]).toEqual({
+      expect(t.leaves[0]).toMatchObject({
         index: 0,
         logId: 'log-0',
         rawHash: raw(0),
@@ -195,13 +212,13 @@ describe('BatchTreeService', () => {
     const t = await build(3, {}, getRoot).service.tree(BATCH);
     expect(t.chainRoot).toBeNull();
     expect(t.chainError).toContain('ECONNREFUSED');
-    expect(t.rootMatchesDb).toBe(true);
+    expect(t.storedHashRootMatchesDb).toBe(true);
   });
 
   it('a tampered raw_hash shows as rootMatchesDb false', async () => {
     const { service } = build(3, { merkleRoot: 'a'.repeat(64) });
     const t = await service.tree(BATCH);
-    expect(t.rootMatchesDb).toBe(false);
+    expect(t.storedHashRootMatchesDb).toBe(false);
     expect(t.dbRoot).toBe('0x' + 'a'.repeat(64));
   });
 
