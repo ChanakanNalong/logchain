@@ -7,7 +7,11 @@ import { BlockchainService } from '../blockchain/blockchain.service';
 import { Batch } from '../logs/entities/batch.entity';
 import { Log } from '../logs/entities/log.entity';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
-import { computeRawHash, rawHashCanonical } from '../logs/services/log-hash';
+import {
+  computeRawHash,
+  rawHashCanonical,
+  recomputeContentLeaf,
+} from '../logs/services/log-hash';
 
 /**
  * diff ของ batch เทียบกับ snapshot ตอน seal — ทุกชนิดของการเปลี่ยน + snapshot ไม่น่าเชื่อ + legacy + RPC ล่ม
@@ -308,25 +312,29 @@ describe('BatchDiffService', () => {
   });
 
   describe('untrusted snapshot', () => {
-    it('snapshot content edited → SNAPSHOT_CONTENT_MISMATCH, batch level only', async () => {
+    it('snapshot content edited (log เนื้อก็แก้) → baseline raw_hash, CONTENT_MODIFIED 1', async () => {
       const w = world();
       w.snapshots[5].snapshot = {
         ...w.snapshots[5].snapshot,
         message: 'forged',
       };
-      tamper(w, 5, { message: 'forged' });
+      tamper(w, 5, { message: 'forged' }); // raw_hash คง → storedHashRoot ยังตรงเชน
       const d = await service(w).diff(BATCH);
       expect(d.snapshotTrusted).toBe(false);
       expect(d.untrustedReasons).toEqual(['SNAPSHOT_CONTENT_MISMATCH']);
-      expect(d.changes).toEqual([]);
+      expect(d.baseline).toBe('raw_hash');
       expect(d.summary).toMatchObject({
         verdict: 'TAMPERED',
-        unchanged: null,
-        contentModified: null,
+        unchanged: 9,
+        contentModified: 1,
+        deleted: 0,
+        unmappedOrInserted: 0,
       });
+      expect(d.changes.map((c) => c.position)).toEqual([5]);
+      expect(d.changes[0].type).toBe('CONTENT_MODIFIED');
     });
 
-    it('snapshot raw_hash rewritten to match forged content → SNAPSHOT_ROOT_MISMATCH', async () => {
+    it('snapshot ถูกแก้แต่ log ยัง intact → baseline raw_hash, CONTENT_MODIFIED 0', async () => {
       const w = world();
       const forged = { ...w.snapshots[5].snapshot, message: 'forged' };
       w.snapshots[5].snapshot = forged;
@@ -337,7 +345,54 @@ describe('BatchDiffService', () => {
       const d = await service(w).diff(BATCH);
       expect(d.snapshotTrusted).toBe(false);
       expect(d.untrustedReasons).toEqual(['SNAPSHOT_ROOT_MISMATCH']);
+      expect(d.baseline).toBe('raw_hash');
+      expect(d.summary).toMatchObject({
+        verdict: 'TAMPERED',
+        contentModified: 0,
+        unchanged: 10,
+      });
       expect(d.snapshotRoot).not.toBe(d.chainRoot);
+    });
+
+    it('cover (เนื้อ+snapshot+dbRoot สอดคล้อง) → baseline raw_hash, CONTENT_MODIFIED 1', async () => {
+      const w = world();
+      tamper(w, 5, { message: 'forged' }); // เนื้อแก้ · raw_hash คง → storedHashRoot ตรงเชน
+      const forged = { ...w.snapshots[5].snapshot, message: 'forged' };
+      w.snapshots[5].snapshot = forged;
+      w.snapshots[5].rawHash = computeRawHash({
+        ...forged,
+        createdAt: new Date(forged.createdAt),
+      });
+      // dbRoot = contentRoot (ผู้โจมตีทำให้สอดคล้อง)
+      w.batch.merkleRoot = merkle
+        .buildTree(w.current.map((l) => recomputeContentLeaf(l)))
+        .root.replace(/^0x/, '');
+      const d = await service(w).diff(BATCH);
+      expect(d.snapshotTrusted).toBe(false);
+      expect(d.baseline).toBe('raw_hash');
+      expect(d.summary).toMatchObject({
+        verdict: 'TAMPERED',
+        contentModified: 1,
+        unchanged: 9,
+        deleted: 0,
+        unmappedOrInserted: 0,
+      });
+      expect(d.changes.map((c) => c.position)).toEqual([5]);
+      expect(d.changes[0].type).toBe('CONTENT_MODIFIED');
+    });
+
+    it('ทั้ง snapshot และ raw_hash ไม่ตรงเชน → baseline none (batch level)', async () => {
+      const w = world();
+      w.snapshots[5].rawHash = 'f'.repeat(64); // snapshotRoot != chain
+      tamper(w, 5, { rawHash: 'f'.repeat(64) }); // storedHashRoot != chain
+      const d = await service(w).diff(BATCH);
+      expect(d.snapshotTrusted).toBe(false);
+      expect(d.baseline).toBe('none');
+      expect(d.changes).toEqual([]);
+      expect(d.summary).toMatchObject({
+        verdict: 'TAMPERED',
+        contentModified: null,
+      });
     });
 
     it('snapshot id swapped → content mismatch', async () => {

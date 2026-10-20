@@ -312,7 +312,7 @@ export function buildDiff(batchId: string): BatchDiff | null {
   if (!a.snapshot) {
     const intact = a.storedHashRoot === reference && a.contentRoot === reference && a.dbRoot === reference;
     return {
-      ...base, snapshotRoot: null, snapshotTrusted: null, trustBasis: null, untrustedReasons: [], legacy: true,
+      ...base, snapshotRoot: null, snapshotTrusted: null, trustBasis: null, untrustedReasons: [], legacy: true, baseline: "none",
       summary: { verdict: intact ? (unverifiable ? "UNVERIFIABLE" : "INTACT") : "TAMPERED", snapshotLogs: 0, mappedLogs: a.mappedLogs, ...unknown },
       changes: [],
     };
@@ -324,7 +324,7 @@ export function buildDiff(batchId: string): BatchDiff | null {
   const trustBasis = anchoredOnChain ? "chain" : "db";
   if (reasons.length) {
     return {
-      ...base, snapshotRoot: a.snapshot.root, snapshotTrusted: false, trustBasis, untrustedReasons: reasons, legacy: false,
+      ...base, snapshotRoot: a.snapshot.root, snapshotTrusted: false, trustBasis, untrustedReasons: reasons, legacy: false, baseline: "none",
       summary: { verdict: "TAMPERED", snapshotLogs: a.snapshot.logs, mappedLogs: a.mappedLogs, ...unknown },
       changes: [],
     };
@@ -334,7 +334,7 @@ export function buildDiff(batchId: string): BatchDiff | null {
   const touched = new Set(a.changes.filter((c) => c.type !== "UNMAPPED_OR_INSERTED").map((c) => c.position));
   const intact = a.changes.length === 0 && a.storedHashRoot === reference && a.contentRoot === reference && a.dbRoot === reference;
   return {
-    ...base, snapshotRoot: a.snapshot.root, snapshotTrusted: true, trustBasis, untrustedReasons: [], legacy: false,
+    ...base, snapshotRoot: a.snapshot.root, snapshotTrusted: true, trustBasis, untrustedReasons: [], legacy: false, baseline: "snapshot",
     summary: {
       verdict: !intact ? "TAMPERED" : unverifiable ? "UNVERIFIABLE" : "INTACT",
       snapshotLogs: a.snapshot.logs,
