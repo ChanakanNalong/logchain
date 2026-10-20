@@ -247,8 +247,10 @@ export interface BatchDiff {
   snapshotRoot: string | null;
   /** root stored in the DB at seal */
   dbRoot: string;
-  /** root rebuilt from the logs mapped to the batch now · null when none are left */
-  currentRoot: string | null;
+  /** root from leaf = stored raw_hash (catches raw_hash-column edits) · null when none are left · was currentRoot */
+  storedHashRoot: string | null;
+  /** root from leaf = hash recomputed from current content (catches content edits) · null when none are left */
+  contentRoot: string | null;
   /** null for legacy batches */
   snapshotTrusted: boolean | null;
   /** what the snapshot was checked against · null for legacy */
@@ -310,15 +312,20 @@ export interface BatchTree {
   polygonscanUrl: string | null;
   /** root stored at seal (0x…) */
   dbRoot: string;
-  /** root rebuilt from `layers` */
-  computedRoot: string;
-  rootMatchesDb: boolean;
+  /** root rebuilt from the seal-time snapshot · null for legacy batches */
+  snapshotRoot: string | null;
+  /** root from leaf = stored raw_hash (rebuilt from `layers`) · was computedRoot */
+  storedHashRoot: string | null;
+  storedHashRootMatchesDb: boolean;
+  /** root from leaf = hash recomputed from current content (catches content edits) */
+  contentRoot: string | null;
+  contentRootMatchesDb: boolean;
   /** null = chain unreadable · 0x000… = not anchored */
   chainRoot: string | null;
   chainError: string | null;
   checkedAt: string;
-  /** createdAt ASC, id ASC */
-  leaves: { index: number; logId: string; rawHash: string; leafHash: string }[];
+  /** createdAt ASC, id ASC · contentHash = hash recomputed from current content (≠ rawHash ⇒ content edited) */
+  leaves: { index: number; logId: string; rawHash: string; leafHash: string; contentHash: string }[];
   /** layers[0] = leaf hashes … layers[last] = [root]; 2k and 2k+1 make node k above */
   layers: string[][];
   /** odd last node of a layer, moved up unchanged to floor(index/2) */
@@ -329,10 +336,15 @@ export interface BatchTree {
 /** GET /logs/:id/proof */
 export interface LogProofResult {
   logId: string;
-  /** hex 64, no 0x */
+  /** stored raw_hash (hex 64, no 0x) */
   rawHash: string;
+  /** hash recomputed from current content (hex 64) · ≠ rawHash ⇒ edited */
+  contentHash: string;
+  /** INTACT · CONTENT_MODIFIED (log content edited) · HASH_MODIFIED (raw_hash column edited) · UNKNOWN (legacy, no snapshot) */
+  integrity: "INTACT" | "CONTENT_MODIFIED" | "HASH_MODIFIED" | "UNKNOWN";
   /** = leaves[].index of the tree */
   leafIndex: number;
+  /** leafHash = sha256(contentHash) */
   leafHash: string;
   batch: {
     id: string;

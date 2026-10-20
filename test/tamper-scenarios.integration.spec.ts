@@ -127,6 +127,9 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     return {
       status: 200,
       verify: r.body.verify,
+      integrity: r.body.integrity,
+      rawHash: r.body.rawHash,
+      contentHash: r.body.contentHash,
       batchStatus: r.body.batch?.status,
     };
   };
@@ -139,7 +142,8 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
       dbRoot: b.dbRoot,
       chainRoot: b.chainRoot,
       snapshotRoot: b.snapshotRoot,
-      currentRoot: b.currentRoot,
+      storedHashRoot: b.storedHashRoot,
+      contentRoot: b.contentRoot,
       snapshotTrusted: b.snapshotTrusted,
       trustBasis: b.trustBasis,
       untrustedReasons: b.untrustedReasons,
@@ -163,9 +167,12 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     return {
       httpStatus: r.status,
       dbRoot: b.dbRoot,
-      computedRoot: b.computedRoot,
+      snapshotRoot: b.snapshotRoot,
+      storedHashRoot: b.storedHashRoot,
+      storedHashRootMatchesDb: b.storedHashRootMatchesDb,
+      contentRoot: b.contentRoot,
+      contentRootMatchesDb: b.contentRootMatchesDb,
       chainRoot: b.chainRoot,
-      rootMatchesDb: b.rootMatchesDb,
     };
   };
   const detailChainCheck = async (logId: string) => {
@@ -218,6 +225,7 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
         diffVerdict: afterDiff.verdict,
       },
     });
+    return observed;
   };
 
   beforeAll(async () => {
@@ -363,7 +371,7 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     const r5 = rows[4]; // ตัวที่ 5
 
     // A — แก้ message อย่างเดียว ไม่แตะ raw_hash
-    await runScenario(
+    const obsA = await runScenario(
       'A',
       'แก้ message ของ log ตัวที่ 3 (ไม่แตะ raw_hash)',
       r3.id,
@@ -382,6 +390,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
           ]);
         }),
     );
+    // แก้ message: contentRoot ต้องแดง (≠ chain) · proof ต้อง false · storedHashRoot ยังเขียว (raw_hash เดิม)
+    expect(obsA.diff.contentRoot).not.toBe(obsA.diff.chainRoot);
+    expect(obsA.diff.storedHashRoot).toBe(obsA.diff.chainRoot);
+    expect(obsA.proofSubject?.verify).toBe(false);
+    expect(obsA.proofSubject?.integrity).toBe('CONTENT_MODIFIED');
 
     // B — แก้ message + คำนวณ raw_hash ใหม่ให้ตรงเนื้อหาใหม่
     const forgedMsg = 'FORGED B — attacker recomputed raw_hash';
@@ -417,7 +430,7 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     );
 
     // C — แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)
-    await runScenario(
+    const obsC = await runScenario(
       'C',
       'แก้ sourceIp ของ log ตัวที่ 5 (ไม่แตะ raw_hash)',
       r5.id,
@@ -436,6 +449,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
           ]);
         }),
     );
+    // แก้ sourceIp (เนื้อหา) → เหมือน A: contentRoot แดง · proof false · storedHashRoot ยังเขียว
+    expect(obsC.diff.contentRoot).not.toBe(obsC.diff.chainRoot);
+    expect(obsC.diff.storedHashRoot).toBe(obsC.diff.chainRoot);
+    expect(obsC.proofSubject?.verify).toBe(false);
+    expect(obsC.proofSubject?.integrity).toBe('CONTENT_MODIFIED');
 
     // D — ลบ log ตัวที่ 4 (logs + log_batch_mapping)
     await runScenario(
@@ -528,7 +546,32 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
         }),
     );
 
-    // final: ยืนยันสะอาด
+    // F — แก้แค่คอลัมน์ raw_hash ของ log ตัวที่ 5 (เนื้อหาเดิม) = demo-tamper
+    //      storedHashRoot ต้องแดง · contentRoot ยังเขียว (เนื้อหาไม่เปลี่ยน) · proof.integrity = HASH_MODIFIED
+    const obsF = await runScenario(
+      'F',
+      'แก้คอลัมน์ raw_hash ของ log ตัวที่ 5 เป็น all-f (เนื้อหาเดิม)',
+      r5.id,
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET raw_hash = $2 WHERE id = $1', [
+            r5.id,
+            'f'.repeat(64),
+          ]);
+        }),
+      () =>
+        noUpdate(async () => {
+          await ds.query('UPDATE logs SET raw_hash = $2 WHERE id = $1', [
+            r5.id,
+            r5.raw_hash,
+          ]);
+        }),
+    );
+    expect(obsF.diff.storedHashRoot).not.toBe(obsF.diff.chainRoot);
+    expect(obsF.diff.contentRoot).toBe(obsF.diff.chainRoot);
+    expect(obsF.proofSubject?.integrity).toBe('HASH_MODIFIED');
+
+    // final: ยืนยันสะอาด (ไม่แก้อะไร → ทุก root เขียว · proof ผ่าน)
     await verifyNow();
     const finalStatus = await batchStatus();
     const finalDiff = await diffNow();
@@ -550,5 +593,11 @@ describeHh('Tamper scenarios (hh, real chain)', () => {
     expect(finalStatus).toBe('CONFIRMED');
     expect(finalDiff.verdict).toBe('INTACT');
     expect(trg.every((t) => t.tgenabled === 'O')).toBe(true);
+    // ไม่แก้อะไร (baseline/หลัง restore ครบ): ทุก root เขียว · proof ผ่าน · integrity INTACT
+    expect(finalDiff.storedHashRoot).toBe(finalDiff.chainRoot);
+    expect(finalDiff.contentRoot).toBe(finalDiff.chainRoot);
+    const finalProof = await proof(rows[2].id);
+    expect(finalProof.verify).toBe(true);
+    expect(finalProof.integrity).toBe('INTACT');
   }, 300_000);
 });

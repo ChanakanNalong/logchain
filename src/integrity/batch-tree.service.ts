@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Batch } from '../logs/entities/batch.entity';
+import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
+import { recomputeContentLeaf } from '../logs/services/log-hash';
 import { MerkleService } from './service/merkle.service';
 import { IntegrityService } from './integrity.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
@@ -50,8 +52,14 @@ export interface BatchTree {
   blockNumber: number | null;
   polygonscanUrl: string | null;
   dbRoot: string;
-  computedRoot: string | null;
-  rootMatchesDb: boolean;
+  /** root จาก snapshot ที่เก็บตอน seal · null = batch เก่าก่อนมี snapshot */
+  snapshotRoot: string | null;
+  /** root จาก leaf = raw_hash ที่เก็บไว้ (เดิมชื่อ computedRoot) — จับการแก้คอลัมน์ raw_hash */
+  storedHashRoot: string | null;
+  storedHashRootMatchesDb: boolean;
+  /** root จาก leaf = hash คำนวณใหม่จากเนื้อหาปัจจุบัน — จับการแก้เนื้อ log */
+  contentRoot: string | null;
+  contentRootMatchesDb: boolean;
   chainRoot: string | null;
   chainError: string | null;
   checkedAt: Date;
@@ -60,6 +68,8 @@ export interface BatchTree {
     logId: string;
     rawHash: string;
     leafHash: string;
+    /** hash คำนวณใหม่จากเนื้อหาปัจจุบัน (ต่างจาก rawHash = เนื้อถูกแก้) */
+    contentHash: string;
   }>;
   layers: string[][];
   promoted: Array<{ layer: number; index: number }>;
@@ -88,16 +98,30 @@ export class BatchTreeService {
     const batch = await this.batchesRepo.findOneBy({ id: batchId });
     if (!batch) throw new NotFoundException('Batch not found');
 
-    const [logs, chain] = await Promise.all([
+    const [logs, chain, snapshots] = await Promise.all([
       this.integrity.getLogsForBatch(batchId),
       readChainRoot(this.blockchain, batchId),
+      this.batchesRepo.manager
+        .getRepository(BatchLogSnapshot)
+        .find({ where: { batchId }, order: { position: 'ASC' } }),
     ]);
 
     const dbRoot = ('0x' + batch.merkleRoot.replace(/^0x/, '')).toLowerCase();
+    const snapshotRoot = snapshots.length
+      ? this.merkle
+          .buildTree(snapshots.map((s) => s.rawHash))
+          .root.toLowerCase()
+      : null;
+    // layers ที่โชว์ = tree จาก raw_hash ที่เก็บไว้ (storedHashRoot) เหมือนเดิม
     const built = logs.length
       ? this.merkle.getLayers(logs.map((l) => l.rawHash))
       : null;
-    const computedRoot = built ? built.root.toLowerCase() : null;
+    const storedHashRoot = built ? built.root.toLowerCase() : null;
+    const contentRoot = logs.length
+      ? this.merkle
+          .buildTree(logs.map((l) => recomputeContentLeaf(l)))
+          .root.toLowerCase()
+      : null;
 
     return {
       batchId: batch.id,
@@ -108,8 +132,11 @@ export class BatchTreeService {
         batch.blockNumber === null ? null : Number(batch.blockNumber),
       polygonscanUrl: explorerTxUrl(batch.txHash),
       dbRoot,
-      computedRoot,
-      rootMatchesDb: computedRoot === dbRoot,
+      snapshotRoot,
+      storedHashRoot,
+      storedHashRootMatchesDb: storedHashRoot === dbRoot,
+      contentRoot,
+      contentRootMatchesDb: contentRoot === dbRoot,
       chainRoot: 'root' in chain ? chain.root : null,
       chainError: 'error' in chain ? chain.error : null,
       checkedAt: new Date(),
@@ -118,6 +145,7 @@ export class BatchTreeService {
         logId: l.id,
         rawHash: l.rawHash,
         leafHash: this.merkle.leafHash(l.rawHash),
+        contentHash: recomputeContentLeaf(l),
       })),
       layers: built?.layers ?? [],
       promoted: built?.promoted ?? [],

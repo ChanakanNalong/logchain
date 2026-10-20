@@ -62,7 +62,8 @@ export function buildTree(batchId: string): BatchTree | null {
   const a = AUDITS.find((x) => x.item.id === batchId);
   if (!a) return null;
   const built = buildLayers(a.leaves.map((l) => l.rawHash));
-  const computedRoot = built.root ?? "";
+  const storedHashRoot = built.root ?? "";
+  // mock: เนื้อหา intact ⇒ contentRoot = storedHashRoot
   return {
     batchId: a.item.id,
     status: a.item.status,
@@ -71,12 +72,15 @@ export function buildTree(batchId: string): BatchTree | null {
     blockNumber: a.item.blockNumber,
     polygonscanUrl: a.item.polygonscanUrl,
     dbRoot: a.dbRoot,
-    computedRoot,
-    rootMatchesDb: computedRoot.toLowerCase() === a.dbRoot.toLowerCase(),
+    snapshotRoot: a.snapshot ? a.snapshot.root : null,
+    storedHashRoot,
+    storedHashRootMatchesDb: storedHashRoot.toLowerCase() === a.dbRoot.toLowerCase(),
+    contentRoot: storedHashRoot,
+    contentRootMatchesDb: storedHashRoot.toLowerCase() === a.dbRoot.toLowerCase(),
     chainRoot: a.chainRoot,
     chainError: a.chainError,
     checkedAt: new Date().toISOString(),
-    leaves: a.leaves.map((l, index) => ({ index, logId: l.logId, rawHash: l.rawHash, leafHash: leafHash(l.rawHash) })),
+    leaves: a.leaves.map((l, index) => ({ index, logId: l.logId, rawHash: l.rawHash, leafHash: leafHash(l.rawHash), contentHash: l.rawHash })),
     layers: built.layers,
     promoted: built.promoted,
     cost: cost(a.gas, a.item.logCount, a.rates),
@@ -103,6 +107,9 @@ export function buildProof(logId: string): LogProofResult | null {
     return {
       logId,
       rawHash: a.leaves[leafIndex].rawHash,
+      // mock: เนื้อหา intact ⇒ contentHash = rawHash, integrity = INTACT
+      contentHash: a.leaves[leafIndex].rawHash,
+      integrity: "INTACT",
       leafIndex,
       leafHash: leafHash(a.leaves[leafIndex].rawHash),
       batch: {

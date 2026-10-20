@@ -38,24 +38,27 @@
 
 มี 4 กลไกซ้อนกัน จับคนละมุม:
 
-1. **Merkle proof / root เทียบเชน** (`computedRoot` vs `chainRoot`, `proof.verify`) — leaf = `sha256(raw_hash)` · root ที่ anchor ไว้บนเชน **แก้ไม่ได้**
+1. **Merkle proof / root เทียบเชน** (`storedHashRoot` + `contentRoot` vs `chainRoot`, `proof.verify`) · root ที่ anchor ไว้บนเชน **แก้ไม่ได้**
+   - `storedHashRoot`: leaf = `raw_hash` ที่เก็บไว้ → แดงเมื่อคอลัมน์ `raw_hash` ถูกแก้
+   - `contentRoot` (เพิ่มใน `feature/content-based-current-root`): leaf = hash **คำนวณใหม่จากเนื้อหาปัจจุบัน** → แดงเมื่อเนื้อ log ถูกแก้ · `proof` ก็ใช้ leaf นี้ → `verify:false` เมื่อเนื้อถูกแก้
 2. **raw_hash เทียบเนื้อแถว** (`isRawHashIntact`: recompute hash จากเนื้อ log ปัจจุบันเทียบกับ `raw_hash` ที่เก็บไว้)
 3. **snapshot ตอน seal** (`batch_log_snapshot` เก็บ canonical + raw_hash ของทุกตำแหน่ง · ตารางเขียนทับ/ลบไม่ได้) → `/batches/:id/diff` ชี้ตำแหน่ง/field/before→after
 4. **สถานะ batch + alert** จาก `verify-now` (`reanchorUnverified` + `verifyAllBatches`)
 
-| # | root/proof จับได้? | raw_hash จับได้? | snapshot diff จับได้? | alert? |
+> **อัปเดต (`feature/content-based-current-root`)**: ตารางเดิมด้านล่างสะท้อนพฤติกรรม **ก่อน** เพิ่ม `contentRoot` — ตอนนั้น root/proof ใช้ `raw_hash` อย่างเดียว จึงไม่จับ A/C · **หลังเพิ่ม `contentRoot` แล้ว A/C ถูกจับด้วย root/proof ด้วย** (`contentRoot` ≠ `chainRoot` · `proof.verify = false` · `integrity = CONTENT_MODIFIED`) โดย `storedHashRoot` ยัง `= chainRoot` (raw_hash เดิม) · ส่วน B ยังแดงทั้ง `storedHashRoot` และ `contentRoot`
+
+| # | root/proof จับได้? (หลังเพิ่ม contentRoot) | raw_hash จับได้? | snapshot diff จับได้? | alert? |
 |---|---|---|---|---|
-| A (message, raw_hash เดิม) | **ไม่** (root ไม่เปลี่ยน · proof ยัง `true`) | **ใช่** | ใช่ (`CONTENT_MODIFIED/message`) | ใช่ |
-| B (message + raw_hash ใหม่) | **ใช่** (`computedRoot`≠`chainRoot` · proof `false`) | ไม่ (เนื้อกับ hash ตรงกันเอง) | ใช่ (`message`,`rawHash`) | ใช่ |
-| C (sourceIp, raw_hash เดิม) | **ไม่** (root ไม่เปลี่ยน · proof ยัง `true`) | **ใช่** (sourceIp อยู่ใน canonical hash v2) | ใช่ (`CONTENT_MODIFIED/sourceIp`) | ใช่ |
+| A (message, raw_hash เดิม) | **ใช่** (`contentRoot`≠`chainRoot` · proof `false` · `storedHashRoot` ยัง `true`) | **ใช่** | ใช่ (`CONTENT_MODIFIED/message`) | ใช่ |
+| B (message + raw_hash ใหม่) | **ใช่** (ทั้ง `storedHashRoot` และ `contentRoot` ≠ `chainRoot` · proof `false`) | ไม่ (เนื้อกับ hash ตรงกันเอง) | ใช่ (`message`,`rawHash`) | ใช่ |
+| C (sourceIp, raw_hash เดิม) | **ใช่** (`contentRoot`≠`chainRoot` · proof `false` · `storedHashRoot` ยัง `true`) | **ใช่** (sourceIp อยู่ใน canonical hash v2) | ใช่ (`CONTENT_MODIFIED/sourceIp`) | ใช่ |
 | D (ลบแถว) | **ใช่** (leaf หาย · root เปลี่ยน · proof `404`) | – | ใช่ (`DELETED/ROW_MISSING`) | ใช่ |
 | E (แทรก log ปลอม) | **ใช่** (leaf เกิน · root เปลี่ยน) | – | ใช่ (`UNMAPPED_OR_INSERTED`) | ใช่ |
 
-### ข้อสังเกตสำคัญ (จุดที่กลไกเดียวจับไม่ได้)
+### ข้อสังเกตสำคัญ
 
-- **A และ C แก้แล้ว Merkle root / on-chain anchor ไม่เปลี่ยนเลย** — `computedRoot = chainRoot = dbRoot` และ `proof.verify` ยังเป็น `true` ทั้ง log ที่ถูกแก้และ log อื่น เพราะ leaf มาจาก `raw_hash` ซึ่งผู้แก้ไม่ได้แตะ → **ถ้าตรวจแค่ Merkle proof เทียบเชนอย่างเดียว จะไม่พบ A/C**
-  - สิ่งที่ anchor บนเชนพิสูจน์ได้คือ "ชุดของ `raw_hash` ไม่ถูกแก้" **ไม่ใช่** "เนื้อ log แต่ละแถวยังตรงกับ `raw_hash` ของมัน" — อย่างหลังพิสูจน์ด้วยการที่ระบบเก็บเนื้อ + `raw_hash` ไว้แล้ว recompute (กลไก 2) และ snapshot (กลไก 3) ซึ่งอยู่ฝั่ง DB
-  - สรุป: A/C ถูกจับได้จริง (TAMPERED + alert + diff) แต่ **ไม่ได้ถูกจับด้วย blockchain** — ถูกจับด้วย raw_hash check + snapshot ฝั่ง server
+- **ก่อนเพิ่ม `contentRoot`:** A และ C แก้แล้ว Merkle root / proof ไม่เปลี่ยน (`computedRoot = chainRoot` · `proof.verify = true`) เพราะ leaf มาจาก `raw_hash` ซึ่งผู้แก้ไม่ได้แตะ — จับได้แค่ด้วย raw_hash check (กลไก 2) + snapshot (กลไก 3) ฝั่ง DB ไม่ใช่ blockchain
+- **หลังเพิ่ม `contentRoot`:** leaf ของ `contentRoot`/proof คำนวณใหม่จากเนื้อหาปัจจุบัน → A/C ที่แก้เนื้อ log ทำให้ `contentRoot` ≠ `chainRoot` และ `proof.verify = false` ทันที ("แก้ข้อมูลแบบไหนก็ตาม root ต้องแดง") · `storedHashRoot` แยกไว้จับการแก้คอลัมน์ `raw_hash` โดยตรง (เคส demo-tamper) — ทุกช่องต้องเขียวข้อมูลจึงสมบูรณ์
 - **B พิสูจน์ว่าผู้โจมตีที่รู้สูตร raw_hash ก็ยังหนีไม่พ้น** — คำนวณ `raw_hash` ใหม่ให้ตรงเนื้อ (ผ่านกลไก 2) แต่ leaf เปลี่ยน → `computedRoot`≠ root ที่ anchor ไว้บนเชน (กลไก 1) → จับได้ เพราะ root บนเชนแก้ไม่ได้
 - **ไม่มีสถานการณ์ไหนที่ระบบจับไม่ได้ทั้งหมด** — ทุกเคสขึ้น batch=TAMPERED + INTEGRITY_TAMPERED (CRITICAL) และ `/diff` ชี้ตำแหน่ง/ชนิดได้ถูกต้อง
 

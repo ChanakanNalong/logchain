@@ -32,14 +32,19 @@ interface Step {
 function buildSteps(tree: BatchTree, proof: LogProofResult, path: PathStep[]): Step[] {
   const steps: Step[] = [
     {
-      title: "1. log → raw_hash",
-      explain: "ตอนรับ log ระบบ hash เนื้อ log (field ที่กำหนด) เก็บไว้เป็น raw_hash — แก้เนื้อ log แล้ว hash จะไม่ตรง",
-      value: proof.rawHash,
+      title: "1. log → content hash (คำนวณจากเนื้อหาปัจจุบัน)",
+      explain:
+        proof.contentHash === proof.rawHash
+          ? "hash เนื้อ log ปัจจุบันตรงกับ raw_hash ที่เก็บไว้ (เนื้อหาไม่ถูกแก้)"
+          : proof.integrity === "HASH_MODIFIED"
+            ? `เนื้อหาปัจจุบัน hash = ${proof.contentHash.slice(0, 12)}… แต่ raw_hash ที่เก็บไว้ = ${proof.rawHash.slice(0, 12)}… → คอลัมน์ raw_hash ถูกแก้`
+            : `เนื้อหาปัจจุบัน hash ≠ raw_hash ตอน seal → เนื้อ log ถูกแก้หลัง seal`,
+      value: proof.contentHash,
       focus: null,
     },
     {
-      title: "2. raw_hash → leaf hash",
-      explain: "leaf = sha256 ของข้อความ hex ของ raw_hash (utf8) ไม่ใช่ bytes ของมัน",
+      title: "2. content hash → leaf hash",
+      explain: "leaf = sha256 ของข้อความ hex ของ content hash (utf8) ไม่ใช่ bytes ของมัน",
       value: path[0]?.hash ?? proof.leafHash,
       focus: { layer: 0, index: proof.leafIndex },
       check: { kind: "leaf" },
@@ -115,7 +120,7 @@ export default function ProofSteps({
       for (let k = 0; k < steps.length; k++) {
         const c = steps[k].check;
         if (!c) continue;
-        if (c.kind === "leaf") acc = await browserLeafHash(proof.rawHash);
+        if (c.kind === "leaf") acc = await browserLeafHash(proof.contentHash);
         else if (c.kind === "pair") acc = await browserParentHash(acc, c.sibling);
         // promote: acc moves up unchanged
         const expected = c.kind === "root" ? tree.dbRoot : steps[k].value;
@@ -139,6 +144,16 @@ export default function ProofSteps({
           <Button variant="ghost" small icon={ChevronRight} disabled={cur === steps.length - 1} onClick={() => onStep(cur + 1, steps[cur + 1].focus)}>ถัดไป</Button>
         </div>
       </div>
+
+      {proof.integrity && proof.integrity !== "INTACT" && (
+        <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.danger}`, background: "rgba(244,63,94,0.10)", fontSize: 12.5, color: t.text }}>
+          {proof.integrity === "CONTENT_MODIFIED"
+            ? "⚠ เนื้อ log ถูกแก้หลัง seal — hash เนื้อหาปัจจุบันไม่ตรงกับตอน anchor → proof = false, contentRoot แดง"
+            : proof.integrity === "HASH_MODIFIED"
+              ? "⚠ คอลัมน์ raw_hash ถูกแก้ (เนื้อหา log เดิม) → storedHashRoot แดง (proof จากเนื้อหายังผ่านเพราะเนื้อหาไม่เปลี่ยน)"
+              : "⚠ log นี้ seal ก่อนมี snapshot — แยกไม่ได้ว่าเนื้อหาหรือ raw_hash ถูกแก้ · เทียบ content hash กับ raw_hash ที่เก็บไว้เอง"}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0" }}>
         {steps.map((st, k) => (

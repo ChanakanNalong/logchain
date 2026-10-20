@@ -124,3 +124,21 @@ export function isRawHashIntact(
   if (log.rawHash === computeRawHash(log)) return true;
   return log.rawHash === computeLegacyRawHash(log);
 }
+
+/**
+ * leaf input ของ "contentRoot" และ Merkle proof แบบคำนวณจากเนื้อหาปัจจุบัน (version-aware)
+ *
+ * - intact (เนื้อหา hash ได้ raw_hash ที่เก็บไว้ ไม่ว่าเป็น v2 หรือ v1 legacy) → คืน raw_hash ที่เก็บไว้
+ *   = leaf เท่าเดิม → contentRoot/proof เขียว/true เมื่อเนื้อหาไม่ถูกแก้ (รวม log v1 เก่า ไม่ false-flag)
+ * - ไม่ intact (เนื้อหาถูกแก้) → hash v2 ของเนื้อหาปัจจุบัน ซึ่งต่างจาก raw_hash เดิม → contentRoot/proof แดง/false
+ *
+ * ⚠️ เคสเดียวที่ "แดงเกิน": log v1 ที่ raw_hash ถูกแก้โดยเนื้อหา v1 ยังเดิม → ไม่ intact → คืน v2
+ *    → contentRoot แดงทั้งที่เนื้อหาไม่เปลี่ยน · ยอมรับได้ (ปัจจุบันไม่มี log v1) — ดู docs/api/merkle-tree.md
+ *
+ * ต่างจาก leaf ของ storedHashRoot ที่ใช้ raw_hash ที่เก็บไว้ตรง ๆ (จับการแก้คอลัมน์ raw_hash)
+ */
+export function recomputeContentLeaf(
+  log: RawHashInput & { rawHash: string },
+): string {
+  return isRawHashIntact(log) ? log.rawHash : computeRawHash(log);
+}

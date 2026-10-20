@@ -12,6 +12,7 @@ import { explorerTxUrl } from '../blockchain/explorer';
 import {
   isRawHashIntact,
   rawHashCanonical,
+  recomputeContentLeaf,
   RawHashCanonical,
   RAW_HASH_VERSION,
 } from '../logs/services/log-hash';
@@ -84,7 +85,10 @@ export interface BatchDiff {
   chainError: string | null;
   snapshotRoot: string | null;
   dbRoot: string;
-  currentRoot: string | null;
+  /** root จาก leaf = raw_hash ที่เก็บไว้ (จับการแก้คอลัมน์ raw_hash) — เดิมชื่อ currentRoot */
+  storedHashRoot: string | null;
+  /** root จาก leaf = hash คำนวณใหม่จากเนื้อหาปัจจุบัน (จับการแก้เนื้อ log) */
+  contentRoot: string | null;
   snapshotTrusted: boolean | null;
   trustBasis: 'chain' | 'db' | null;
   untrustedReasons: Array<
@@ -162,8 +166,15 @@ export class BatchDiffService {
     const dbRoot = hex(batch.merkleRoot);
     const chainRoot = 'root' in chain ? chain.root : null;
     const chainError = 'error' in chain ? chain.error : null;
-    const currentRoot = current.length
+    const storedHashRoot = current.length
       ? hex(this.merkle.buildTree(current.map((l) => l.rawHash)).root)
+      : null;
+    // leaf คำนวณใหม่จากเนื้อหาปัจจุบัน (version-aware) — เนื้อถูกแก้ → ต่างจาก storedHashRoot
+    const contentRoot = current.length
+      ? hex(
+          this.merkle.buildTree(current.map((l) => recomputeContentLeaf(l)))
+            .root,
+        )
       : null;
 
     // root อ้างอิง: chain ถ้าอ่านได้และ anchor แล้ว (root ไม่ใช่ศูนย์) · ไม่งั้น root ใน DB
@@ -197,11 +208,14 @@ export class BatchDiffService {
       chainRoot,
       chainError,
       dbRoot,
-      currentRoot,
+      storedHashRoot,
+      contentRoot,
       checkedAt: new Date(),
     };
     const batchLevelVerdict = () =>
-      currentRoot === reference && dbRoot === reference
+      storedHashRoot === reference &&
+      contentRoot === reference &&
+      dbRoot === reference
         ? unverifiable
           ? 'UNVERIFIABLE'
           : 'INTACT'
@@ -336,7 +350,10 @@ export class BatchDiffService {
 
     const count = (t: ChangeType) => changes.filter((c) => c.type === t).length;
     const intact =
-      changes.length === 0 && currentRoot === reference && dbRoot === reference;
+      changes.length === 0 &&
+      storedHashRoot === reference &&
+      contentRoot === reference &&
+      dbRoot === reference;
     return settle({
       ...base,
       snapshotRoot,

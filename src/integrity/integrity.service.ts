@@ -11,7 +11,12 @@ import {
   classifyChainError,
 } from '../blockchain/blockchain.service';
 import { DetectionService } from './detection.service';
-import { isRawHashIntact, rawHashCanonical } from '../logs/services/log-hash';
+import {
+  isRawHashIntact,
+  rawHashCanonical,
+  computeRawHash,
+  recomputeContentLeaf,
+} from '../logs/services/log-hash';
 import { BatchLogSnapshot } from './entities/batch-log-snapshot.entity';
 import { explorerTxUrl } from '../blockchain/explorer';
 import { formatDec, fromUnits } from '../common/decimal';
@@ -1141,17 +1146,54 @@ export class IntegrityService {
     const batch = await this.batchesRepo.findOneBy({ id: mapping.batchId });
     if (!log || !batch) return null;
 
-    const leaves = await this.getLeavesForBatch(batch.id);
-    const proof = this.merkle.getProof(leaves, log.rawHash);
+    // leaf = hash คำนวณใหม่จากเนื้อหาปัจจุบัน (version-aware) → proof สะท้อนความถูกต้องของ "เนื้อหา"
+    // เนื้อหาถูกแก้ → leaf ต่างจากตอน seal → verify=false (เดิมใช้ raw_hash ที่เก็บไว้ จึง true ทั้งที่เนื้อหาถูกแก้)
+    const logsOfBatch = await this.getLogsForBatch(batch.id);
+    const leaves = logsOfBatch.map((l) => recomputeContentLeaf(l));
+    const targetLeaf = recomputeContentLeaf(log);
+    const proof = this.merkle.getProof(leaves, targetLeaf);
     const verified = this.merkle.verifyProof(
-      log.rawHash,
+      targetLeaf,
       proof,
       '0x' + batch.merkleRoot,
     );
-    // ตำแหน่งใน tree (= leaves[].index ของ GET /batches/:id/tree) · raw_hash ไม่ซ้ำกันเพราะ id อยู่ใน hash
-    const leafIndex = leaves.indexOf(log.rawHash);
-    const leafHash = this.merkle.leafHash(log.rawHash);
+    // ตำแหน่งใน tree (= leaves[].index ของ GET /batches/:id/tree) · leaf ไม่ซ้ำกันเพราะ id อยู่ใน hash
+    const leafIndex = leaves.indexOf(targetLeaf);
+    const leafHash = this.merkle.leafHash(targetLeaf);
 
-    return { log, batch, proof, verified, leafIndex, leafHash };
+    // แยกสาเหตุด้วย snapshot: เนื้อหาถูกแก้ หรือ raw_hash ถูกแก้ (snapshot.rawHash = ค่าเดิมตอน seal)
+    const snapRepo = this.batchesRepo.manager?.getRepository(BatchLogSnapshot);
+    const snap = snapRepo
+      ? await snapRepo.findOne({ where: { batchId: batch.id, logId: log.id } })
+      : null;
+    const storedRawHash = log.rawHash;
+    const contentHash = computeRawHash(log); // v2 ของเนื้อหาปัจจุบัน (ไว้โชว์ในการ์ด)
+    let integrity: 'INTACT' | 'CONTENT_MODIFIED' | 'HASH_MODIFIED' | 'UNKNOWN';
+    if (snap) {
+      const orig = snap.rawHash;
+      const contentMatchesOriginal = isRawHashIntact({ ...log, rawHash: orig });
+      const rawHashMatchesOriginal = storedRawHash === orig;
+      integrity = contentMatchesOriginal
+        ? rawHashMatchesOriginal
+          ? 'INTACT'
+          : 'HASH_MODIFIED'
+        : 'CONTENT_MODIFIED';
+    } else {
+      // legacy ไม่มี snapshot — บอกได้แค่ว่าเนื้อหา hash ได้ raw_hash ที่เก็บไว้ไหม
+      integrity = isRawHashIntact(log) ? 'INTACT' : 'UNKNOWN';
+    }
+
+    return {
+      log,
+      batch,
+      proof,
+      verified,
+      leafIndex,
+      leafHash,
+      storedRawHash,
+      contentHash,
+      integrity,
+      hasSnapshot: !!snap,
+    };
   }
 }

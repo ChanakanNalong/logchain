@@ -96,8 +96,13 @@ export class IntegrityController {
 
     return {
       logId: result.log.id,
-      rawHash: result.log.rawHash,
-      // 0-based ตำแหน่ง leaf · leafHash = sha256(rawHash) — docs/api/merkle-tree.md ข้อ 2
+      // raw_hash ที่เก็บไว้ใน DB vs hash ที่คำนวณใหม่จากเนื้อหาปัจจุบัน — ต่างกัน = ถูกแก้
+      rawHash: result.storedRawHash,
+      contentHash: result.contentHash,
+      // INTACT = เนื้อหา + raw_hash ตรงเดิม · CONTENT_MODIFIED = เนื้อ log ถูกแก้ ·
+      // HASH_MODIFIED = คอลัมน์ raw_hash ถูกแก้ (เนื้อหาเดิม) · UNKNOWN = legacy ไม่มี snapshot
+      integrity: result.integrity,
+      // 0-based ตำแหน่ง leaf · leafHash = sha256(content hash) — docs/api/merkle-tree.md ข้อ 2
       leafIndex: result.leafIndex,
       leafHash: result.leafHash,
       batch: {
@@ -108,7 +113,7 @@ export class IntegrityController {
         status: result.batch.status,
       },
       proof: result.proof,
-      verify: result.verified, // true = proof ถูกต้อง log อยู่ใน tree จริง
+      verify: result.verified, // true = เนื้อหาปัจจุบันของ log อยู่ใน tree ที่ anchor จริง
     };
   }
 }

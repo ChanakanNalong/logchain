@@ -133,7 +133,9 @@ describe('BatchDiffService', () => {
       changes: [],
     });
     expect(d.chainRoot).toBe(d.snapshotRoot);
-    expect(d.currentRoot).toBe(d.dbRoot);
+    // ไม่แก้อะไร → root ทั้งสองแบบเขียว
+    expect(d.storedHashRoot).toBe(d.dbRoot);
+    expect(d.contentRoot).toBe(d.dbRoot);
     expect(d.summary).toEqual({
       verdict: 'INTACT',
       snapshotLogs: 10,
@@ -165,15 +167,19 @@ describe('BatchDiffService', () => {
         ],
       },
     ]);
-    // root ปัจจุบันไม่เปลี่ยนเพราะ raw_hash เดิม — แต่ diff ยังจับได้ (เทียบเนื้อกับ snapshot)
-    expect(d.currentRoot).toBe(d.chainRoot);
+    // แก้ message: storedHashRoot ไม่เปลี่ยน (raw_hash เดิม) แต่ contentRoot แดง (คำนวณจากเนื้อหาใหม่)
+    // = ประเด็นที่แก้: เดิม root เขียวทั้งที่เนื้อถูกแก้
+    expect(d.storedHashRoot).toBe(d.chainRoot);
+    expect(d.contentRoot).not.toBe(d.chainRoot);
   });
 
   it('message edited and raw_hash recomputed to match → still caught, rawHash in fields', async () => {
     const w = world();
     tamper(w, 5, { message: 'hacked' }, true);
     const d = await service(w).diff(BATCH);
-    expect(d.currentRoot).not.toBe(d.chainRoot);
+    // แก้ทั้ง message + raw_hash → แดงทั้งสอง root
+    expect(d.storedHashRoot).not.toBe(d.chainRoot);
+    expect(d.contentRoot).not.toBe(d.chainRoot);
     expect(d.changes).toHaveLength(1);
     const c = d.changes[0];
     expect(c).toMatchObject({ position: 5, type: 'CONTENT_MODIFIED' });
@@ -221,6 +227,9 @@ describe('BatchDiffService', () => {
       },
     ]);
     expect(d.summary.hashModified).toBe(1);
+    // แก้แค่ raw_hash: storedHashRoot แดง · contentRoot เขียว (เนื้อหาเดิม) — เหมือนพฤติกรรมเดิม
+    expect(d.storedHashRoot).not.toBe(d.chainRoot);
+    expect(d.contentRoot).toBe(d.chainRoot);
   });
 
   it('row deleted → DELETED / ROW_MISSING with the sealed content', async () => {
@@ -422,7 +431,8 @@ describe('BatchDiffService', () => {
       w.snapshots = [];
       w.current = [];
       const d = await service(w).diff(BATCH);
-      expect(d.currentRoot).toBeNull();
+      expect(d.storedHashRoot).toBeNull();
+      expect(d.contentRoot).toBeNull();
       expect(d.legacy).toBe(true);
       expect(d.polygonscanUrl).toBeNull();
       expect(d.untrustedReasons).toEqual(['NOT_ANCHORED']);
