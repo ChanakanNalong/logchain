@@ -11,7 +11,8 @@ import ProofSteps from "@/components/merkle/ProofSteps";
 import CostCard from "@/components/merkle/CostCard";
 import BatchPicker, { logsLabel } from "@/components/merkle/BatchPicker";
 import { api } from "@/lib/api";
-import { getBatches, getBatchTree, getLogProof, getLogs } from "@/lib/endpoints";
+import { getBatches, getBatchTree, getLogDetail, getLogProof, getLogs, sealNow } from "@/lib/endpoints";
+import { canDo } from "@/lib/roles";
 import { unanchoredRootView } from "@/lib/chainState";
 import { fmtTime, isZeroRoot, shortId } from "@/lib/format";
 import { mapLog, type LogRow } from "@/lib/logRows";
@@ -29,6 +30,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const NEEDS_FULL_ID =
   "Log ID must be the full UUID — the Logs table shows only the first 8 characters. Click an ID there to copy the whole one.";
+
+/** เวลาไทย (Asia/Bangkok) — ใช้กับกล่อง "ยังรอ seal" ให้ตรงเวลาไทยไม่ว่าผู้ชมอยู่โซนไหน */
+function fmtBkk(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("sv-SE", { timeZone: "Asia/Bangkok" });
+}
 
 /**
  * ผลจำแนก batch ของ Isolation Forest (ตรวจจับระดับที่ 3)
@@ -81,6 +91,12 @@ export default function Verify() {
   const [result, setResult] = useState<LogProofResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // log มีอยู่จริงแต่ยังไม่ถูก seal เข้า batch (แยกจาก "ไม่พบ log") — โชว์กล่องเหลือง + ปุ่ม seal (admin)
+  const [pending, setPending] = useState<{ id: string; createdAt: string } | null>(null);
+  const [confirmSeal, setConfirmSeal] = useState(false);
+  const [sealing, setSealing] = useState(false);
+  const [sealErr, setSealErr] = useState("");
+  const canSealNow = canDo("sealNow");
 
   // ?proofLog=<id> — sent by "ดู proof บน tree" in the log drawer
   const proofLog = searchParams.get(QUERY_KEYS.proofLog);
@@ -159,40 +175,77 @@ export default function Verify() {
     return () => { cancelled = true; };
   }, [selectedBatch, replaceQuery]);
 
+  /**
+   * proof คืน 404/null = "ไม่พบ log" หรือ "มี log แต่ยังไม่ seal" (proof แยกไม่ออก)
+   * เรียก /logs/:id/detail มาแยก: 404 = ไม่มี log จริง · 200 + batch=null = ยังรอ seal
+   */
+  const classifyUnsealed = useCallback(async (id: string) => {
+    try {
+      const d = await getLogDetail(id);
+      if (!d.batch) {
+        setPending({ id, createdAt: d.log.createdAt });
+        setError("");
+      } else {
+        // มี batch แต่ proof ไม่คืน — ไม่ควรเกิด, ตอบกว้าง ๆ ไว้
+        setError("Log not found or not yet sealed into a batch");
+      }
+    } catch (e: any) {
+      setError(e?.response?.status === 404 ? "Log not found" : "Verification failed");
+    }
+  }, []);
+
   const runVerify = useCallback(async (rawId: string) => {
     const id = rawId.trim();
     // เดิมกดปุ่มตอนช่องว่างแล้วเงียบสนิท ไม่มีทั้งผลและ error — แยกไม่ออกว่าแอปค้าง
     if (!id) {
-      setResult(null);
+      setResult(null); setPending(null);
       setError("Paste a log ID first, or pick one from the list below.");
       return;
     }
     if (!UUID_RE.test(id)) {
-      setResult(null);
+      setResult(null); setPending(null);
       setError(NEEDS_FULL_ID);
       return;
     }
 
     setLoading(true); setError(""); setResult(null);
+    setPending(null); setConfirmSeal(false); setSealErr("");
     try {
       const r = await getLogProof(id);
-      if (!r) { setError("Log not found or not yet sealed into a batch"); return; }
+      if (!r) { await classifyUnsealed(id); return; }
       setResult(r);
       setSelectedBatch(r.batch.id); // show this log's batch tree
       setStep(0);
       setFocus(null);
     } catch (e: any) {
       const status = e.response?.status;
+      if (status === 404) { await classifyUnsealed(id); return; }
       setError(
         status === 400 ? NEEDS_FULL_ID
-        : status === 404 ? "Log not found, or not yet sealed into a batch"
         : status === 403 ? "Not authorised — this account needs the analyst, operator or admin role."
         : "Verification failed",
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [classifyUnsealed]);
+
+  /** admin: seal ทันที (confirm แบบเดียวกับหน้า Batch audit) แล้ว verify log นั้นซ้ำอัตโนมัติ */
+  const doSeal = useCallback(async () => {
+    if (!pending) return;
+    setSealing(true); setSealErr("");
+    try {
+      await sealNow();
+      setConfirmSeal(false);
+      await runVerify(pending.id); // seal เสร็จ → log เข้า batch แล้ว ลอง verify ใหม่
+    } catch (e: any) {
+      setSealErr(
+        e?.response?.status === 403 ? "ต้องเป็น admin ถึงจะ Seal ได้" : "Seal ไม่สำเร็จ",
+      );
+    } finally {
+      setSealing(false);
+    }
+  }, [pending, runVerify]);
 
   // มาจากปุ่ม "ดู proof บน tree" ใน log drawer — เติม ID แล้วตรวจ proof + เปิด tree ของ batch นั้น
   useEffect(() => {
@@ -335,7 +388,39 @@ export default function Verify() {
         {error && (
           <div style={{ marginTop: 14, color: t.danger, fontSize: 13 }}>{error}</div>
         )}
-        {!result && !error && (
+        {/* มี log แต่ยังไม่ seal — กล่องเหลือง (ไม่ใช่แดง) + ปุ่ม Seal ทันที เฉพาะ admin */}
+        {pending && (
+          <div style={{
+            marginTop: 14, padding: "12px 14px", borderRadius: 10, display: "flex", gap: 10, alignItems: "flex-start",
+            color: t.warn, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.4)", fontSize: 13,
+          }}>
+            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>ยังรอ seal</div>
+              <div style={{ color: t.muted, marginTop: 2 }}>
+                log นี้เข้ามาเมื่อ {fmtBkk(pending.createdAt)} · ยังรอ seal — ระบบ seal เมื่อครบ 100 log หรือรอครบ 60 นาที
+              </div>
+              {canSealNow && (
+                <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {!confirmSeal ? (
+                    <Button variant="subtle" small disabled={sealing} onClick={() => { setSealErr(""); setConfirmSeal(true); }}>
+                      Seal ทันที
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="primary" small disabled={sealing} onClick={doSeal}>
+                        {sealing ? "กำลัง Seal…" : "ยืนยัน Seal"}
+                      </Button>
+                      <Button variant="ghost" small disabled={sealing} onClick={() => setConfirmSeal(false)}>ยกเลิก</Button>
+                    </>
+                  )}
+                  {sealErr && <span style={{ color: t.danger, fontSize: 12 }}>{sealErr}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {!result && !error && !pending && (
           <div style={{ marginTop: 14, padding: 16, borderRadius: 10, border: `1px dashed ${t.border}`, color: t.muted, fontSize: 13, textAlign: "center" }}>
             {loading ? "กำลังตรวจ proof…" : "ยังไม่ได้ตรวจ log — ใส่ log id ด้านบน หรือคลิก leaf ใน tree"}
           </div>
@@ -577,17 +662,30 @@ export default function Verify() {
           <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
             {recentLogs.length === 0
               ? placeholder("No logs yet")
-              : recentLogs.map((l) => (
+              : recentLogs.map((l) => {
+                  // batchStatus === null = ยังไม่ถูก seal เข้า batch → ยัง verify proof ไม่ได้
+                  const unsealed = l.batchStatus === null;
+                  return (
                   <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, ...monoFont, color: t.blue2 }}>{String(l.id).slice(0, 8)}</div>
+                      <div style={{ fontSize: 12.5, ...monoFont, color: t.blue2, display: "flex", alignItems: "center", gap: 6 }}>
+                        {String(l.id).slice(0, 8)}
+                        {unsealed && <Badge tone="warn">รอ seal</Badge>}
+                      </div>
                       <div style={{ fontSize: 11, color: t.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {l.source} · {l.ts}
                       </div>
                     </div>
-                    <Button variant="subtle" small onClick={() => verifyFromList(l.id)}>Verify</Button>
+                    {unsealed ? (
+                      <Button variant="subtle" small disabled title="log นี้ยังไม่ถูก seal เข้า batch — ตรวจ proof ไม่ได้จนกว่าจะ seal">
+                        Verify
+                      </Button>
+                    ) : (
+                      <Button variant="subtle" small onClick={() => verifyFromList(l.id)}>Verify</Button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
           </div>
         </Card>
       </div>
