@@ -57,6 +57,11 @@
 สมมติฐานเดิม: แก้ content + raw_hash + dbRoot ให้สอดคล้องกัน + chain ล่ม → verify local จะถูกหลอก
 ผลจริง (hh): **ยังถูกจับ** เพราะ `batch_log_snapshot` แก้ไม่ได้ (trigger `trg_snapshot_no_update`/`no_delete`)
 → `snapshotRoot` (จาก snapshot เดิม) ไม่ตรง dbRoot ที่ถูกปลอม → diff `SNAPSHOT_ROOT_MISMATCH` → verdict TAMPERED
+
+**อัปเดต (diff baseline):** เคส cover/C″ เมื่ออ่านเชนได้และ `storedHashRoot == เชน` (raw_hash ยังไม่ถูกแตะ)
+diff จะใช้ **raw_hash เป็น baseline** แทนการยอมแพ้ที่ระดับ batch — ชี้ได้ว่า log ตัวไหนเนื้อหาถูกแก้
+(`CONTENT_MODIFIED` รายตัว · DELETED/INSERTED=0 เพราะสมาชิกครบตามตอน seal) แต่ "ไม่ทราบค่าเดิม"
+(snapshot ถูกแก้) · response มี field `baseline: snapshot|raw_hash|none` · ถ้า raw_hash ก็ไม่ตรงเชน → `none` (ระดับ batch เหมือนเดิม)
 แม้เชนอ่านไม่ได้ · bypass offline ที่สมบูรณ์จริงต้องปลอม snapshot ด้วย = ต้อง `DISABLE trg_snapshot_no_update`
 ซึ่ง **DDL audit จับเป็น TRIGGER_DISABLED ทันที**
 

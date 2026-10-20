@@ -175,7 +175,7 @@ function LogContent({ log, label }: { log: SnapshotLog; label: string }) {
   );
 }
 
-function ChangeRow({ c, onOpenLog }: { c: BatchChange; onOpenLog: (id: string) => void }) {
+function ChangeRow({ c, onOpenLog, noOriginal }: { c: BatchChange; onOpenLog: (id: string) => void; noOriginal?: boolean }) {
   const t = useTheme();
   const meta = CHANGE_TYPE[c.type];
   // a ROW_MISSING log has no row left to open
@@ -199,7 +199,15 @@ function ChangeRow({ c, onOpenLog }: { c: BatchChange; onOpenLog: (id: string) =
         <Badge tone={meta.tone}>{meta.label}</Badge>
         {c.reason && <Badge tone="neutral">{c.reason}</Badge>}
       </div>
-      {c.fields && c.fields.length > 0 && <div style={{ marginTop: 8 }}>{c.fields.map((f) => <FieldDiff key={f.field} f={f} />)}</div>}
+      {c.fields && c.fields.length > 0 && (
+        noOriginal ? (
+          <div style={{ marginTop: 8, fontSize: 12.5, color: t.muted }}>
+            ไม่ทราบค่าเดิม (snapshot ถูกแก้) — raw_hash ที่ anchor ไว้ไม่ตรงกับ hash ของเนื้อหาปัจจุบัน (เนื้อ log ถูกแก้หลัง seal)
+          </div>
+        ) : (
+          <div style={{ marginTop: 8 }}>{c.fields.map((f) => <FieldDiff key={f.field} f={f} />)}</div>
+        )
+      )}
       {c.snapshot && <LogContent log={c.snapshot} label="เนื้อ log ตอน seal (จาก snapshot)" />}
       {c.current && <LogContent log={c.current} label="เนื้อ log ตอนนี้ (ไม่อยู่ใน snapshot)" />}
     </div>
@@ -277,7 +285,6 @@ export default function BatchDiffDrawer({
   const d = state?.status === "ok" && state.data.batchId === batchId ? state.data : null;
   const roots = d ? rootStates(d) : null;
   const verdict = d ? VERDICT[d.summary.verdict] : null;
-  const trusted = d?.snapshotTrusted === true;
   // The backend answers TAMPERED whenever the snapshot is untrusted (someone touched
   // the DB). Keep that verdict, but say what was actually found: the snapshot may be
   // the only thing edited while the current logs still rebuild the reference root.
@@ -354,7 +361,17 @@ export default function BatchDiffDrawer({
               )}
             </div>
 
-            {d.snapshotTrusted === false && (
+            {d.snapshotTrusted === false && d.baseline === "raw_hash" && (
+              <Banner tone="info" icon={Info}>
+                <strong>เทียบกับ raw_hash</strong> (snapshot ไม่น่าเชื่อถือ · raw_hash ยังตรงกับเชน)
+                <div style={{ marginTop: 6 }}>
+                  สมาชิก batch ครบตามตอน seal (storedHashRoot == เชน) จึงเทียบรายตัวได้ว่าตัวไหนเนื้อหาถูกแก้ —
+                  แต่ไม่ทราบค่าเดิมของแต่ละตัว (snapshot ถูกแก้)
+                </div>
+                <div style={{ marginTop: 4, fontSize: 11, color: t.muted, ...monoFont }}>{d.untrustedReasons.join(" · ")}</div>
+              </Banner>
+            )}
+            {d.snapshotTrusted === false && d.baseline !== "raw_hash" && (
               <Banner tone="danger" icon={ShieldAlert}>
                 <strong>snapshot ไม่น่าเชื่อถือ ตรวจได้แค่ระดับ batch</strong>
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 4 }}>
@@ -423,17 +440,17 @@ export default function BatchDiffDrawer({
 
             <section style={{ marginTop: 18 }}>
               <SectionLabel>Changed logs</SectionLabel>
-              {!trusted ? (
-                // untrusted or legacy: no before → after shown as if it were reliable
+              {d.baseline === "none" ? (
+                // untrusted (raw_hash ก็ไม่ตรงเชน) หรือ legacy: ตัดสินได้แค่ระดับ batch
                 <div style={{ fontSize: 12.5, color: t.muted, marginTop: 6 }}>
-                  ไม่มีรายละเอียดรายตำแหน่ง — {d.legacy ? "batch นี้ไม่มี snapshot" : "snapshot ใช้อ้างอิงไม่ได้"}
+                  ไม่มีรายละเอียดรายตำแหน่ง — {d.legacy ? "batch นี้ไม่มี snapshot" : "snapshot ใช้อ้างอิงไม่ได้ และ raw_hash ก็ไม่ตรงเชน"}
                 </div>
               ) : d.changes.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: t.muted, marginTop: 6 }}>ไม่มี log ตำแหน่งไหนเปลี่ยน</div>
               ) : (
                 <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                   {d.changes.map((c) => (
-                    <ChangeRow key={`${c.type}:${c.position}:${c.logId}`} c={c} onOpenLog={setOpenLog} />
+                    <ChangeRow key={`${c.type}:${c.position}:${c.logId}`} c={c} onOpenLog={setOpenLog} noOriginal={d.baseline === "raw_hash"} />
                   ))}
                 </div>
               )}

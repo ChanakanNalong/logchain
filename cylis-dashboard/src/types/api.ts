@@ -259,6 +259,8 @@ export interface BatchDiff {
   trustBasis: "chain" | "db" | null;
   untrustedReasons: ("SNAPSHOT_ROOT_MISMATCH" | "SNAPSHOT_CONTENT_MISMATCH" | "NOT_ANCHORED")[];
   legacy: boolean;
+  /** ตัวเทียบที่ใช้สร้าง changes: snapshot · raw_hash (snapshot ไม่น่าเชื่อถือ แต่ raw_hash ยังตรงเชน) · none */
+  baseline: "snapshot" | "raw_hash" | "none";
   checkedAt: string;
   summary: {
     verdict: DiffVerdict;

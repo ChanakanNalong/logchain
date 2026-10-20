@@ -95,6 +95,8 @@ export interface BatchDiff {
     'SNAPSHOT_ROOT_MISMATCH' | 'SNAPSHOT_CONTENT_MISMATCH' | 'NOT_ANCHORED'
   >;
   legacy: boolean;
+  /** ตัวเทียบที่ใช้สร้าง changes: snapshot (ค่าเดิมครบ) · raw_hash (snapshot ไม่น่าเชื่อถือ แต่ raw_hash ยังตรงเชน) · none (ตัดสินได้แค่ระดับ batch) */
+  baseline: 'snapshot' | 'raw_hash' | 'none';
   checkedAt: Date;
   summary: {
     verdict: 'INTACT' | 'TAMPERED' | 'UNVERIFIABLE';
@@ -237,6 +239,7 @@ export class BatchDiffService {
         trustBasis: null,
         untrustedReasons: [],
         legacy: true,
+        baseline: 'none',
         summary: {
           verdict: batchLevelVerdict(),
           snapshotLogs: 0,
@@ -261,6 +264,48 @@ export class BatchDiffService {
     const trustBasis = anchoredOnChain ? 'chain' : 'db';
 
     if (!trusted) {
+      // snapshot ไม่น่าเชื่อถือ — ถ้า raw_hash ยังตรงกับ reference (เชน) ใช้ raw_hash เป็น baseline เทียบรายตัวได้
+      // (storedHashRoot==เชน = สมาชิกครบตามตอน seal → DELETED/INSERTED = 0 · แต่ละตัวดู content hash vs raw_hash)
+      if (storedHashRoot !== null && storedHashRoot === reference) {
+        const rhChanges: BatchChange[] = [];
+        let rhUnchanged = 0;
+        current.forEach((l, index) => {
+          // version-aware: intact → raw_hash เดิม · เนื้อถูกแก้ → hash ใหม่ (≠ raw_hash)
+          const leaf = recomputeContentLeaf(l);
+          if (leaf === l.rawHash) {
+            rhUnchanged++;
+            return;
+          }
+          rhChanges.push({
+            position: index,
+            logId: l.id,
+            type: 'CONTENT_MODIFIED',
+            // ไม่ทราบค่าเดิม (snapshot ถูกแก้) — แสดง raw_hash ที่ anchor ไว้ เทียบกับ hash ของเนื้อหาปัจจุบัน
+            fields: [{ field: 'contentHash', before: l.rawHash, after: leaf }],
+          });
+        });
+        return settle({
+          ...base,
+          snapshotRoot,
+          snapshotTrusted: false,
+          trustBasis,
+          untrustedReasons,
+          legacy: false,
+          baseline: 'raw_hash',
+          summary: {
+            verdict: 'TAMPERED',
+            snapshotLogs: snapshots.length,
+            mappedLogs: current.length,
+            unchanged: rhUnchanged,
+            contentModified: rhChanges.length,
+            hashModified: 0,
+            deleted: 0,
+            unmappedOrInserted: 0,
+          },
+          changes: rhChanges,
+        });
+      }
+      // raw_hash ก็ไม่ตรงเชน → ตัดสินได้แค่ระดับ batch (เหมือนเดิม)
       return settle({
         ...base,
         snapshotRoot,
@@ -268,6 +313,7 @@ export class BatchDiffService {
         trustBasis,
         untrustedReasons,
         legacy: false,
+        baseline: 'none',
         summary: {
           // snapshot ถูกแก้แล้ว = มีคนแตะ DB แน่ ๆ
           verdict: 'TAMPERED',
@@ -361,6 +407,7 @@ export class BatchDiffService {
       trustBasis,
       untrustedReasons: [],
       legacy: false,
+      baseline: 'snapshot',
       summary: {
         verdict: !intact
           ? 'TAMPERED'
