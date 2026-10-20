@@ -97,8 +97,18 @@ _canon() {
   printf "%s" "encode(digest('{\"v\":2,\"id\":'||to_json(l.id::text)::text||',\"source\":'||to_json(l.source)::text||',\"sourceIp\":'||CASE WHEN l.source_id IS NULL THEN 'null' ELSE to_json(host(l.source_id))::text END||',\"eventType\":'||to_json(l.event_type)::text||',\"severity\":'||to_json(l.severity)::text||',\"message\":'||to_json(($1)::text)::text||',\"classification\":'||to_json(l.classification)::text||',\"cdeScope\":'||CASE WHEN l.cde_scope THEN 'true' ELSE 'false' END||',\"createdAt\":'||to_json(to_char(l.created_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'))::text||'}','sha256'),'hex')"
 }
 
+# merkle root (hex ไม่มี 0x) จาก leaves (บรรทัดละ 1) ด้วย MerkleService จริงของ backend
+merkle_of() {
+  printf '%s\n' "$1" | $MERKLE_EXEC node -e "
+let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+  const {MerkleService}=require('$MERKLE_MODULE');
+  const ls=d.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+  process.stdout.write(new MerkleService().buildTree(ls).root.replace(/^0x/,''));
+});"
+}
+
 # cover: คำนวณ contentRoot (merkle จริงของ backend) + v2 hash ของเนื้อหาใหม่ ก่อนเข้า transaction (read-only)
-# → ตั้ง COVER_ROOT (ไม่มี 0x) และ COVER_HASH
+# → ตั้ง COVER_ROOT (ไม่มี 0x) และ COVER_HASH · fail ดังๆ ถ้าคำนวณไม่ได้ หรือ contentRoot ไม่ต่างจาก storedHashRoot
 compute_cover() {
   local batch="$1" logid="$2" msg="$3"
   COVER_HASH="$(runsql -v msg="$msg" -v logid="$logid" -tA -f - <<HSQL
@@ -115,14 +125,25 @@ FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id
 WHERE m.batch_id=:'batch'::uuid ORDER BY l.created_at, l.id;
 LSQL
 )"
-  COVER_ROOT="$(printf '%s\n' "$leaves" | $MERKLE_EXEC node -e "
-let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
-  const {MerkleService}=require('$MERKLE_MODULE');
-  const leaves=d.split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
-  process.stdout.write(new MerkleService().buildTree(leaves).root.replace(/^0x/,''));
-});")"
-  [ -n "$COVER_HASH" ] && [ ${#COVER_HASH} -eq 64 ] || die "cover: คำนวณ v2 hash ไม่สำเร็จ"
-  [ -n "$COVER_ROOT" ] && [ ${#COVER_ROOT} -eq 64 ] || die "cover: คำนวณ contentRoot (merkle backend) ไม่สำเร็จ"
+  # storedHashRoot = merkle ของ raw_hash cols (cover ไม่แตะ raw_hash → ค่านี้ = chainRoot/เดิม)
+  local raw_leaves
+  raw_leaves="$(runsql -v batch="$batch" -tA -f - <<RSQL
+SELECT l.raw_hash FROM logs l JOIN log_batch_mapping m ON m.log_id=l.id
+WHERE m.batch_id=:'batch'::uuid ORDER BY l.created_at, l.id;
+RSQL
+)"
+  local curhash stored
+  curhash="$(scalar "SELECT raw_hash FROM logs WHERE id='$logid'")"
+  COVER_ROOT="$(merkle_of "$leaves")"
+  stored="$(merkle_of "$raw_leaves")"
+  echo "  [cover] storedHashRoot=${stored:0:12}… contentRoot=${COVER_ROOT:0:12}… newSnapHash=${COVER_HASH:0:12}…"
+  # ต้องคำนวณได้ครบ 64-hex ทั้งสาม — ไม่งั้นหยุด (ห้ามยิงครึ่ง ๆ)
+  [ ${#COVER_HASH} -eq 64 ] || die "cover: คำนวณ v2 hash ไม่สำเร็จ (ได้ '${COVER_HASH}') — ไม่ยิง"
+  [ ${#COVER_ROOT} -eq 64 ] || die "cover: คำนวณ contentRoot (merkle backend) ไม่สำเร็จ (ได้ '${COVER_ROOT}') — ไม่ยิง"
+  [ ${#stored}     -eq 64 ] || die "cover: คำนวณ storedHashRoot ไม่สำเร็จ (ได้ '${stored}') — ไม่ยิง"
+  # cover ต้องทำให้ snapshot/dbRoot ต่างจากเดิมจริง — ถ้าไม่ต่าง = leaf ของเนื้อหาใหม่ไม่ถูกใช้ → หยุด
+  [ "$COVER_HASH" != "$curhash" ] || die "cover: v2 hash เนื้อหาใหม่ = raw_hash เดิม (leaf ไม่เปลี่ยน) — ไม่ยิง"
+  [ "$COVER_ROOT" != "$stored" ]  || die "cover: contentRoot == storedHashRoot — การแก้เนื้อหาไม่สะท้อนใน merkle (ตรวจ logid/leaf) — ไม่ยิง"
 }
 
 die() { echo "✗ $*" >&2; exit 1; }
