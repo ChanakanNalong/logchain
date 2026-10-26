@@ -8,7 +8,7 @@
  * click pins the tooltip so its values can be copied.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Maximize2, Minimize2, Scan, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useTheme, monoFont, sansFont } from "@/theme";
 import { Button } from "@/components/ui";
 import { CopyButton } from "@/components/LogDrawer";
@@ -86,6 +86,53 @@ export default function MerkleTreeView({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [pinned]);
+
+  // proof ใช้กี่ hash (นับ sibling ที่ไม่ใช่ null) — โชว์เป็นหัวตอนเต็มจอ
+  const proofHashes = useMemo(() => (path ?? []).filter((s) => s.sibling !== null).length, [path]);
+
+  // ── โหมดเต็มจอ ──
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [fs, setFs] = useState(false);
+  const enterFs = useCallback(() => {
+    setFs(true);
+    setView(fit());
+    const el = rootRef.current;
+    // เต็มจอจริงตอนต่อโปรเจกเตอร์ — ถ้า browser ไม่ให้ ใช้ overlay เฉย ๆ ไม่ error
+    if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+  }, [fit]);
+  const exitFs = useCallback(() => {
+    setFs(false);
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  }, []);
+  const toggleFs = useCallback(() => {
+    if (fs) exitFs();
+    else enterFs();
+  }, [fs, enterFs, exitFs]);
+  // F11 / Esc ของ browser ออกจาก fullscreen จริง → ปิด overlay ตาม
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setFs(false);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  // ในโหมดเต็มจอ: Esc ปิด (ถ้าไม่มี tooltip ปักอยู่) · resize แล้ว fit ใหม่
+  useEffect(() => {
+    if (!fs) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !hover?.pinned) {
+        e.preventDefault();
+        exitFs();
+      }
+    };
+    const onResize = () => setView(fit());
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [fs, hover?.pinned, exitFs, fit]);
 
   const promoted = useMemo(() => new Set(tree.promoted.map((p) => `${p.layer}:${p.index}`)), [tree.promoted]);
   const onPath = useMemo(() => new Set((path ?? []).map((s) => `${s.layer}:${s.index}`)), [path]);
@@ -179,16 +226,34 @@ export default function MerkleTreeView({
   const hoveredLeaf = hovered && hovered.L === 0 ? tree.leaves[hovered.i] : null;
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginBottom: 6 }}>
-        <Button variant="ghost" small icon={ZoomIn} onClick={() => zoom(1 / 1.4)} title="Zoom in" ariaLabel="Zoom in">{""}</Button>
-        <Button variant="ghost" small icon={ZoomOut} onClick={() => zoom(1.4)} title="Zoom out" ariaLabel="Zoom out">{""}</Button>
-        <Button variant="ghost" small icon={Maximize2} onClick={() => setView(fit())} title="Fit the whole tree" ariaLabel="Fit">{""}</Button>
+    <div
+      ref={rootRef}
+      style={
+        fs
+          ? {
+              position: "fixed", inset: 0, zIndex: 1000, background: t.bg,
+              display: "flex", flexDirection: "column", padding: 16, gap: 8,
+            }
+          : undefined
+      }
+    >
+      {/* หัวเรื่อง proof — โชว์เฉพาะตอนเต็มจอ (ในหน้าปกติ Verify.tsx โชว์อยู่แล้ว) · display คงที่เพื่อไม่ remount frame */}
+      <div style={{ display: fs && path ? "block" : "none", fontSize: 13, color: t.muted, marginBottom: 2, ...sansFont }}>
+        ใช้ <strong style={{ color: t.text }}>{proofHashes} hash</strong> จาก {tree.logCount.toLocaleString()} log เพื่อพิสูจน์ว่า log นี้อยู่ในต้นไม้
+      </div>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", marginBottom: 6 }}>
+        <Button variant="ghost" small icon={ZoomIn} onClick={() => zoom(1 / 1.4)} title="ซูมเข้า" ariaLabel="ซูมเข้า">{""}</Button>
+        <Button variant="ghost" small icon={ZoomOut} onClick={() => zoom(1.4)} title="ซูมออก" ariaLabel="ซูมออก">{""}</Button>
+        <Button variant="ghost" small icon={Scan} onClick={() => setView(fit())} title="พอดีจอ (รีเซ็ตซูม)" ariaLabel="พอดีจอ">พอดีจอ</Button>
+        <Button variant="ghost" small icon={fs ? Minimize2 : Maximize2} onClick={toggleFs} title={fs ? "ออกจากเต็มจอ" : "เต็มจอ"} ariaLabel={fs ? "ออกจากเต็มจอ" : "เต็มจอ"}>{""}</Button>
+        {fs && <Button variant="ghost" small icon={X} onClick={exitFs} title="ปิด (Esc)" ariaLabel="ปิด">{""}</Button>}
       </div>
       <div
         ref={frameRef}
         style={{
-          position: "relative", height: 380, border: `1px solid ${t.border}`, borderRadius: 10,
+          position: "relative",
+          height: fs ? undefined : 380, flex: fs ? "1 1 auto" : undefined, minHeight: fs ? 0 : undefined,
+          border: `1px solid ${t.border}`, borderRadius: 10,
           background: t.bg, overflow: "hidden", touchAction: "none", cursor: "grab",
         }}
       >
@@ -237,9 +302,9 @@ export default function MerkleTreeView({
                     fill={s.fill} stroke={s.stroke} strokeWidth={s.sw}
                     strokeDasharray={dashed ? "4 3" : undefined}
                   />
-                  {b.w >= 70 && (
+                  {b.w >= (fs ? 54 : 70) && (
                     <text
-                      x={b.x + b.w / 2} y={b.y + b.h / 2 + 4} textAnchor="middle" fontSize={11}
+                      x={b.x + b.w / 2} y={b.y + b.h / 2 + 4} textAnchor="middle" fontSize={fs ? 13 : 11}
                       fill={onPath.has(`${L}:${i}`) && L !== last ? "#fff" : t.text}
                       style={{ ...monoFont, pointerEvents: "none" }}
                     >
@@ -271,7 +336,7 @@ export default function MerkleTreeView({
             style={{
               position: "absolute",
               left: Math.min(hovered.px + 12, (frameRef.current?.clientWidth ?? 400) - 290),
-              top: Math.min(hovered.py + 12, 380 - 150),
+              top: Math.min(hovered.py + 12, (frameRef.current?.clientHeight ?? 380) - 150),
               width: 280, maxWidth: "calc(100% - 16px)", padding: "8px 10px", borderRadius: 8,
               background: t.surface, border: `1px solid ${t.border}`, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
               fontSize: 12, color: t.text, zIndex: 2, pointerEvents: hovered.pinned ? "auto" : "none",
